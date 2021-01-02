@@ -1,0 +1,10 @@
+[package]
+name = "hprof-slurp"
+version = "0.1.0"
+authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+nom = "6.0.1"
+indicatif = "0.15.0"
+clap = "2.33.1"
