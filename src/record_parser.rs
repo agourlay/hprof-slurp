@@ -171,8 +171,8 @@ fn parse_gc_root_monitor_used(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(parse_id, |object_id| GCRootMonitorUsed { object_id })(i)
 }
 
-fn parse_field_value(i: &[u8], ty: FieldType) -> IResult<&[u8], FieldValue> {
-    match ty {
+fn parse_field_value(ty: FieldType) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {
+    move |i| match ty {
         FieldType::Object => map(parse_id, FieldValue::Object)(i),
         FieldType::Bool => map(parse_u8, |bu8| FieldValue::Bool(bu8 != 0))(i),
         FieldType::Char => map(parse_u16, FieldValue::Char)(i),
@@ -189,26 +189,34 @@ fn parse_field_type(i: &[u8]) -> IResult<&[u8], FieldType> {
     map(parse_i8, FieldType::from_value)(i)
 }
 
-// TODO use combinators
 fn parse_const_pool_item(i: &[u8]) -> IResult<&[u8], (ConstFieldInfo, FieldValue)> {
-    let (r1, (const_pool_idx, const_type)) = tuple((parse_u16, parse_field_type))(i)?;
-    let const_field_info = ConstFieldInfo {
-        const_pool_idx,
-        const_type,
-    };
-    let (r2, fv) = parse_field_value(r1, const_type)?;
-    Ok((r2, (const_field_info, fv)))
+    flat_map(
+        tuple((parse_u16, parse_field_type)),
+        |(const_pool_idx, const_type)| {
+            map(parse_field_value(const_type), move |fv| {
+                let const_field_info = ConstFieldInfo {
+                    const_pool_idx,
+                    const_type,
+                };
+                (const_field_info, fv)
+            })
+        },
+    )(i)
 }
 
-// TODO use combinators
 fn parse_static_field_item(i: &[u8]) -> IResult<&[u8], (FieldInfo, FieldValue)> {
-    let (r1, (name_id, field_type)) = tuple((parse_id, parse_field_type))(i)?;
-    let field_info = FieldInfo {
-        name_id,
-        field_type,
-    };
-    let (r2, fv) = parse_field_value(r1, field_type)?;
-    Ok((r2, (field_info, fv)))
+    flat_map(
+        tuple((parse_id, parse_field_type)),
+        |(name_id, field_type)| {
+            map(parse_field_value(field_type), move |fv| {
+                let field_info = FieldInfo {
+                    name_id,
+                    field_type,
+                };
+                (field_info, fv)
+            })
+        },
+    )(i)
 }
 
 fn parse_instance_field_item(i: &[u8]) -> IResult<&[u8], FieldInfo> {
