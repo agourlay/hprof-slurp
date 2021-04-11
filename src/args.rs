@@ -3,7 +3,7 @@ use crate::errors::HprofSlurpError::*;
 use clap::{value_t, App, Arg};
 use std::path::Path;
 
-pub fn get_args() -> Result<(String, usize, bool), HprofSlurpError> {
+pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
     let matches = App::new("hprof-slurp")
         .version("0.1.0")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
@@ -20,7 +20,7 @@ pub fn get_args() -> Result<(String, usize, bool), HprofSlurpError> {
             Arg::with_name("top")
                 .help("the top results to display")
                 .long("top")
-                .short("T")
+                .short("t")
                 .takes_value(true)
                 .default_value("20")
                 .required(false),
@@ -30,6 +30,12 @@ pub fn get_args() -> Result<(String, usize, bool), HprofSlurpError> {
                 .help("debug info")
                 .long("debug")
                 .short("d"),
+        )
+        .arg(
+            Arg::with_name("listStrings")
+                .help("list all Strings found")
+                .long("listStrings")
+                .short("ls"),
         )
         .get_matches();
 
@@ -44,5 +50,6 @@ pub fn get_args() -> Result<(String, usize, bool), HprofSlurpError> {
     }
 
     let debug = matches.is_present("debug");
-    Ok((input_file.to_string(), top, debug))
+    let list_strings = matches.is_present("listStrings");
+    Ok((input_file.to_string(), top, debug, list_strings))
 }

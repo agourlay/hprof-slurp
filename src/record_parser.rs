@@ -68,7 +68,7 @@ pub fn parse_hprof_record(debug: bool, i: &[u8]) -> IResult<&[u8], Record> {
         TAG_HEAP_DUMP_END => parse_heap_dump_end(rest),
         TAG_CONTROL_SETTING => parse_control_settings(rest),
         TAG_CPU_SAMPLES => parse_cpu_samples(rest),
-        x => panic!(format!("unhandled record tag {}", x)),
+        x => panic!("{}", format!("unhandled record tag {}", x)),
     }
 }
 
@@ -92,7 +92,7 @@ fn parse_sub_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
         TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(rest),
         TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(rest),
         TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(rest),
-        x => panic!(format!("unhandled gc record tag {}", x)),
+        x => panic!("{}", format!("unhandled gc record tag {}", x)),
     }
 }
 
@@ -103,7 +103,7 @@ fn parse_gc_root_unknown(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32, parse_u32)),
-        |(thread_object_id, thread_sequence_number, stack_sequence_number)| GCRootThreadObject {
+        |(thread_object_id, thread_sequence_number, stack_sequence_number)| GcRootThreadObject {
             thread_object_id,
             thread_sequence_number,
             stack_sequence_number,
@@ -114,7 +114,7 @@ fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_jni_global(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_id)),
-        |(object_id, jni_global_ref_id)| GCRootJniGlobal {
+        |(object_id, jni_global_ref_id)| GcRootJniGlobal {
             object_id,
             jni_global_ref_id,
         },
@@ -124,7 +124,7 @@ fn parse_gc_root_jni_global(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32, parse_u32)),
-        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GCRootJniLocal {
+        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GcRootJniLocal {
             object_id,
             thread_serial_number,
             frame_number_in_stack_trace,
@@ -135,7 +135,7 @@ fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32, parse_u32)),
-        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GCRootJavaFrame {
+        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GcRootJavaFrame {
             object_id,
             thread_serial_number,
             frame_number_in_stack_trace,
@@ -146,7 +146,7 @@ fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32)),
-        |(object_id, thread_serial_number)| GCRootNativeStack {
+        |(object_id, thread_serial_number)| GcRootNativeStack {
             object_id,
             thread_serial_number,
         },
@@ -154,13 +154,13 @@ fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
 }
 
 fn parse_gc_root_sticky_class(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| GCRootStickyClass { object_id })(i)
+    map(parse_id, |object_id| GcRootStickyClass { object_id })(i)
 }
 
 fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32)),
-        |(object_id, thread_serial_number)| GCRootThreadBlock {
+        |(object_id, thread_serial_number)| GcRootThreadBlock {
             object_id,
             thread_serial_number,
         },
@@ -168,7 +168,7 @@ fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
 }
 
 fn parse_gc_root_monitor_used(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| GCRootMonitorUsed { object_id })(i)
+    map(parse_id, |object_id| GcRootMonitorUsed { object_id })(i)
 }
 
 fn parse_field_value(ty: FieldType) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {

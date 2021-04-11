@@ -6,7 +6,10 @@ The main goal is to enable the analysis of huge heap dumps which are much bigger
 
 ## Features
 
-- displays top allocations.
+- displays top `n` allocated classes.
+- displays number of instances per class.
+- displays largest instance size per class.
+- list all String found.
 - does not load the entire dump file in memory.
 - easy to use.
 
@@ -24,19 +27,20 @@ This tool is under active development and has not been battle tested.
 ./hprof-slurp --help
 hprof-slurp 0.1.0
 Arnaud Gourlay <arnaud.gourlay@gmail.com>
-JVM heap dump file analyzer
+JVM heap dump hprof file analyzer
 
 USAGE:
     hprof-slurp [FLAGS] [OPTIONS] --inputFile <inputFile>
 
 FLAGS:
-    -d, --debug      debug info
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+    -d, --debug          debug info
+    -h, --help           Prints help information
+    -l, --listStrings    list all Strings found
+    -V, --version        Prints version information
 
 OPTIONS:
     -i, --inputFile <inputFile>    binary hprof input file
-    -T, --top <top>                the top results to display [default: 20]
+    -t, --top <top>                the top results to display [default: 20]
 ```
 
 Example:

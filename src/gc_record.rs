@@ -23,7 +23,7 @@ impl FieldType {
             9 => FieldType::Short,
             10 => FieldType::Int,
             11 => FieldType::Long,
-            x => panic!(format!("FieldType {} not found", x)),
+            x => panic!("{}", format!("FieldType {} not found", x)),
         }
     }
 }
@@ -71,37 +71,37 @@ pub enum GcRecord {
     GcRootUnknown {
         object_id: u64,
     },
-    GCRootThreadObject {
+    GcRootThreadObject {
         thread_object_id: u64,
         thread_sequence_number: u32,
         stack_sequence_number: u32,
     },
-    GCRootJniGlobal {
+    GcRootJniGlobal {
         object_id: u64,
         jni_global_ref_id: u64,
     },
-    GCRootJniLocal {
+    GcRootJniLocal {
         object_id: u64,
         thread_serial_number: u32,
         frame_number_in_stack_trace: u32,
     },
-    GCRootJavaFrame {
+    GcRootJavaFrame {
         object_id: u64,
         thread_serial_number: u32,
         frame_number_in_stack_trace: u32,
     },
-    GCRootNativeStack {
+    GcRootNativeStack {
         object_id: u64,
         thread_serial_number: u32,
     },
-    GCRootStickyClass {
+    GcRootStickyClass {
         object_id: u64,
     },
-    GCRootThreadBlock {
+    GcRootThreadBlock {
         object_id: u64,
         thread_serial_number: u32,
     },
-    GCRootMonitorUsed {
+    GcRootMonitorUsed {
         object_id: u64,
     },
     GcInstanceDump {

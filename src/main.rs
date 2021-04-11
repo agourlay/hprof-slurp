@@ -17,7 +17,7 @@ use nom::Needed::Unknown;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::analysis::{analysis, ArrayCounter};
+use crate::analysis::{analysis, ArrayCounter, ClassInstanceCounter};
 use crate::args::get_args;
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
@@ -29,7 +29,7 @@ use crate::utils::pretty_bytes_size;
 use std::collections::HashMap;
 
 fn main() -> Result<(), HprofSlurpError> {
-    let (file_path, top, debug) = get_args()?;
+    let (file_path, top, debug, list_strings) = get_args()?;
 
     let file = File::open(file_path)?;
     let meta = file.metadata()?;
@@ -71,7 +71,8 @@ fn main() -> Result<(), HprofSlurpError> {
     let mut utf8_strings_by_id: HashMap<u64, String> = HashMap::new();
     let mut classes_loaded_by_id: HashMap<u64, u64> = HashMap::new();
     let mut classes_single_instance_size_by_id: HashMap<u64, u32> = HashMap::new();
-    let mut classes_all_instance_total_size_by_id: HashMap<u64, u64> = HashMap::new();
+    let mut classes_all_instance_total_size_by_id: HashMap<u64, ClassInstanceCounter> =
+        HashMap::new();
     let mut primitive_array_counters: HashMap<FieldType, ArrayCounter> = HashMap::new();
     let mut object_array_counters: HashMap<u64, ArrayCounter> = HashMap::new();
 
@@ -144,28 +145,28 @@ fn main() -> Result<(), HprofSlurpError> {
                             GcRecord::GcRootUnknown { .. } => {
                                 heap_dump_segments_gc_root_unknown += 1
                             }
-                            GcRecord::GCRootThreadObject { .. } => {
+                            GcRecord::GcRootThreadObject { .. } => {
                                 heap_dump_segments_gc_root_thread_object += 1
                             }
-                            GcRecord::GCRootJniGlobal { .. } => {
+                            GcRecord::GcRootJniGlobal { .. } => {
                                 heap_dump_segments_gc_root_jni_global += 1
                             }
-                            GcRecord::GCRootJniLocal { .. } => {
+                            GcRecord::GcRootJniLocal { .. } => {
                                 heap_dump_segments_gc_root_jni_local += 1
                             }
-                            GcRecord::GCRootJavaFrame { .. } => {
+                            GcRecord::GcRootJavaFrame { .. } => {
                                 heap_dump_segments_gc_root_java_frame += 1
                             }
-                            GcRecord::GCRootNativeStack { .. } => {
+                            GcRecord::GcRootNativeStack { .. } => {
                                 heap_dump_segments_gc_root_native_stack += 1
                             }
-                            GcRecord::GCRootStickyClass { .. } => {
+                            GcRecord::GcRootStickyClass { .. } => {
                                 heap_dump_segments_gc_root_sticky_class += 1
                             }
-                            GcRecord::GCRootThreadBlock { .. } => {
+                            GcRecord::GcRootThreadBlock { .. } => {
                                 heap_dump_segments_gc_root_thread_block += 1
                             }
-                            GcRecord::GCRootMonitorUsed { .. } => {
+                            GcRecord::GcRootMonitorUsed { .. } => {
                                 heap_dump_segments_gc_root_monitor_used += 1
                             }
                             GcRecord::GcInstanceDump {
@@ -176,9 +177,10 @@ fn main() -> Result<(), HprofSlurpError> {
                                 // no need to perform a lookup in `classes_instance_size_by_id`
                                 // data_size is available in the record
                                 // total_size = data_size + id_size + mark(4) + padding(4)
-                                *classes_all_instance_total_size_by_id
+                                classes_all_instance_total_size_by_id
                                     .entry(*class_object_id)
-                                    .or_insert(0) += (*data_size + id_size + 8) as u64;
+                                    .or_insert_with(ClassInstanceCounter::empty)
+                                    .add_instance((*data_size + id_size + 8) as u64);
                             }
                             GcRecord::GcObjectArrayDump {
                                 number_of_elements,
@@ -339,6 +341,14 @@ fn main() -> Result<(), HprofSlurpError> {
         &primitive_array_counters,
         &object_array_counters,
     );
+
+    if list_strings {
+        let mut strings: Vec<_> = utf8_strings_by_id.values().collect();
+        strings.sort();
+        println!();
+        println!("List of Strings");
+        strings.iter().for_each(|s| println!("{}", s));
+    }
 
     Ok(())
 }
