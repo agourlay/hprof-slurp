@@ -222,6 +222,7 @@ fn main() -> Result<(), HprofSlurpError> {
                     }
                 }
                 processed += loop_buffer.len() - rest.len();
+                // TODO remove rest.to_vec() allocations
                 loop_buffer = rest.to_vec();
                 if processed == file_len {
                     eof = true;

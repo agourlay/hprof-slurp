@@ -41,7 +41,7 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
 
     let input_file = matches.value_of("inputFile").expect("impossible");
     if !Path::new(input_file).is_file() {
-        return Err(InputFileNotFound);
+        return Err(InputFileNotFound{ name : input_file.to_string() });
     }
 
     let top = value_t!(matches, "top", usize)?;

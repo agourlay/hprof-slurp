@@ -1,6 +1,6 @@
 #[derive(Debug)]
 pub enum HprofSlurpError {
-    InputFileNotFound,
+    InputFileNotFound{ name: String },
     InvalidTopPositiveInt,
     InvalidIdSize,
     InvalidHeaderSize,

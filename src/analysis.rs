@@ -93,7 +93,7 @@ pub fn analysis(
     let ref_size = id_size;
     let array_header_size = ref_size + 4 + 4; // 4 bytes of klass + 4 bytes for the array length.
 
-    let mut array_primitives_dump_vec: Vec<_> = primitive_array_counters
+    let array_primitives_dump_vec = primitive_array_counters
         .iter()
         .map(|(ft, &ac)| {
             let primitive_array_label = format!("{:?}[]", ft);
@@ -106,10 +106,9 @@ pub fn analysis(
                 cost_of_biggest_array,
                 cost_of_all_array_headers + cost_of_all_values,
             )
-        })
-        .collect();
+        });
 
-    let mut array_objects_dump_vec: Vec<_> = object_array_counters
+    let array_objects_dump_vec = object_array_counters
         .iter()
         .map(|(class_id, &ac)| {
             let raw_class_name =
@@ -134,12 +133,11 @@ pub fn analysis(
                 cost_of_biggest_array_refs + cost_of_biggest_array_header,
                 cost_of_all_array_headers + cost_of_all_refs,
             )
-        })
-        .collect();
+        });
 
     // Merge results
-    classes_dump_vec.append(&mut array_primitives_dump_vec);
-    classes_dump_vec.append(&mut array_objects_dump_vec);
+    classes_dump_vec.extend(array_primitives_dump_vec);
+    classes_dump_vec.extend(array_objects_dump_vec);
     // reverse sort by size
     classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
 
