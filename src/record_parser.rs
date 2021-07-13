@@ -6,8 +6,10 @@ use crate::record::{AllocationSite, CpuSample, Record, RecordHeader};
 use crate::record_parser::GcRecord::*;
 use crate::record_parser::Record::*;
 use nom::combinator::{flat_map, map};
+use nom::error::{ErrorKind, ParseError};
 use nom::multi::{count, many1};
 use nom::sequence::{preceded, tuple};
+use nom::Parser;
 use nom::{bytes, IResult};
 
 const TAG_STRING: u8 = 0x01;
@@ -48,27 +50,69 @@ fn parse_id(i: &[u8]) -> IResult<&[u8], u64> {
 // which
 // - holds id_size and parse_id to handle ids cleanly
 // - enables streaming parsing of GC segments
-pub fn parse_hprof_record(debug: bool, i: &[u8]) -> IResult<&[u8], Record> {
-    let (rest, tag) = parse_u8(i)?;
-    if debug {
-        println!("Found record tag:{} remaining bytes:{}", tag, i.len());
+pub fn parse_hprof_record(debug: bool) -> impl Fn(&[u8]) -> IResult<&[u8], Record> {
+    move |i| {
+        let (rest, tag) = parse_u8(i)?;
+        if debug {
+            println!("Found record tag:{} remaining bytes:{}", tag, i.len());
+        }
+        match tag {
+            TAG_STRING => parse_utf8_string(rest),
+            TAG_LOAD_CLASS => parse_load_class(rest),
+            TAG_UNLOAD_CLASS => parse_unload_class(rest),
+            TAG_STACK_FRAME => parse_stack_frame(rest),
+            TAG_STACK_TRACE => parse_stack_trace(rest),
+            TAG_ALLOC_SITES => parse_allocation_sites(rest),
+            TAG_HEAP_SUMMARY => parse_heap_summary(rest),
+            TAG_START_THREAD => parse_start_thread(rest),
+            TAG_END_THREAD => parse_end_thread(rest),
+            TAG_HEAP_DUMP => parse_heap_dump_segment(rest),
+            TAG_HEAP_DUMP_SEGMENT => parse_heap_dump_segment(rest),
+            TAG_HEAP_DUMP_END => parse_heap_dump_end(rest),
+            TAG_CONTROL_SETTING => parse_control_settings(rest),
+            TAG_CPU_SAMPLES => parse_cpu_samples(rest),
+            x => panic!("{}", format!("unhandled record tag {}", x)),
+        }
     }
-    match tag {
-        TAG_STRING => parse_utf8_string(rest),
-        TAG_LOAD_CLASS => parse_load_class(rest),
-        TAG_UNLOAD_CLASS => parse_unload_class(rest),
-        TAG_STACK_FRAME => parse_stack_frame(rest),
-        TAG_STACK_TRACE => parse_stack_trace(rest),
-        TAG_ALLOC_SITES => parse_allocation_sites(rest),
-        TAG_HEAP_SUMMARY => parse_heap_summary(rest),
-        TAG_START_THREAD => parse_start_thread(rest),
-        TAG_END_THREAD => parse_end_thread(rest),
-        TAG_HEAP_DUMP => parse_heap_dump_segment(rest),
-        TAG_HEAP_DUMP_SEGMENT => parse_heap_dump_segment(rest),
-        TAG_HEAP_DUMP_END => parse_heap_dump_end(rest),
-        TAG_CONTROL_SETTING => parse_control_settings(rest),
-        TAG_CPU_SAMPLES => parse_cpu_samples(rest),
-        x => panic!("{}", format!("unhandled record tag {}", x)),
+}
+
+pub fn parse_hprof_records_streaming(debug: bool, i: &[u8]) -> IResult<&[u8], Vec<Record>> {
+    many1_streaming(parse_hprof_record(debug))(i)
+}
+
+// copy of nom's many1 but returns values accumulated so far on `nom::Err::Incomplete(_)`
+pub fn many1_streaming<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
+where
+    I: Clone + PartialEq,
+    F: Parser<I, O, E>,
+    E: ParseError<I>,
+{
+    move |mut i: I| match f.parse(i.clone()) {
+        Err(nom::Err::Error(err)) => Err(nom::Err::Error(E::append(i, ErrorKind::Many1, err))),
+        Err(e) => Err(e),
+        Ok((i1, o)) => {
+            let mut acc = Vec::with_capacity(4);
+            acc.push(o);
+            i = i1;
+
+            loop {
+                match f.parse(i.clone()) {
+                    Err(nom::Err::Error(_)) => return Ok((i, acc)),
+                    // magic line here!
+                    // return Ok(acc) if we have seen at least one element, otherwise fail
+                    Err(nom::Err::Incomplete(_)) => return Ok((i, acc)),
+                    Err(e) => return Err(e),
+                    Ok((i1, o)) => {
+                        if i1 == i {
+                            return Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Many1)));
+                        }
+
+                        i = i1;
+                        acc.push(o);
+                    }
+                }
+            }
+        }
     }
 }
 
