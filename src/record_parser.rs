@@ -609,7 +609,10 @@ fn parse_heap_dump_segment(i: &[u8]) -> IResult<&[u8], Record> {
         length,
         segments,
     })(bytes_segment)?;
-    assert!(empty_rest.is_empty(), "there should no rest after consuming all sub gc records");
+    assert!(
+        empty_rest.is_empty(),
+        "there should no rest after consuming all sub gc records"
+    );
     Ok((next, rec))
 }
 

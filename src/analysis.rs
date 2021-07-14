@@ -93,47 +93,43 @@ pub fn analysis(
     let ref_size = id_size;
     let array_header_size = ref_size + 4 + 4; // 4 bytes of klass + 4 bytes for the array length.
 
-    let array_primitives_dump_vec = primitive_array_counters
-        .iter()
-        .map(|(ft, &ac)| {
-            let primitive_array_label = format!("{:?}[]", ft);
-            let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-            let cost_of_all_values = primitive_byte_size(ft) * ac.total_number_of_elements;
-            let cost_of_biggest_array = primitive_byte_size(ft) * ac.max_size_seen as u64;
-            (
-                primitive_array_label,
-                ac.number_of_arrays,
-                cost_of_biggest_array,
-                cost_of_all_array_headers + cost_of_all_values,
-            )
-        });
+    let array_primitives_dump_vec = primitive_array_counters.iter().map(|(ft, &ac)| {
+        let primitive_array_label = format!("{:?}[]", ft);
+        let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
+        let cost_of_all_values = primitive_byte_size(ft) * ac.total_number_of_elements;
+        let cost_of_biggest_array = primitive_byte_size(ft) * ac.max_size_seen as u64;
+        (
+            primitive_array_label,
+            ac.number_of_arrays,
+            cost_of_biggest_array,
+            cost_of_all_array_headers + cost_of_all_values,
+        )
+    });
 
-    let array_objects_dump_vec = object_array_counters
-        .iter()
-        .map(|(class_id, &ac)| {
-            let raw_class_name =
-                get_class_name_string(class_id, classes_loaded_by_id, utf8_strings_by_id);
-            // remove '[L' prefix and ';' suffix
-            let cleaned_class_name: String = raw_class_name
-                .chars()
-                .skip(2)
-                .take(raw_class_name.chars().count() - 3)
-                .collect();
-            let class_name = format!("{}[]", cleaned_class_name);
+    let array_objects_dump_vec = object_array_counters.iter().map(|(class_id, &ac)| {
+        let raw_class_name =
+            get_class_name_string(class_id, classes_loaded_by_id, utf8_strings_by_id);
+        // remove '[L' prefix and ';' suffix
+        let cleaned_class_name: String = raw_class_name
+            .chars()
+            .skip(2)
+            .take(raw_class_name.chars().count() - 3)
+            .collect();
+        let class_name = format!("{}[]", cleaned_class_name);
 
-            let cost_of_all_refs = ref_size * ac.total_number_of_elements;
-            let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
+        let cost_of_all_refs = ref_size * ac.total_number_of_elements;
+        let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
 
-            let cost_of_biggest_array_refs = ref_size * ac.max_size_seen as u64;
-            let cost_of_biggest_array_header = array_header_size;
+        let cost_of_biggest_array_refs = ref_size * ac.max_size_seen as u64;
+        let cost_of_biggest_array_header = array_header_size;
 
-            (
-                class_name,
-                ac.number_of_arrays,
-                cost_of_biggest_array_refs + cost_of_biggest_array_header,
-                cost_of_all_array_headers + cost_of_all_refs,
-            )
-        });
+        (
+            class_name,
+            ac.number_of_arrays,
+            cost_of_biggest_array_refs + cost_of_biggest_array_header,
+            cost_of_all_array_headers + cost_of_all_refs,
+        )
+    });
 
     // Merge results
     classes_dump_vec.extend(array_primitives_dump_vec);
