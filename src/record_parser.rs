@@ -604,11 +604,12 @@ fn parse_allocation_sites(i: &[u8]) -> IResult<&[u8], Record> {
 fn parse_heap_dump_segment(i: &[u8]) -> IResult<&[u8], Record> {
     let (r1, header_record) = parse_header_record(i)?;
     let length = header_record.length;
-    let (next, bytes_segment) = bytes::streaming::take(header_record.length)(r1)?;
-    let (_empty_rest, rec) = map(many1(parse_sub_gc_record), |segments| HeapDumpSegment {
+    let (next, bytes_segment) = bytes::streaming::take(length)(r1)?;
+    let (empty_rest, rec) = map(many1(parse_sub_gc_record), |segments| HeapDumpSegment {
         length,
         segments,
     })(bytes_segment)?;
+    assert!(empty_rest.is_empty(), "there should no rest after consuming all sub gc records");
     Ok((next, rec))
 }
 
