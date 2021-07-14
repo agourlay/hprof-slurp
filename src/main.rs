@@ -24,7 +24,7 @@ use crate::errors::HprofSlurpError::*;
 use crate::file_header_parser::parse_file_header;
 use crate::gc_record::{FieldType, GcRecord};
 use crate::record::Record::*;
-use crate::record_parser::parse_hprof_records_streaming;
+use crate::record_parser::HprofRecordParser;
 use crate::utils::pretty_bytes_size;
 use std::collections::HashMap;
 
@@ -110,9 +110,10 @@ fn main() -> Result<(), HprofSlurpError> {
     // 2 MB
     const OPTIMISTIC_BUFFER_SIZE: usize = 2 * 1024 * 1024;
 
+    let parser = HprofRecordParser::new(debug, id_size == 8);
     while !eof {
         pb.set_position(processed as u64);
-        let iteration_res = parse_hprof_records_streaming(debug, &loop_buffer);
+        let iteration_res = parser.parse_hprof_records_streaming(&loop_buffer);
         match iteration_res {
             Ok((rest, records)) => {
                 records.into_iter().for_each(|record| {
