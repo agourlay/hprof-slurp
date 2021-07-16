@@ -105,15 +105,13 @@ fn main() -> Result<(), HprofSlurpError> {
 
     // Iteration state
     let mut loop_buffer = Vec::new();
-    let mut eof = false;
     let mut processed = file_header_length;
-    // 2 MB
-    const OPTIMISTIC_BUFFER_SIZE: usize = 2 * 1024 * 1024;
+    // 30 MB buffer performs nicely
+    const OPTIMISTIC_BUFFER_SIZE: usize = 30 * 1024 * 1024;
 
-    let parser = HprofRecordParser::new(debug, id_size == 8);
-    while !eof {
-        pb.set_position(processed as u64);
-        let iteration_res = parser.parse_hprof_records_streaming(&loop_buffer);
+    let mut parser = HprofRecordParser::new(debug, id_size == 8);
+    while processed != file_len {
+        let iteration_res = parser.parse_streaming(&loop_buffer);
         match iteration_res {
             Ok((rest, records)) => {
                 records.into_iter().for_each(|record| {
@@ -138,13 +136,10 @@ fn main() -> Result<(), HprofSlurpError> {
                         ControlSettings { .. } => control_settings += 1,
                         CpuSamples { .. } => cpu_samples += 1,
                         HeapDumpEnd { .. } => (),
-                        HeapDumpSegment {
-                            length: _,
-                            segments,
-                        } => {
-                            heap_dumps += 1;
-                            heap_dump_segments_all_sub_records += segments.len();
-                            segments.iter().for_each(|gc_record| match gc_record {
+                        HeapDumpStart { .. } => heap_dumps += 1,
+                        GcSegment (gc_record) => {
+                            heap_dump_segments_all_sub_records += 1;
+                            match gc_record {
                                 GcRecord::GcRootUnknown { .. } => {
                                     heap_dump_segments_gc_root_unknown += 1
                                 }
@@ -181,9 +176,9 @@ fn main() -> Result<(), HprofSlurpError> {
                                     // data_size is available in the record
                                     // total_size = data_size + id_size + mark(4) + padding(4)
                                     classes_all_instance_total_size_by_id
-                                        .entry(*class_object_id)
+                                        .entry(class_object_id)
                                         .or_insert_with(ClassInstanceCounter::empty)
-                                        .add_instance((*data_size + id_size + 8) as u64);
+                                        .add_instance((data_size + id_size + 8) as u64);
                                 }
                                 GcRecord::GcObjectArrayDump {
                                     number_of_elements,
@@ -191,9 +186,9 @@ fn main() -> Result<(), HprofSlurpError> {
                                     ..
                                 } => {
                                     object_array_counters
-                                        .entry(*array_class_id)
+                                        .entry(array_class_id)
                                         .or_insert_with(ArrayCounter::empty)
-                                        .add_elements_from_array(*number_of_elements);
+                                        .add_elements_from_array(number_of_elements);
 
                                     heap_dump_segments_gc_object_array_dump += 1
                                 }
@@ -203,9 +198,9 @@ fn main() -> Result<(), HprofSlurpError> {
                                     ..
                                 } => {
                                     primitive_array_counters
-                                        .entry(*element_type)
+                                        .entry(element_type)
                                         .or_insert_with(ArrayCounter::empty)
-                                        .add_elements_from_array(*number_of_elements);
+                                        .add_elements_from_array(number_of_elements);
 
                                     heap_dump_segments_gc_primitive_array_dump += 1
                                 }
@@ -216,47 +211,62 @@ fn main() -> Result<(), HprofSlurpError> {
                                 } => {
                                     // Unused for now, remove it???
                                     classes_single_instance_size_by_id
-                                        .entry(*class_object_id)
-                                        .or_insert(*instance_size);
+                                        .entry(class_object_id)
+                                        .or_insert(instance_size);
 
                                     heap_dump_segments_gc_class_dump += 1
                                 }
-                            });
+                            }
                         }
                     }
                 });
                 processed += loop_buffer.len() - rest.len();
-                // TODO remove rest.to_vec() allocations
-                loop_buffer = rest.to_vec();
-                if processed == file_len {
-                    eof = true;
-                }
+                pb.set_position(processed as u64);
+                loop_buffer = rest.to_vec(); // TODO remove rest.to_vec() allocations
+                assert!(processed <= file_len, "Can't process more than the file length");
             }
             Err(Err::Incomplete(Size(nzu))) => {
                 let needed = nzu.get();
                 // Preload bigger buffer if possible to avoid parsing failure overhead
                 let next_size = if needed > OPTIMISTIC_BUFFER_SIZE {
                     needed
-                } else if (file_len - processed) > OPTIMISTIC_BUFFER_SIZE {
-                    OPTIMISTIC_BUFFER_SIZE
                 } else {
-                    needed
+                    // need to account for in-flight data in the loop_buffer
+                    let remaining = file_len - processed - loop_buffer.len();
+                    if (remaining) > OPTIMISTIC_BUFFER_SIZE {
+                        OPTIMISTIC_BUFFER_SIZE
+                    } else {
+                        remaining
+                    }
                 };
                 if debug {
-                    println!(
-                        "Need more data {:?}, pull {}",
-                        needed,
-                        pretty_bytes_size(next_size as u64)
+                    pb.println(
+                        format!(
+                            "Need more data {:?}, pull {}, remaining {}, buffer {}",
+                            needed,
+                            pretty_bytes_size(next_size as u64),
+                            file_len - processed,
+                            loop_buffer.len()
+                        )
                     );
                 }
                 let mut extra_buffer = vec![0; next_size];
-                reader.read_exact(&mut extra_buffer)?;
+                reader.read_exact(&mut extra_buffer)
+                    .unwrap_or_else(|e|
+                        panic!("Fail to read buffer for incomplete input:\n
+                        error->{}\n
+                        needed->{}\n
+                        next->{}\n
+                        processed->{}\n
+                        file_len->{}\n
+                        remaining->{}\n
+                        buffer_len->{}", e, needed, next_size, processed, file_len, file_len - processed, loop_buffer.len()));
                 loop_buffer.extend_from_slice(&extra_buffer);
             }
             Err(Err::Incomplete(Unknown)) => {
                 pb.println("Illegal state: Need more data 'Unknown'");
                 let mut extra_buffer = [0; 512];
-                reader.read_exact(&mut extra_buffer)?;
+                reader.read_exact(&mut extra_buffer).expect(&"Fail to read buffer for `Incomplete(Unknown)");
                 loop_buffer.extend_from_slice(&extra_buffer);
             }
             Err(Err::Failure(e)) => {

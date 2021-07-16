@@ -7,7 +7,7 @@ use crate::record_parser::GcRecord::*;
 use crate::record_parser::Record::*;
 use nom::combinator::{flat_map, map};
 use nom::error::{ErrorKind, ParseError};
-use nom::multi::{count, many1};
+use nom::multi::count;
 use nom::sequence::{preceded, tuple};
 use nom::Parser;
 use nom::{bytes, IResult};
@@ -43,14 +43,11 @@ const TAG_GC_PRIM_ARRAY_DUMP: u8 = 0x23;
 
 pub struct HprofRecordParser {
     debug_mode: bool,
-    id_size_u64: bool,
+    id_size_u64: bool, // TODO use to change impl. of parse_id
     heap_dump_remaining_len: u32,
 }
 
-// TODO
-// - holds id_size and parse_id to handle ids cleanly
-// - enables streaming parsing of GC segments
-impl<'i> HprofRecordParser {
+impl<'p> HprofRecordParser {
     pub fn new(debug_mode: bool, id_size_u64: bool) -> Self {
         HprofRecordParser {
             debug_mode,
@@ -59,33 +56,45 @@ impl<'i> HprofRecordParser {
         }
     }
 
-    pub fn parse_hprof_record(&'i self) -> impl Fn(&'i[u8]) -> IResult<&'i[u8], Record> {
-        move |i| {
-            let (rest, tag) = parse_u8(i)?;
-            if self.debug_mode {
-                println!("Found record tag:{} remaining bytes:{}", tag, i.len());
-            }
-            match tag {
-                TAG_STRING => parse_utf8_string(rest),
-                TAG_LOAD_CLASS => parse_load_class(rest),
-                TAG_UNLOAD_CLASS => parse_unload_class(rest),
-                TAG_STACK_FRAME => parse_stack_frame(rest),
-                TAG_STACK_TRACE => parse_stack_trace(rest),
-                TAG_ALLOC_SITES => parse_allocation_sites(rest),
-                TAG_HEAP_SUMMARY => parse_heap_summary(rest),
-                TAG_START_THREAD => parse_start_thread(rest),
-                TAG_END_THREAD => parse_end_thread(rest),
-                TAG_HEAP_DUMP => parse_heap_dump_segment(rest),
-                TAG_HEAP_DUMP_SEGMENT => parse_heap_dump_segment(rest),
-                TAG_HEAP_DUMP_END => parse_heap_dump_end(rest),
-                TAG_CONTROL_SETTING => parse_control_settings(rest),
-                TAG_CPU_SAMPLES => parse_cpu_samples(rest),
-                x => panic!("{}", format!("unhandled record tag {}", x)),
+    pub fn parse_hprof_record(&'p mut self) -> impl FnMut(&'p[u8]) -> IResult<&'p[u8], Record> {
+         move |i| {
+            if self.heap_dump_remaining_len == 0 {
+                let (r1, tag) = parse_u8(i)?;
+                if self.debug_mode {
+                    println!("Found record tag:{} remaining bytes:{}", tag, i.len());
+                }
+                match tag {
+                    TAG_STRING => parse_utf8_string(r1),
+                    TAG_LOAD_CLASS => parse_load_class(r1),
+                    TAG_UNLOAD_CLASS => parse_unload_class(r1),
+                    TAG_STACK_FRAME => parse_stack_frame(r1),
+                    TAG_STACK_TRACE => parse_stack_trace(r1),
+                    TAG_ALLOC_SITES => parse_allocation_sites(r1),
+                    TAG_HEAP_SUMMARY => parse_heap_summary(r1),
+                    TAG_START_THREAD => parse_start_thread(r1),
+                    TAG_END_THREAD => parse_end_thread(r1),
+                    TAG_CONTROL_SETTING => parse_control_settings(r1),
+                    TAG_CPU_SAMPLES => parse_cpu_samples(r1),
+                    TAG_HEAP_DUMP_END => parse_heap_dump_end(r1),
+                    TAG_HEAP_DUMP | TAG_HEAP_DUMP_SEGMENT => {
+                        let (r2, hr) = parse_header_record(r1)?;
+                        // record expected GC segments length
+                        self.heap_dump_remaining_len = hr.length;
+                        Ok((r2, HeapDumpStart { length: hr.length }))
+                    },
+                    x => panic!("{}", format!("unhandled record tag {}", x)),
+                }
+            } else {
+                // GC record mode
+                let (r1, gc_sub) = parse_gc_record(i)?;
+                let gc_sub_len = i.len() - r1.len();
+                self.heap_dump_remaining_len -= gc_sub_len as u32;
+                Ok((r1, GcSegment(gc_sub)))
             }
         }
     }
 
-    pub fn parse_hprof_records_streaming(&'i self, i: &'i[u8]) -> IResult<&'i[u8], Vec<Record>> {
+    pub fn parse_streaming(&'p mut self, i: &'p[u8]) -> IResult<&'p[u8], Vec<Record>> {
         many1_streaming(self.parse_hprof_record())(i)
     }
 }
@@ -131,11 +140,8 @@ where
     }
 }
 
-fn parse_sub_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    // use complete parsing for u8 because
-    // - the slice is already in memory
-    // - we need a failure to stop the `many1` combinator at the call site
-    let (rest, tag) = parse_u8_complete(i)?;
+fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
+    let (rest, tag) = parse_u8(i)?;
     //println!("GC Tag:{} Remaining:{}", tag, i.len());
     match tag {
         TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(rest),
@@ -613,22 +619,6 @@ fn parse_allocation_sites(i: &[u8]) -> IResult<&[u8], Record> {
             )
         },
     )(i)
-}
-
-// TODO stream it instead in order to use less memory
-fn parse_heap_dump_segment(i: &[u8]) -> IResult<&[u8], Record> {
-    let (r1, header_record) = parse_header_record(i)?;
-    let length = header_record.length;
-    let (next, bytes_segment) = bytes::streaming::take(length)(r1)?;
-    let (empty_rest, rec) = map(many1(parse_sub_gc_record), |segments| HeapDumpSegment {
-        length,
-        segments,
-    })(bytes_segment)?;
-    assert!(
-        empty_rest.is_empty(),
-        "there should no rest after consuming all sub gc records"
-    );
-    Ok((next, rec))
 }
 
 fn parse_heap_dump_end(i: &[u8]) -> IResult<&[u8], Record> {

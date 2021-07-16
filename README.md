@@ -10,7 +10,7 @@ The main goal is to enable the analysis of huge heap dumps which are much bigger
 - displays number of instances per class.
 - displays largest instance size per class.
 - list all String found.
-- does not load the entire dump file in memory.
+- low memory usage.
 - easy to use.
 
 ## Status
@@ -84,5 +84,5 @@ They have provided guidance and inspiration in moments of uncertainty.
 ## TODO
 
 - use stacktrace/frame dump to compute allocation sites
-- parse GC sub-records in a streaming fashion as well.
 - support 32 bits dumps.
+- multi-threaded

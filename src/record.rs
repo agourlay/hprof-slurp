@@ -79,9 +79,8 @@ pub enum Record {
         total_bytes_allocated: u64,
         total_instances_allocated: u64,
     },
-    HeapDumpSegment {
-        length: u32,
-        segments: Vec<GcRecord>,
+    HeapDumpStart {
+        length: u32
     },
     HeapDumpEnd {
         length: u32,
@@ -95,4 +94,5 @@ pub enum Record {
         number_of_traces: u32,
         cpu_samples: Vec<CpuSample>,
     },
+    GcSegment (GcRecord)
 }
