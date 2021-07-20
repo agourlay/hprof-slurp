@@ -39,7 +39,7 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
         )
         .get_matches();
 
-    let input_file = matches.value_of("inputFile").expect("impossible");
+    let input_file = matches.value_of("inputFile").expect("impossible").trim();
     if !Path::new(input_file).is_file() {
         return Err(InputFileNotFound {
             name: input_file.to_string(),

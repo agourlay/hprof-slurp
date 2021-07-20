@@ -106,7 +106,7 @@ fn main() -> Result<(), HprofSlurpError> {
     // Iteration state
     let mut loop_buffer = Vec::new();
     let mut processed = file_header_length;
-    // 30 MB buffer performs nicely
+    // 30 MB buffer performs nicely (higher is faster but increases the memory consumption)
     const OPTIMISTIC_BUFFER_SIZE: usize = 30 * 1024 * 1024;
 
     let mut parser = HprofRecordParser::new(debug, id_size == 8);
