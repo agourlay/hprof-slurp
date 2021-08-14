@@ -80,7 +80,7 @@ pub enum Record {
         total_instances_allocated: u64,
     },
     HeapDumpStart {
-        length: u32
+        length: u32,
     },
     HeapDumpEnd {
         length: u32,
@@ -94,5 +94,5 @@ pub enum Record {
         number_of_traces: u32,
         cpu_samples: Vec<CpuSample>,
     },
-    GcSegment (GcRecord)
+    GcSegment(GcRecord),
 }

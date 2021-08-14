@@ -28,7 +28,9 @@ pub fn parse_u16(i: &[u8]) -> IResult<&[u8], u16> {
     number::streaming::be_u16(i)
 }
 
-pub fn parse_u32(i: &[u8]) -> IResult<&[u8], u32> { number::streaming::be_u32(i) }
+pub fn parse_u32(i: &[u8]) -> IResult<&[u8], u32> {
+    number::streaming::be_u32(i)
+}
 
 pub fn parse_u64(i: &[u8]) -> IResult<&[u8], u64> {
     number::streaming::be_u64(i)
@@ -42,4 +44,6 @@ pub fn parse_f64(i: &[u8]) -> IResult<&[u8], f64> {
     number::streaming::be_f64(i)
 }
 
-pub fn parse_u8(i: &[u8]) -> IResult<&[u8], u8> { number::streaming::be_u8(i) }
+pub fn parse_u8(i: &[u8]) -> IResult<&[u8], u8> {
+    number::streaming::be_u8(i)
+}
