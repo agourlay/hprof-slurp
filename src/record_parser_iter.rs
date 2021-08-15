@@ -11,71 +11,71 @@ use std::io::{BufReader, Read};
 
 pub struct HprofRecordParserIter {
     parser: HprofRecordParser,
+    reader: BufReader<File>,
     debug_mode: bool,
     file_len: usize,
-    processed: usize,
+    processed_len: usize,
     loop_buffer: Vec<u8>,
-    reader: BufReader<File>,
-    optimistic_buffer_size: usize,
+    stream_buffer_size: usize,
 }
 
 impl HprofRecordParserIter {
     pub fn new(
         parser: HprofRecordParser,
+        reader: BufReader<File>,
         debug_mode: bool,
         file_len: usize,
-        processed: usize,
-        reader: BufReader<File>,
-        optimistic_buffer_size: usize,
+        processed_len: usize,
+        stream_buffer_size: usize,
     ) -> Self {
         HprofRecordParserIter {
             parser,
+            reader,
             debug_mode,
             file_len,
-            processed,
-            loop_buffer: Vec::new(), // will be init properly during the first iteration
-            reader,
-            optimistic_buffer_size,
+            processed_len,
+            loop_buffer: Vec::new(), // will be sized properly during the first iteration
+            stream_buffer_size,
         }
     }
 
     // pull next batch of records recursively until a result set fits in the buffer
     fn pull_next(&mut self) -> Option<(usize, Vec<Record>)> {
-        if self.processed != self.file_len {
+        if self.processed_len != self.file_len {
             let iteration_res = self.parser.parse_streaming(&self.loop_buffer);
             match iteration_res {
                 Ok((rest, records)) => {
-                    self.processed += self.loop_buffer.len() - rest.len();
+                    self.processed_len += self.loop_buffer.len() - rest.len();
                     self.loop_buffer = rest.to_vec(); // TODO remove rest.to_vec() allocations
                     assert!(
-                        self.processed <= self.file_len,
+                        self.processed_len <= self.file_len,
                         "Can't process more than the file length"
                     );
-                    Some((self.processed, records))
+                    Some((self.processed_len, records))
                 }
                 Err(Err::Incomplete(Size(nzu))) => {
                     let needed = nzu.get();
                     // Preload bigger buffer if possible to avoid parsing failure overhead
-                    let next_size = if needed > self.optimistic_buffer_size {
+                    let next_size = if needed > self.stream_buffer_size {
                         needed
                     } else {
                         // need to account for in-flight data in the loop_buffer
-                        let remaining = self.file_len - self.processed - self.loop_buffer.len();
-                        if (remaining) > self.optimistic_buffer_size {
-                            self.optimistic_buffer_size
+                        let remaining = self.file_len - self.processed_len - self.loop_buffer.len();
+                        if (remaining) > self.stream_buffer_size {
+                            self.stream_buffer_size
                         } else {
                             remaining
                         }
                     };
                     if self.debug_mode {
-                        // might not be visible if the progress bar overwrite it
+                        // might not be visible if the progress bar overwrites it
                         println!(
                             "{}",
                             format!(
                                 "Need more data {:?}, pull {}, remaining {}, buffer {}",
                                 needed,
                                 pretty_bytes_size(next_size as u64),
-                                self.file_len - self.processed,
+                                self.file_len - self.processed_len,
                                 self.loop_buffer.len()
                             )
                         );
@@ -96,9 +96,9 @@ impl HprofRecordParserIter {
                                 e,
                                 needed,
                                 next_size,
-                                self.processed,
+                                self.processed_len,
                                 self.file_len,
-                                self.file_len - self.processed,
+                                self.file_len - self.processed_len,
                                 self.loop_buffer.len()
                             )
                         });
