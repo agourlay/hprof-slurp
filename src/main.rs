@@ -14,17 +14,21 @@ use std::io::{BufReader, Read};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
+use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
+
 use crate::args::get_args;
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
 use crate::file_header_parser::parse_file_header;
+use crate::record::Record;
 use crate::record_parser::HprofRecordParser;
 use crate::record_parser_iter::HprofRecordParserIter;
 use crate::result_recorder::ResultRecorder;
 use crate::utils::pretty_bytes_size;
 
 fn main() -> Result<(), HprofSlurpError> {
-    let (file_path, top, debug, list_strings) = get_args()?;
+    let (file_path, top, debug_mode, list_strings) = get_args()?;
 
     let file = File::open(file_path)?;
     let meta = file.metadata()?;
@@ -61,35 +65,39 @@ fn main() -> Result<(), HprofSlurpError> {
         .progress_chars("#>-"));
 
     // 64 MB buffer performs nicely (higher is faster but increases the memory consumption)
-    let stream_buffer_size: usize = 64 * 1024 * 1024;
+    let stream_buffer_size = 64 * 1024 * 1024;
 
     // Init parser state
-    let mut result_recorder = ResultRecorder::new_empty(id_size);
-    let parser = HprofRecordParser::new(debug, id_size == 8);
+    let result_recorder = ResultRecorder::new(id_size, list_strings, top);
+    let parser = HprofRecordParser::new(debug_mode);
     let parser_iter = HprofRecordParserIter::new(
         parser,
         reader,
-        debug,
+        debug_mode,
         file_len,
         file_header_length,
         stream_buffer_size,
     );
 
+    // Communication channel with recorder's thread
+    let (tx, rx): (Sender<Vec<Record>>, Receiver<Vec<Record>>) = mpsc::channel();
+    let recorder_thread = result_recorder.start_recorder(rx);
+
     // Pull data from the parser through the iterator
     parser_iter.for_each(|(processed, records)| {
         pb.set_position(processed as u64);
-        // TODO handle on another thread via a channel to free parsing thread from expensive hashing
-        result_recorder.record_records(records);
+        // Send records over the channel for processing on a different thread
+        tx.send(records).expect("recorder channel should be alive");
     });
+
     // Finish and remove progress bar
     pb.finish_and_clear();
 
-    result_recorder.print_summary();
-    result_recorder.print_analysis(top);
+    // Send empty Vec to signal that there is no more data
+    tx.send(vec![]).expect("recorder channel should be alive");
 
-    if list_strings {
-        result_recorder.print_strings()
-    }
-
-    Ok(())
+    // Blocks until recorder is done
+    recorder_thread
+        .join()
+        .map_err(|e| HprofSlurpError::StdThreadError { e })
 }

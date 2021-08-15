@@ -1,3 +1,5 @@
+use std::any::Any;
+
 #[derive(Debug)]
 pub enum HprofSlurpError {
     InputFileNotFound { name: String },
@@ -6,6 +8,7 @@ pub enum HprofSlurpError {
     InvalidHeaderSize,
     ClapError { e: clap::Error },
     StdIoError { e: std::io::Error },
+    StdThreadError { e: Box<dyn Any + Send + 'static>},
 }
 
 impl std::convert::From<std::io::Error> for HprofSlurpError {

@@ -41,17 +41,16 @@ const TAG_GC_INSTANCE_DUMP: u8 = 0x21;
 const TAG_GC_OBJ_ARRAY_DUMP: u8 = 0x22;
 const TAG_GC_PRIM_ARRAY_DUMP: u8 = 0x23;
 
+// TODO use `id_size` to change impl. of parse_id to support 32 bits dump
 pub struct HprofRecordParser {
     debug_mode: bool,
-    id_size_u64: bool, // TODO use to change impl. of parse_id
     heap_dump_remaining_len: u32,
 }
 
 impl<'p> HprofRecordParser {
-    pub fn new(debug_mode: bool, id_size_u64: bool) -> Self {
+    pub fn new(debug_mode: bool) -> Self {
         HprofRecordParser {
             debug_mode,
-            id_size_u64,
             heap_dump_remaining_len: 0,
         }
     }

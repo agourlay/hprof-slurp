@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::sync::mpsc::Receiver;
+use std::thread;
+use std::thread::JoinHandle;
 
 use crate::gc_record::*;
 use crate::record::Record;
@@ -57,6 +60,8 @@ impl ArrayCounter {
 
 pub struct ResultRecorder {
     id_size: u32,
+    list_strings: bool,
+    top: usize,
     // Tag counters
     classes_unloaded: i32,
     stack_frames: i32,
@@ -93,9 +98,11 @@ pub struct ResultRecorder {
 }
 
 impl ResultRecorder {
-    pub fn new_empty(id_size: u32) -> Self {
+    pub fn new(id_size: u32, list_strings: bool, top: usize) -> Self {
         ResultRecorder {
             id_size,
+            list_strings,
+            top,
             classes_unloaded: 0,
             stack_frames: 0,
             stack_traces: 0,
@@ -136,7 +143,28 @@ impl ResultRecorder {
             .to_owned()
     }
 
-    pub fn record_records(&mut self, records: Vec<Record>) {
+    pub fn start_recorder(mut self, rx: Receiver<Vec<Record>>) -> JoinHandle<()> {
+        thread::spawn(move || {
+            loop {
+                let records = rx.recv().expect("channel should not be closed");
+                if records.is_empty() {
+                    // empty Vec means we are done
+                    break;
+                } else {
+                    self.record_records(records)
+                }
+            }
+            // nothing more to pull, print results
+            self.print_summary();
+            self.print_analysis(self.top);
+
+            if self.list_strings {
+                self.print_strings()
+            }
+        })
+    }
+
+    fn record_records(&mut self, records: Vec<Record>) {
         records.into_iter().for_each(|record| {
             match record {
                 Utf8String { id, str } => {
@@ -246,7 +274,7 @@ impl ResultRecorder {
         });
     }
 
-    pub fn print_strings(&self) {
+    fn print_strings(&self) {
         let mut strings: Vec<_> = self.utf8_strings_by_id.values().collect();
         strings.sort();
         println!();
@@ -254,7 +282,7 @@ impl ResultRecorder {
         strings.iter().for_each(|s| println!("{}", s));
     }
 
-    pub fn print_analysis(&self, top: usize) {
+    fn print_analysis(&self, top: usize) {
         let mut classes_dump_vec: Vec<_> = self
             .classes_all_instance_total_size_by_id
             .iter()
