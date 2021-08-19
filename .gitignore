@@ -11,3 +11,6 @@
 # Intellij stuff
 .idea/
 *.iml
+
+# Perf stuff
+perf.data

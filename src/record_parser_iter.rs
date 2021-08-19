@@ -102,6 +102,7 @@ impl HprofRecordParserIter {
                                 self.loop_buffer.len()
                             )
                         });
+                    // warning: extending the buffer is expensive when the extra_buffer is big
                     self.loop_buffer.extend_from_slice(&extra_buffer);
                     // recurse with extended buffer
                     self.pull_next()
