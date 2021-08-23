@@ -5,6 +5,6 @@ authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-nom = "6.2.1"
+nom = "7.0.0"
 indicatif = "0.16.2"
 clap = "2.33.3"
