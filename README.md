@@ -43,7 +43,34 @@ OPTIONS:
 Example:
 
 ```
-./hprof-slurp -i "/path/to/file/my-heap-file.bin"
+./hprof-slurp -i "test-heap-dumps/hprof-64.bin"
+```
+
+```
+Top 20 allocations for the 2.49MiB heap total size:
+
+Total size | Instances |     Largest | Class name
+----------------------------------------------------------------------------------
+   1.99MiB |       436 |   634.77KiB | Int[]
+ 189.33KiB |      1991 |    16.00KiB | Char[]
+  83.52KiB |       443 |     8.00KiB | Byte[]
+  45.42KiB |       560 |     8.02KiB | java/lang/Object[]
+  41.45KiB |      1516 |  28.00bytes | java/lang/String
+  14.77KiB |       378 |  40.00bytes | java/util/LinkedList$Node
+  13.90KiB |       126 | 113.00bytes | java/lang/reflect/Field
+   9.11KiB |       212 |  44.00bytes | java/util/HashMap$Node
+   7.42KiB |       190 |  40.00bytes | java/util/LinkedList
+   5.91KiB |        18 |     2.02KiB | java/util/HashMap$Node[]
+   5.36KiB |        98 |  56.00bytes | java/lang/ref/SoftReference
+   5.04KiB |       258 |  20.00bytes | java/lang/Integer
+   4.98KiB |       116 |  44.00bytes | java/util/Hashtable$Entry
+   4.10KiB |       150 |  28.00bytes | java/lang/StringBuilder
+   3.50KiB |        32 | 112.00bytes | java/net/URL
+   3.17KiB |        12 | 776.00bytes | java/util/Hashtable$Entry[]
+   3.14KiB |        73 |  44.00bytes | java/io/File
+   3.13KiB |        56 | 144.00bytes | java/lang/String[]
+   2.71KiB |        63 |  44.00bytes | java/util/concurrent/ConcurrentHashMap$Node
+   2.50KiB |        40 |  64.00bytes | java/lang/ref/Finalizer
 ```
 
 ## Installation
@@ -68,7 +95,7 @@ It can also be done manually by triggering a heap dump using `jmap`.
 
 Example:
 
-`jmap -dump:format=b,file=my-heap-file.bin <pid>`
+`jmap -dump:format=b,file=my-hprof-file.bin <pid>`
 
 ## Prior art of HPROF parsing
 
