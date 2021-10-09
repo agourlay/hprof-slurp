@@ -6,6 +6,7 @@ pub enum HprofSlurpError {
     InvalidTopPositiveInt,
     InvalidIdSize,
     InvalidHeaderSize,
+    UnsupportedHeaderSize { message: String },
     ClapError { e: clap::Error },
     StdIoError { e: std::io::Error },
     StdThreadError { e: Box<dyn Any + Send + 'static>},

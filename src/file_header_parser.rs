@@ -34,7 +34,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_properly_well_formed_header() {
+    fn parse_well_formed_header() {
         let binary: [u8; 31] = [
             74, 65, 86, 65, 32, 80, 82, 79, 70, 73, 76, 69, 32, 49, 46, 48, 46, 50, 0, 0, 0, 0, 8,
             0, 0, 1, 118, 111, 186, 173, 167,
