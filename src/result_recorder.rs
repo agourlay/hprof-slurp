@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
+use indoc::formatdoc;
 
 use crate::gc_record::*;
 use crate::record::Record;
@@ -56,6 +57,12 @@ impl ArrayCounter {
             max_size_seen: 0,
         }
     }
+}
+
+pub struct RenderedResult {
+    pub summary: String,
+    pub analysis: String,
+    pub captured_strings: Option<String>
 }
 
 pub struct ResultRecorder {
@@ -143,7 +150,7 @@ impl ResultRecorder {
             .to_owned()
     }
 
-    pub fn start_recorder(mut self, rx: Receiver<Vec<Record>>) -> JoinHandle<()> {
+    pub fn start_recorder(mut self, rx: Receiver<Vec<Record>>, tx: Sender<RenderedResult>) -> JoinHandle<()> {
         thread::spawn(move || {
             loop {
                 let records = rx.recv().expect("channel should not be closed");
@@ -155,12 +162,12 @@ impl ResultRecorder {
                 }
             }
             // nothing more to pull, print results
-            self.print_summary();
-            self.print_analysis(self.top);
-
-            if self.list_strings {
-                self.print_strings()
-            }
+            let rendered_result = RenderedResult{
+                summary: self.render_summary(),
+                analysis: self.render_analysis(self.top),
+                captured_strings: if self.list_strings { Some(self.render_captured_strings()) } else { None }
+            };
+            tx.send(rendered_result).expect("channel should not be closed");
         })
     }
 
@@ -274,15 +281,19 @@ impl ResultRecorder {
         });
     }
 
-    fn print_strings(&self) {
+    fn render_captured_strings(&self) -> String {
         let mut strings: Vec<_> = self.utf8_strings_by_id.values().collect();
         strings.sort();
-        println!();
-        println!("List of Strings");
-        strings.iter().for_each(|s| println!("{}", s));
+        let mut result = String::new();
+        result.push_str("\nList of Strings\n");
+        strings.iter().for_each(|s| {
+            result.push_str(s);
+            result.push('\n')
+        });
+        result
     }
 
-    fn print_analysis(&self, top: usize) {
+    fn render_analysis(&self, top: usize) -> String {
         let mut classes_dump_vec: Vec<_> = self
             .classes_all_instance_total_size_by_id
             .iter()
@@ -349,14 +360,11 @@ impl ResultRecorder {
         let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s as u64).sum();
         let display_total_size = pretty_bytes_size(total_size);
 
-        println!();
-        println!(
-            "Top {} allocations for the {} heap total size:",
-            top, display_total_size
-        );
-        println!();
+        let mut analysis = String::new();
+        let title = format!("\nTop {} allocations for the {} heap total size:\n\n", top, display_total_size);
+        analysis.push_str(&title);
 
-        // TODO print table generically instead of this mess
+        // TODO render table generically instead of this mess
         let all_formatted: Vec<_> = classes_dump_vec
             .iter()
             .take(top)
@@ -438,7 +446,7 @@ impl ResultRecorder {
             " ".repeat(class_name_padding_size - class_name_header.chars().count());
 
         let header = format!(
-            "{}{} | {}{} | {}{} | {}{}",
+            "{}{} | {}{} | {}{} | {}{}\n",
             total_size_header_padding,
             total_size_header,
             instance_count_header_padding,
@@ -449,8 +457,9 @@ impl ResultRecorder {
             class_name_padding
         );
         let header_len = header.chars().count();
-        println!("{}", header);
-        println!("{}", "-".repeat(header_len));
+        analysis.push_str(&header);
+        analysis.push_str(&("-".repeat(header_len)));
+        analysis.push('\n');
 
         all_formatted.iter().for_each(
             |(
@@ -472,8 +481,8 @@ impl ResultRecorder {
                     max_biggest_length_size_label - biggest_allocation_str_len;
                 let padding_biggest_size_str = " ".repeat(padding_biggest_size);
 
-                println!(
-                    "{}{} | {}{} | {}{} | {}",
+                let row = format!(
+                    "{}{} | {}{} | {}{} | {}\n",
                     padding_size_str,
                     allocation_size,
                     padding_count_str,
@@ -482,81 +491,69 @@ impl ResultRecorder {
                     biggest_allocation_size,
                     class_name
                 );
+                analysis.push_str(&row);
             },
         );
+        analysis
     }
 
-    pub fn print_summary(&self) {
-        println!();
-        println!("File content summary:");
-        println!();
-        println!("UTF-8 Strings: {}", self.utf8_strings_by_id.len());
-        println!("Classes loaded: {}", self.classes_loaded_by_id.len());
-        println!("Classes unloaded: {}", self.classes_unloaded);
-        println!("Stack traces: {}", self.stack_traces);
-        println!("Stack frames: {}", self.stack_frames);
-        println!("Start threads: {}", self.start_threads);
-        println!("Allocation sites: {}", self.allocation_sites);
-        println!("End threads: {}", self.end_threads);
-        println!("Control settings: {}", self.control_settings);
-        println!("CPU samples: {}", self.cpu_samples);
-        println!("Heap summaries: {}", self.heap_summaries);
-        println!(
-            "{} heap dumps containing in total {} segments:",
-            self.heap_dumps, self.heap_dump_segments_all_sub_records
-        );
-        println!(
-            "..GC root unknown: {}",
-            self.heap_dump_segments_gc_root_unknown
-        );
-        println!(
-            "..GC root thread objects: {}",
-            self.heap_dump_segments_gc_root_thread_object
-        );
-        println!(
-            "..GC root JNI global: {}",
-            self.heap_dump_segments_gc_root_jni_global
-        );
-        println!(
-            "..GC root JNI local: {}",
-            self.heap_dump_segments_gc_root_jni_local
-        );
-        println!(
-            "..GC root Java frame: {}",
-            self.heap_dump_segments_gc_root_java_frame
-        );
-        println!(
-            "..GC root native stack: {}",
-            self.heap_dump_segments_gc_root_native_stack
-        );
-        println!(
-            "..GC root sticky class: {}",
-            self.heap_dump_segments_gc_root_sticky_class
-        );
-        println!(
-            "..GC root thread block: {}",
-            self.heap_dump_segments_gc_root_thread_block
-        );
-        println!(
-            "..GC root monitor used: {}",
-            self.heap_dump_segments_gc_root_monitor_used
-        );
-        println!(
-            "..GC primitive array dump: {}",
-            self.heap_dump_segments_gc_primitive_array_dump
-        );
-        println!(
-            "..GC object array dump: {}",
-            self.heap_dump_segments_gc_object_array_dump
-        );
-        println!(
-            "..GC root class dump: {}",
-            self.heap_dump_segments_gc_class_dump
-        );
-        println!(
-            "..GC root instance dump: {}",
-            self.classes_all_instance_total_size_by_id.len()
-        );
+    pub fn render_summary(&self) -> String {
+        let top_summary = formatdoc!(
+            "\nFile content summary:\n
+            UTF-8 Strings: {}
+            Classes loaded: {}
+            Classes unloaded: {}
+            Stack traces: {}
+            Stack frames: {}
+            Start threads: {}
+            Allocation sites: {}
+            End threads: {}
+            Control settings: {}
+            CPU samples: {}",
+            self.utf8_strings_by_id.len(),
+            self.classes_loaded_by_id.len(),
+            self.classes_unloaded,
+            self.stack_traces,
+            self.stack_frames,
+            self.start_threads,
+            self.allocation_sites,
+            self.end_threads,
+            self.control_settings,
+            self.cpu_samples);
+
+        let heap_summary = formatdoc!(
+            "Heap summaries: {}
+            {} heap dumps containing in total {} segments:
+            ..GC root unknown: {}
+            ..GC root thread objects: {}
+            ..GC root JNI global: {}
+            ..GC root JNI local: {}
+            ..GC root Java frame: {}
+            ..GC root native stack: {}
+            ..GC root sticky class: {}
+            ..GC root thread block: {}
+            ..GC root monitor used: {}
+            ..GC primitive array dump: {}
+            ..GC object array dump: {}
+            ..GC root class dump: {}
+            ..GC root instance dump: {}",
+            self.heap_summaries,
+            self.heap_dumps, self.heap_dump_segments_all_sub_records,
+            self.heap_dump_segments_gc_root_unknown,
+            self.heap_dump_segments_gc_root_thread_object,
+            self.heap_dump_segments_gc_root_jni_global,
+            self.heap_dump_segments_gc_root_jni_local,
+            self.heap_dump_segments_gc_root_java_frame,
+            self.heap_dump_segments_gc_root_native_stack,
+            self.heap_dump_segments_gc_root_sticky_class,
+            self.heap_dump_segments_gc_root_thread_block,
+            self.heap_dump_segments_gc_root_monitor_used,
+            self.heap_dump_segments_gc_primitive_array_dump,
+            self.heap_dump_segments_gc_object_array_dump,
+            self.heap_dump_segments_gc_class_dump,
+            self.classes_all_instance_total_size_by_id.len());
+
+        format!("{}\n{}", top_summary, heap_summary)
     }
 }
 

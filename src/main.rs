@@ -18,7 +18,15 @@ use crate::slurp::slurp_file;
 fn main() -> Result<(), HprofSlurpError> {
     let now = Instant::now();
     let (file_path, top, debug_mode, list_strings) = get_args()?;
-    slurp_file(file_path, top, debug_mode, list_strings)?;
+    let rendered_result= slurp_file(file_path, top, debug_mode, list_strings)?;
+
+    // Print results
+    println!("{}", rendered_result.summary);
+    println!("{}", rendered_result.analysis);
+    if let Some(list_strings) = rendered_result.captured_strings {
+        println!("{}", list_strings);
+    }
+
     println!("File successfully processed in {} seconds", now.elapsed().as_secs());
     Ok(())
 }
