@@ -2,7 +2,9 @@
 
 `hprof-slurp` is a CLI analyzing JVM heap dumps using the binary `hprof` format.
 
-The main goal is to enable the analysis of huge heap dumps which are much bigger than the amount of RAM available on the host system. 
+The main goal is to enable the analysis of huge heap dumps which are much bigger than the amount of RAM available on the host system.
+
+In practice, it provides users a quick overview of a heap dump in order to decide if it makes sense to spin up an expensive instance in the cloud to run more complete tools.
 
 ## Features
 
@@ -10,7 +12,7 @@ The main goal is to enable the analysis of huge heap dumps which are much bigger
 - displays number of instances per class.
 - displays largest instance size per class.
 - list all Strings found.
-- low memory usage.
+- very low memory usage.
 - easy to use.
 
 ## Limitations

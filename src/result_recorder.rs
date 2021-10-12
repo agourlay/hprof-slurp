@@ -161,8 +161,8 @@ impl ResultRecorder {
                     self.record_records(records)
                 }
             }
-            // nothing more to pull, print results
-            let rendered_result = RenderedResult{
+            // no more Record to pull, generate and send back results
+            let rendered_result = RenderedResult {
                 summary: self.render_summary(),
                 analysis: self.render_analysis(self.top),
                 captured_strings: if self.list_strings { Some(self.render_captured_strings()) } else { None }

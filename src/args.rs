@@ -35,7 +35,7 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
             Arg::with_name("listStrings")
                 .help("list all Strings found")
                 .long("listStrings")
-                .short("ls"),
+                .short("l"),
         )
         .get_matches();
 
