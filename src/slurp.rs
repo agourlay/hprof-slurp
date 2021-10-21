@@ -35,7 +35,7 @@ pub fn slurp_file(file_path: String, top: usize, debug_mode: bool, list_strings:
     let stream_buffer_size = 64 * 1024 * 1024;
 
     // Init parser state
-    let parser = HprofRecordParser::new(debug_mode);
+    let parser = HprofRecordParser::new(debug_mode, id_size);
     let parser_iter = HprofRecordParserIter::new(
         parser,
         reader,
@@ -93,9 +93,6 @@ pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlu
     if id_size != 4 && id_size != 8 {
         return Err(InvalidIdSize);
     }
-    if id_size == 4 {
-        return Err(UnsupportedHeaderSize { message: "32 bits heap dumps are not supported yet".to_string() });
-    }
     if !rest.is_empty() {
         return Err(InvalidHeaderSize);
     }
@@ -130,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_32_bits() {
+    fn supported_32_bits() {
         let file_path = FILE_PATH_32.to_string();
         let result = slurp_file(file_path, 20, false, false);
         assert_eq!(result.is_err(), true);
@@ -149,8 +146,9 @@ mod tests {
         let file_path = FILE_PATH_32.to_string();
         let file = File::open(file_path).unwrap();
         let mut reader = BufReader::new(file);
-        let result = slurp_header(&mut reader);
-        assert_eq!(result.is_err(), true);
+        let file_header = slurp_header(&mut reader).unwrap();
+        assert_eq!(file_header.size_pointers, 4);
+        assert_eq!(file_header.format, "JAVA PROFILE 1.0.1".to_string());
     }
 
     #[test]
