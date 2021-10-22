@@ -119,9 +119,9 @@ mod tests {
         for l1 in gold.lines() {
             let l2 = expected_lines.next().unwrap();
             if l1.trim_end() != l2.trim_end() {
-                println!("#####");
+                println!("## GOLD ##");
                 println!("{}", l1.trim_end());
-                println!("#####");
+                println!("## ACTUAL ##");
                 println!("{}", l2.trim_end());
                 println!("#####");
                 assert_eq!(l1, l2)

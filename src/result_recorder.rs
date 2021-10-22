@@ -364,86 +364,35 @@ impl ResultRecorder {
         let title = format!("\nTop {} allocations for the {} heap total size:\n\n", top, display_total_size);
         analysis.push_str(&title);
 
-        // TODO render table generically instead of this mess
-        let all_formatted: Vec<_> = classes_dump_vec
-            .iter()
+        let rows_formatted: Vec<_> = classes_dump_vec
+            .into_iter()
             .take(top)
             .map(|(class_name, count, biggest_allocation, allocation_size)| {
-                let display_allocation = pretty_bytes_size(*allocation_size as u64);
-                let allocation_str_len = display_allocation.chars().count();
-
-                let biggest_display_allocation = pretty_bytes_size(*biggest_allocation as u64);
-                let biggest_allocation_str_len = biggest_display_allocation.chars().count();
-
-                let class_name_str_len = class_name.chars().count();
+                let display_allocation = pretty_bytes_size(allocation_size as u64);
+                let biggest_display_allocation = pretty_bytes_size(biggest_allocation as u64);
                 (
                     display_allocation,
-                    allocation_str_len,
                     count,
                     biggest_display_allocation,
-                    biggest_allocation_str_len,
-                    class_name_str_len,
                     class_name,
                 )
             })
             .collect();
 
         let total_size_header = "Total size";
-        let max_length_size_label = {
-            let max_element_length_size_label = all_formatted
-                .iter()
-                .max_by(|(_, l1, _, _, _, _, _), (_, l2, _, _, _, _, _)| l1.cmp(l2))
-                .expect("Results can't be empty")
-                .1;
-            total_size_header
-                .chars()
-                .count()
-                .max(max_element_length_size_label)
-        };
-        let total_size_header_padding =
-            " ".repeat(max_length_size_label - total_size_header.chars().count());
+        let total_size_header_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.0.to_string(), total_size_header);
+        let total_size_len = total_size_header.chars().count() + total_size_header_padding.chars().count();
 
         let instance_count_header = "Instances";
-        let max_count_size_label = {
-            let max_element_count_size = all_formatted
-                .iter()
-                .max_by(|(_, _, l1, _, _, _, _), (_, _, l2, _, _, _, _)| l1.cmp(l2))
-                .expect("Results can't be empty")
-                .2;
-            instance_count_header
-                .chars()
-                .count()
-                .max(max_element_count_size.to_string().chars().count())
-        };
-        let instance_count_header_padding =
-            " ".repeat(max_count_size_label - instance_count_header.chars().count());
+        let instance_count_header_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.1.to_string(), instance_count_header);
+        let instance_len = instance_count_header.chars().count() + instance_count_header_padding.chars().count();
 
         let biggest_instance_header = "Largest";
-        let max_biggest_length_size_label = {
-            let max_element_biggest_length_size_label = all_formatted
-                .iter()
-                .max_by(|(_, _, _, _, l1, _, _), (_, _, _, _, l2, _, _)| l1.cmp(l2))
-                .expect("Results can't be empty")
-                .4;
-            biggest_instance_header
-                .chars()
-                .count()
-                .max(max_element_biggest_length_size_label)
-        };
-        let biggest_instance_padding =
-            " ".repeat(max_biggest_length_size_label - biggest_instance_header.chars().count());
+        let biggest_instance_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.2.to_string(), biggest_instance_header);
+        let biggest_len = biggest_instance_header.chars().count() + biggest_instance_padding.chars().count();
 
         let class_name_header = "Class name";
-        let class_name_padding_size = {
-            let longest_class_name = all_formatted
-                .iter()
-                .max_by(|(_, _, _, _, _, l1, _), (_, _, _, _, _, l2, _)| l1.cmp(l2))
-                .expect("Results can't be empty")
-                .5;
-            class_name_header.chars().count().max(longest_class_name)
-        };
-        let class_name_padding =
-            " ".repeat(class_name_padding_size - class_name_header.chars().count());
+        let class_name_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.3.to_string(), class_name_header);
 
         let header = format!(
             "{}{} | {}{} | {}{} | {}{}\n",
@@ -461,25 +410,16 @@ impl ResultRecorder {
         analysis.push_str(&("-".repeat(header_len)));
         analysis.push('\n');
 
-        all_formatted.iter().for_each(
+        rows_formatted.into_iter().for_each(
             |(
                 allocation_size,
-                allocation_str_len,
                 count,
                 biggest_allocation_size,
-                biggest_allocation_str_len,
-                _,
                 class_name,
             )| {
-                let padding_size = max_length_size_label - allocation_str_len;
-                let padding_size_str = " ".repeat(padding_size);
-
-                let padding_count = max_count_size_label - count.to_string().chars().count();
-                let padding_count_str = " ".repeat(padding_count);
-
-                let padding_biggest_size =
-                    max_biggest_length_size_label - biggest_allocation_str_len;
-                let padding_biggest_size_str = " ".repeat(padding_biggest_size);
+                let padding_size_str = ResultRecorder::column_padding(&allocation_size, total_size_len);
+                let padding_count_str = ResultRecorder::column_padding(&count.to_string(), instance_len);
+                let padding_biggest_size_str = ResultRecorder::column_padding(&biggest_allocation_size, biggest_len);
 
                 let row = format!(
                     "{}{} | {}{} | {}{} | {}\n",
@@ -495,6 +435,33 @@ impl ResultRecorder {
             },
         );
         analysis
+    }
+
+    fn padding_for_header<F>(
+        rows: &[(String, u64, String, String) ],
+        field_selector: F,
+        header_label: &str,
+    ) -> String
+        where
+            F: Fn(&(String, u64, String, String)) -> String,
+    {
+        let max_elem_size = rows
+            .iter()
+            .map(|d| field_selector(d).chars().count())
+            .max_by(|x, y| x.cmp(y))
+            .expect("Results can't be empty");
+
+        ResultRecorder::column_padding(header_label, max_elem_size)
+    }
+
+    fn column_padding(column_name: &str, max_item_length: usize) -> String {
+        let column_label_len = column_name.chars().count();
+        let padding_size = if max_item_length > column_label_len {
+            max_item_length - column_label_len
+        } else {
+            0
+        };
+        " ".repeat(padding_size)
     }
 
     pub fn render_summary(&self) -> String {
