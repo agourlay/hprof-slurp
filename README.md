@@ -1,4 +1,5 @@
 # hprof-slurp
+[![Build](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml)
 
 `hprof-slurp` is a CLI analyzing JVM heap dumps using the binary `hprof` format.
 
@@ -74,14 +75,6 @@ Total size | Instances |     Largest | Class name
    2.71KiB |        63 |  44.00bytes | java/util/concurrent/ConcurrentHashMap$Node
    2.50KiB |        40 |  64.00bytes | java/lang/ref/Finalizer
 ```
-
-## Installation
-
-Build the project using [Cargo](https://doc.rust-lang.org/stable/cargo/getting-started/installation.html)
-
-Then run the following command in the project directory:
-
-`cargo install --path=.`
 
 ## How it works
 
