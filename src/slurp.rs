@@ -116,10 +116,10 @@ mod tests {
         let gold = fs::read_to_string(gold_path).expect("gold file not found!");
         let expected = format!("{}\n{}", result.summary, result.analysis);
         let mut expected_lines = expected.lines();
-        for l1 in gold.lines() {
+        for (i1, l1) in gold.lines().enumerate() {
             let l2 = expected_lines.next().unwrap();
             if l1.trim_end() != l2.trim_end() {
-                println!("## GOLD ##");
+                println!("## GOLD l{} ##", i1);
                 println!("{}", l1.trim_end());
                 println!("## ACTUAL ##");
                 println!("{}", l2.trim_end());
