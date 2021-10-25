@@ -94,7 +94,7 @@ impl<'p> HprofRecordParser {
     }
 
     pub fn parse_streaming(&'p mut self, i: &'p [u8]) -> IResult<&'p [u8], Vec<Record>> {
-        many1_streaming(self.parse_hprof_record())(i)
+        lazy_many1(self.parse_hprof_record())(i)
     }
 }
 
@@ -104,7 +104,8 @@ fn parse_id(i: &[u8]) -> IResult<&[u8], u64> {
 }
 
 // copy of nom's many1 but returns values accumulated so far on `nom::Err::Incomplete(_)`
-pub fn many1_streaming<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
+// https://github.com/Geal/nom/pull/1337
+pub fn lazy_many1<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
 where
     I: Clone + PartialEq,
     F: Parser<I, O, E>,
