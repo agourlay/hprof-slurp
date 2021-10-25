@@ -5,7 +5,7 @@ use std::path::Path;
 
 pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
     let matches = App::new("hprof-slurp")
-        .version("0.1.0")
+        .version("0.1.1")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("JVM heap dump hprof file analyzer")
         .arg(
