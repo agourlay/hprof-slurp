@@ -102,4 +102,6 @@ They have provided guidance and inspiration in moments of uncertainty.
 
 ## TODO
 
-- use stacktrace/frame dump to compute allocation sites
+- use stack(trace/frame) dumps to compute allocation sites
+- detect memory leak by walking the object graph
+- investigate better buffer management with [nom-bufreader](https://github.com/rust-bakery/nom-bufreader)
