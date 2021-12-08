@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
@@ -96,12 +96,12 @@ pub struct ResultRecorder {
     heap_dump_segments_gc_class_dump: i32,
     // Captured state
     // "object_id" -> "class_id" -> "class_name_id" -> "utf8_string"
-    utf8_strings_by_id: HashMap<u64, String>,
-    classes_loaded_by_id: HashMap<u64, u64>,
-    classes_single_instance_size_by_id: HashMap<u64, u32>,
-    classes_all_instance_total_size_by_id: HashMap<u64, ClassInstanceCounter>,
-    primitive_array_counters: HashMap<FieldType, ArrayCounter>,
-    object_array_counters: HashMap<u64, ArrayCounter>,
+    utf8_strings_by_id: AHashMap<u64, String>,
+    classes_loaded_by_id: AHashMap<u64, u64>,
+    classes_single_instance_size_by_id: AHashMap<u64, u32>,
+    classes_all_instance_total_size_by_id: AHashMap<u64, ClassInstanceCounter>,
+    primitive_array_counters: AHashMap<FieldType, ArrayCounter>,
+    object_array_counters: AHashMap<u64, ArrayCounter>,
 }
 
 impl ResultRecorder {
@@ -133,12 +133,12 @@ impl ResultRecorder {
             heap_dump_segments_gc_object_array_dump: 0,
             heap_dump_segments_gc_primitive_array_dump: 0,
             heap_dump_segments_gc_class_dump: 0,
-            utf8_strings_by_id: HashMap::new(),
-            classes_loaded_by_id: HashMap::new(),
-            classes_single_instance_size_by_id: HashMap::new(),
-            classes_all_instance_total_size_by_id: HashMap::new(),
-            primitive_array_counters: HashMap::new(),
-            object_array_counters: HashMap::new(),
+            utf8_strings_by_id: AHashMap::new(),
+            classes_loaded_by_id: AHashMap::new(),
+            classes_single_instance_size_by_id: AHashMap::new(),
+            classes_all_instance_total_size_by_id: AHashMap::new(),
+            primitive_array_counters: AHashMap::new(),
+            object_array_counters: AHashMap::new(),
         }
     }
 

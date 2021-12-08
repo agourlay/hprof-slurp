@@ -7,5 +7,6 @@ edition = "2018"
 [dependencies]
 nom = "7.1.0"
 indicatif = "0.16.2"
-clap = "2.33.3"
+clap = "2.34.0"
 indoc = "1.0.3"
+ahash = "0.7.6"
