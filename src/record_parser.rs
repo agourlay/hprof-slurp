@@ -115,6 +115,7 @@ where
         Err(nom::Err::Error(err)) => Err(nom::Err::Error(E::append(i, ErrorKind::Many1, err))),
         Err(e) => Err(e),
         Ok((i1, o)) => {
+            // TODO this Vec could be pooled
             let mut acc = Vec::with_capacity(4);
             acc.push(o);
             i = i1;
