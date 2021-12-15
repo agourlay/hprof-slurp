@@ -47,9 +47,12 @@ impl HprofRecordParserIter {
                     // cleanup buffer while keeping underlying allocated storage
                     self.loop_buffer.rotate_left(iteration_processed);
                     self.loop_buffer.truncate(rest_len);
+                    // Idea: the buffer could also be rehydrated here to avoid a parsing failure
                     assert!(
                         self.processed_len <= self.file_len,
-                        "Can't process more than the file length"
+                        "Can't process more than the file length (processed:{} vs file:{})",
+                        self.processed_len,
+                        self.file_len
                     );
                     Some((self.processed_len, records))
                 }

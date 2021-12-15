@@ -12,7 +12,12 @@ pub struct PrefetchReader {
 }
 
 impl PrefetchReader {
-    pub fn new(reader: BufReader<File>, file_len: usize, processed_len: usize, read_size: usize) -> Self {
+    pub fn new(
+        reader: BufReader<File>,
+        file_len: usize,
+        processed_len: usize,
+        read_size: usize,
+    ) -> Self {
         PrefetchReader {
             reader,
             file_len,
@@ -48,8 +53,8 @@ impl PrefetchReader {
                             self.file_len - self.processed_len
                         )
                     });
-               tx.send(extra_buffer).expect("Channel should not be closed");
-               self.processed_len += next_size
+                tx.send(extra_buffer).expect("Channel should not be closed");
+                self.processed_len += next_size
             }
         })
     }

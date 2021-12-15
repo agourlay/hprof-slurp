@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
-use crate::file_header_parser::{FileHeader, parse_file_header};
+use crate::file_header_parser::{parse_file_header, FileHeader};
 use crate::prefetch_reader::PrefetchReader;
 use crate::record::Record;
 use crate::record_parser::HprofRecordParser;
@@ -18,7 +18,12 @@ use crate::utils::pretty_bytes_size;
 
 const FILE_HEADER_LENGTH: usize = 31; // the exact size of the file header (31 bytes)
 
-pub fn slurp_file(file_path: String, top: usize, debug_mode: bool, list_strings: bool) -> Result<RenderedResult, HprofSlurpError> {
+pub fn slurp_file(
+    file_path: String,
+    top: usize,
+    debug_mode: bool,
+    list_strings: bool,
+) -> Result<RenderedResult, HprofSlurpError> {
     let file = File::open(file_path)?;
     let file_len = file.metadata()?.len() as usize;
     let mut reader = BufReader::new(file);
@@ -54,10 +59,12 @@ pub fn slurp_file(file_path: String, top: usize, debug_mode: bool, list_strings:
     );
 
     // Communication channel to recorder's thread
-    let (send_records, receive_records): (Sender<Vec<Record>>, Receiver<Vec<Record>>) = mpsc::channel();
+    let (send_records, receive_records): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
+        mpsc::channel();
 
     // Communication channel with from recorder's thread
-    let (send_result, receive_result): (Sender<RenderedResult>, Receiver<RenderedResult>) = mpsc::channel();
+    let (send_result, receive_result): (Sender<RenderedResult>, Receiver<RenderedResult>) =
+        mpsc::channel();
 
     // Recorder
     let result_recorder = ResultRecorder::new(id_size, list_strings, top);
@@ -73,16 +80,22 @@ pub fn slurp_file(file_path: String, top: usize, debug_mode: bool, list_strings:
     parser_iter.for_each(|(processed, records)| {
         pb.set_position(processed as u64);
         // Send records over the channel for processing on a different thread
-        send_records.send(records).expect("recorder channel should be alive");
+        send_records
+            .send(records)
+            .expect("recorder channel should be alive");
     });
 
     // Finish and remove progress bar
     pb.finish_and_clear();
 
     // Send empty Vec to signal that there is no more data
-    send_records.send(vec![]).expect("recorder channel should be alive");
+    send_records
+        .send(vec![])
+        .expect("recorder channel should be alive");
 
-    let rendered_result = receive_result.recv().expect("result channel should be alive");
+    let rendered_result = receive_result
+        .recv()
+        .expect("result channel should be alive");
 
     // Blocks until prefetcher is done
     prefetch_thread
@@ -107,7 +120,9 @@ pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlu
         return Err(InvalidIdSize);
     }
     if id_size == 4 {
-        return Err(UnsupportedHeaderSize { message: "32 bits heap dumps are not supported yet".to_string() });
+        return Err(UnsupportedHeaderSize {
+            message: "32 bits heap dumps are not supported yet".to_string(),
+        });
     }
     if !rest.is_empty() {
         return Err(InvalidHeaderSize);
@@ -117,8 +132,8 @@ pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlu
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use super::*;
+    use std::fs;
 
     const FILE_PATH_32: &str = "test-heap-dumps/hprof-32.bin";
 
@@ -175,5 +190,4 @@ mod tests {
         assert_eq!(file_header.size_pointers, 8);
         assert_eq!(file_header.format, "JAVA PROFILE 1.0.1".to_string());
     }
-
 }

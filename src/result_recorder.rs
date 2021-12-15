@@ -1,8 +1,8 @@
 use ahash::AHashMap;
+use indoc::formatdoc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
-use indoc::formatdoc;
 
 use crate::gc_record::*;
 use crate::record::Record;
@@ -62,7 +62,7 @@ impl ArrayCounter {
 pub struct RenderedResult {
     pub summary: String,
     pub analysis: String,
-    pub captured_strings: Option<String>
+    pub captured_strings: Option<String>,
 }
 
 pub struct ResultRecorder {
@@ -150,7 +150,11 @@ impl ResultRecorder {
             .to_owned()
     }
 
-    pub fn start_recorder(mut self, rx: Receiver<Vec<Record>>, tx: Sender<RenderedResult>) -> JoinHandle<()> {
+    pub fn start_recorder(
+        mut self,
+        rx: Receiver<Vec<Record>>,
+        tx: Sender<RenderedResult>,
+    ) -> JoinHandle<()> {
         thread::spawn(move || {
             loop {
                 let records = rx.recv().expect("channel should not be closed");
@@ -165,9 +169,14 @@ impl ResultRecorder {
             let rendered_result = RenderedResult {
                 summary: self.render_summary(),
                 analysis: self.render_analysis(self.top),
-                captured_strings: if self.list_strings { Some(self.render_captured_strings()) } else { None }
+                captured_strings: if self.list_strings {
+                    Some(self.render_captured_strings())
+                } else {
+                    None
+                },
             };
-            tx.send(rendered_result).expect("channel should not be closed");
+            tx.send(rendered_result)
+                .expect("channel should not be closed");
         })
     }
 
@@ -361,7 +370,10 @@ impl ResultRecorder {
         let display_total_size = pretty_bytes_size(total_size);
 
         let mut analysis = String::new();
-        let title = format!("\nTop {} allocations for the {} heap total size:\n\n", top, display_total_size);
+        let title = format!(
+            "\nTop {} allocations for the {} heap total size:\n\n",
+            top, display_total_size
+        );
         analysis.push_str(&title);
 
         let rows_formatted: Vec<_> = classes_dump_vec
@@ -380,19 +392,38 @@ impl ResultRecorder {
             .collect();
 
         let total_size_header = "Total size";
-        let total_size_header_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.0.to_string(), total_size_header);
-        let total_size_len = total_size_header.chars().count() + total_size_header_padding.chars().count();
+        let total_size_header_padding = ResultRecorder::padding_for_header(
+            &rows_formatted,
+            |r| r.0.to_string(),
+            total_size_header,
+        );
+        let total_size_len =
+            total_size_header.chars().count() + total_size_header_padding.chars().count();
 
         let instance_count_header = "Instances";
-        let instance_count_header_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.1.to_string(), instance_count_header);
-        let instance_len = instance_count_header.chars().count() + instance_count_header_padding.chars().count();
+        let instance_count_header_padding = ResultRecorder::padding_for_header(
+            &rows_formatted,
+            |r| r.1.to_string(),
+            instance_count_header,
+        );
+        let instance_len =
+            instance_count_header.chars().count() + instance_count_header_padding.chars().count();
 
         let biggest_instance_header = "Largest";
-        let biggest_instance_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.2.to_string(), biggest_instance_header);
-        let biggest_len = biggest_instance_header.chars().count() + biggest_instance_padding.chars().count();
+        let biggest_instance_padding = ResultRecorder::padding_for_header(
+            &rows_formatted,
+            |r| r.2.to_string(),
+            biggest_instance_header,
+        );
+        let biggest_len =
+            biggest_instance_header.chars().count() + biggest_instance_padding.chars().count();
 
         let class_name_header = "Class name";
-        let class_name_padding = ResultRecorder::padding_for_header(&rows_formatted, |r| r.3.to_string(), class_name_header);
+        let class_name_padding = ResultRecorder::padding_for_header(
+            &rows_formatted,
+            |r| r.3.to_string(),
+            class_name_header,
+        );
 
         let header = format!(
             "{}{} | {}{} | {}{} | {}{}\n",
@@ -411,15 +442,13 @@ impl ResultRecorder {
         analysis.push('\n');
 
         rows_formatted.into_iter().for_each(
-            |(
-                allocation_size,
-                count,
-                biggest_allocation_size,
-                class_name,
-            )| {
-                let padding_size_str = ResultRecorder::column_padding(&allocation_size, total_size_len);
-                let padding_count_str = ResultRecorder::column_padding(&count.to_string(), instance_len);
-                let padding_biggest_size_str = ResultRecorder::column_padding(&biggest_allocation_size, biggest_len);
+            |(allocation_size, count, biggest_allocation_size, class_name)| {
+                let padding_size_str =
+                    ResultRecorder::column_padding(&allocation_size, total_size_len);
+                let padding_count_str =
+                    ResultRecorder::column_padding(&count.to_string(), instance_len);
+                let padding_biggest_size_str =
+                    ResultRecorder::column_padding(&biggest_allocation_size, biggest_len);
 
                 let row = format!(
                     "{}{} | {}{} | {}{} | {}\n",
@@ -438,12 +467,12 @@ impl ResultRecorder {
     }
 
     fn padding_for_header<F>(
-        rows: &[(String, u64, String, String) ],
+        rows: &[(String, u64, String, String)],
         field_selector: F,
         header_label: &str,
     ) -> String
-        where
-            F: Fn(&(String, u64, String, String)) -> String,
+    where
+        F: Fn(&(String, u64, String, String)) -> String,
     {
         let max_elem_size = rows
             .iter()
@@ -486,7 +515,8 @@ impl ResultRecorder {
             self.allocation_sites,
             self.end_threads,
             self.control_settings,
-            self.cpu_samples);
+            self.cpu_samples
+        );
 
         let heap_summary = formatdoc!(
             "Heap summaries: {}
@@ -505,7 +535,8 @@ impl ResultRecorder {
             ..GC root class dump: {}
             ..GC root instance dump: {}",
             self.heap_summaries,
-            self.heap_dumps, self.heap_dump_segments_all_sub_records,
+            self.heap_dumps,
+            self.heap_dump_segments_all_sub_records,
             self.heap_dump_segments_gc_root_unknown,
             self.heap_dump_segments_gc_root_thread_object,
             self.heap_dump_segments_gc_root_jni_global,
@@ -518,7 +549,8 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_primitive_array_dump,
             self.heap_dump_segments_gc_object_array_dump,
             self.heap_dump_segments_gc_class_dump,
-            self.classes_all_instance_total_size_by_id.len());
+            self.classes_all_instance_total_size_by_id.len()
+        );
 
         format!("{}\n{}", top_summary, heap_summary)
     }
