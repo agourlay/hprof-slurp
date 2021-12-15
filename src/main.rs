@@ -9,6 +9,7 @@ mod record_parser_iter;
 mod result_recorder;
 mod utils;
 mod slurp;
+mod prefetch_reader;
 
 use std::time::Instant;
 use crate::args::get_args;

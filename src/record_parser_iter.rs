@@ -1,28 +1,25 @@
 use crate::record::Record;
 use crate::record_parser::HprofRecordParser;
-use crate::utils::pretty_bytes_size;
 
 use nom::Err;
 use nom::Needed::Size;
 use nom::Needed::Unknown;
 
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::sync::mpsc::Receiver;
 
 pub struct HprofRecordParserIter {
     parser: HprofRecordParser,
-    reader: BufReader<File>,
+    rx_reader: Receiver<Vec<u8>>,
     debug_mode: bool,
     file_len: usize,
     processed_len: usize,
     loop_buffer: Vec<u8>,
-    stream_buffer_size: usize,
 }
 
 impl HprofRecordParserIter {
     pub fn new(
         parser: HprofRecordParser,
-        reader: BufReader<File>,
+        rx_reader: Receiver<Vec<u8>>,
         debug_mode: bool,
         file_len: usize,
         processed_len: usize,
@@ -30,12 +27,11 @@ impl HprofRecordParserIter {
     ) -> Self {
         HprofRecordParserIter {
             parser,
-            reader,
+            rx_reader,
             debug_mode,
             file_len,
             processed_len,
             loop_buffer: Vec::with_capacity(stream_buffer_size),
-            stream_buffer_size,
         }
     }
 
@@ -57,55 +53,11 @@ impl HprofRecordParserIter {
                     );
                     Some((self.processed_len, records))
                 }
-                Err(Err::Incomplete(Size(nzu))) => {
-                    let needed = nzu.get();
-                    // Preload bigger buffer if possible to avoid parsing failure overhead
-                    let next_size = if needed > self.stream_buffer_size {
-                        needed
-                    } else {
-                        // need to account for in-flight data in the loop_buffer
-                        let remaining = self.file_len - self.processed_len - self.loop_buffer.len();
-                        if (remaining) > self.stream_buffer_size {
-                            self.stream_buffer_size
-                        } else {
-                            remaining
-                        }
-                    };
+                Err(Err::Incomplete(Size(n))) => {
                     if self.debug_mode {
-                        // might not be visible if the progress bar overwrites it
-                        println!(
-                            "{}",
-                            format!(
-                                "Need more data {:?}, pull {}, remaining {}, buffer {}",
-                                needed,
-                                pretty_bytes_size(next_size as u64),
-                                self.file_len - self.processed_len,
-                                self.loop_buffer.len()
-                            )
-                        );
+                        println!("Incomplete size {}", n.get());
                     }
-                    let mut extra_buffer = vec![0; next_size];
-                    self.reader
-                        .read_exact(&mut extra_buffer)
-                        .unwrap_or_else(|e| {
-                            panic!(
-                                "Fail to read buffer for incomplete input:\n
-                                error->{}\n
-                                needed->{}\n
-                                next->{}\n
-                                processed->{}\n
-                                file_len->{}\n
-                                remaining->{}\n
-                                buffer_len->{}",
-                                e,
-                                needed,
-                                next_size,
-                                self.processed_len,
-                                self.file_len,
-                                self.file_len - self.processed_len,
-                                self.loop_buffer.len()
-                            )
-                        });
+                    let extra_buffer = self.rx_reader.recv().expect("channel should not be closed");
                     // warning: extending the buffer is expensive when the extra_buffer is big
                     self.loop_buffer.extend_from_slice(&extra_buffer);
                     // recurse with extended buffer

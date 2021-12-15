@@ -4,11 +4,12 @@ use std::io::{BufReader, Read};
 use indicatif::{ProgressBar, ProgressStyle};
 
 use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
 use crate::file_header_parser::{FileHeader, parse_file_header};
+use crate::prefetch_reader::PrefetchReader;
 use crate::record::Record;
 use crate::record_parser::HprofRecordParser;
 use crate::record_parser_iter::HprofRecordParserIter;
@@ -34,11 +35,18 @@ pub fn slurp_file(file_path: String, top: usize, debug_mode: bool, list_strings:
     // 64 MB buffer performs nicely (higher is faster but increases the memory consumption)
     let stream_buffer_size = 64 * 1024 * 1024;
 
+    // Communication channel to IO prefetch thread
+    // When the internal buffer becomes full, future sends will block waiting for the buffer to open up.
+    let (tx_reader, rx_reader): (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::sync_channel(2);
+
+    let prefetcher = PrefetchReader::new(reader, file_len, FILE_HEADER_LENGTH, stream_buffer_size);
+    let prefetch_thread = prefetcher.start_reader(tx_reader);
+
     // Init parser state
     let parser = HprofRecordParser::new(debug_mode);
     let parser_iter = HprofRecordParserIter::new(
         parser,
-        reader,
+        rx_reader,
         debug_mode,
         file_len,
         FILE_HEADER_LENGTH,
@@ -75,6 +83,11 @@ pub fn slurp_file(file_path: String, top: usize, debug_mode: bool, list_strings:
     send_records.send(vec![]).expect("recorder channel should be alive");
 
     let rendered_result = receive_result.recv().expect("result channel should be alive");
+
+    // Blocks until prefetcher is done
+    prefetch_thread
+        .join()
+        .map_err(|e| HprofSlurpError::StdThreadError { e })?;
 
     // Blocks until recorder is done
     recorder_thread
