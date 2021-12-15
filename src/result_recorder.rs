@@ -155,29 +155,32 @@ impl ResultRecorder {
         rx: Receiver<Vec<Record>>,
         tx: Sender<RenderedResult>,
     ) -> JoinHandle<()> {
-        thread::spawn(move || {
-            loop {
-                let records = rx.recv().expect("channel should not be closed");
-                if records.is_empty() {
-                    // empty Vec means we are done
-                    break;
-                } else {
-                    self.record_records(records)
+        thread::Builder::new()
+            .name("hprof-recorder".to_string())
+            .spawn(move || {
+                loop {
+                    let records = rx.recv().expect("channel should not be closed");
+                    if records.is_empty() {
+                        // empty Vec means we are done
+                        break;
+                    } else {
+                        self.record_records(records)
+                    }
                 }
-            }
-            // no more Record to pull, generate and send back results
-            let rendered_result = RenderedResult {
-                summary: self.render_summary(),
-                analysis: self.render_analysis(self.top),
-                captured_strings: if self.list_strings {
-                    Some(self.render_captured_strings())
-                } else {
-                    None
-                },
-            };
-            tx.send(rendered_result)
-                .expect("channel should not be closed");
-        })
+                // no more Record to pull, generate and send back results
+                let rendered_result = RenderedResult {
+                    summary: self.render_summary(),
+                    analysis: self.render_analysis(self.top),
+                    captured_strings: if self.list_strings {
+                        Some(self.render_captured_strings())
+                    } else {
+                        None
+                    },
+                };
+                tx.send(rendered_result)
+                    .expect("channel should not be closed");
+            })
+            .unwrap()
     }
 
     fn record_records(&mut self, records: Vec<Record>) {
