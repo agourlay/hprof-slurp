@@ -34,7 +34,7 @@ impl HprofRecordParserIter {
             debug_mode,
             file_len,
             processed_len,
-            loop_buffer: Vec::new(), // will be sized properly during the first iteration
+            loop_buffer: Vec::with_capacity(stream_buffer_size),
             stream_buffer_size,
         }
     }
@@ -45,8 +45,12 @@ impl HprofRecordParserIter {
             let iteration_res = self.parser.parse_streaming(&self.loop_buffer);
             match iteration_res {
                 Ok((rest, records)) => {
-                    self.processed_len += self.loop_buffer.len() - rest.len();
-                    self.loop_buffer = rest.to_vec(); // TODO remove rest.to_vec() allocations
+                    let rest_len = rest.len();
+                    let iteration_processed = self.loop_buffer.len() - rest_len;
+                    self.processed_len += iteration_processed;
+                    // cleanup buffer while keeping underlying allocated storage
+                    self.loop_buffer.rotate_left(iteration_processed);
+                    self.loop_buffer.truncate(rest_len);
                     assert!(
                         self.processed_len <= self.file_len,
                         "Can't process more than the file length"
