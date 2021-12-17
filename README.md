@@ -25,7 +25,7 @@ In practice, it provides users a quick overview of a heap dump in order to decid
 
 ```
 ./hprof-slurp --help
-hprof-slurp 0.1.0
+hprof-slurp 0.2.0
 Arnaud Gourlay <arnaud.gourlay@gmail.com>
 JVM heap dump hprof file analyzer
 
@@ -75,6 +75,15 @@ Total size | Instances |     Largest | Class name
    2.71KiB |        63 |  44.00bytes | java/util/concurrent/ConcurrentHashMap$Node
    2.50KiB |        40 |  64.00bytes | java/lang/ref/Finalizer
 ```
+
+## Performance
+
+On modern hardware `hprof-slurp` can process heap dump files at around 500 MiB/s.
+
+To maximize performance make sure to:
+
+- run on a host with at least 3 cores
+- compile the project yourself on the target host to get a more specialized binary
 
 ## How it works
 
