@@ -25,7 +25,7 @@ In practice, it provides users a quick overview of a heap dump in order to decid
 
 ```
 ./hprof-slurp --help
-hprof-slurp 0.2.0
+hprof-slurp x.x.x
 Arnaud Gourlay <arnaud.gourlay@gmail.com>
 JVM heap dump hprof file analyzer
 
