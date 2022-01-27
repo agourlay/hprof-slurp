@@ -7,7 +7,7 @@ pub enum HprofSlurpError {
     InputFileNotFound { name: String },
     #[error("invalid argument `top` - the value should be strictly positive")]
     InvalidTopPositiveInt,
-    #[error("invalid point size - the value should be either `4` or `8`")]
+    #[error("invalid pointer size - the value should be either `4` or `8`")]
     InvalidIdSize,
     #[error("invalid content after header")]
     InvalidHeaderSize,
