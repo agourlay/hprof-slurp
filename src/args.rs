@@ -1,43 +1,46 @@
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
-use clap::{value_t, App, Arg};
+use clap::{App, Arg};
 use std::path::Path;
 
-pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
-    let matches = App::new("hprof-slurp")
+fn app() -> clap::App<'static> {
+    App::new("hprof-slurp")
         .version("0.2.1")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("JVM heap dump hprof file analyzer")
         .arg(
-            Arg::with_name("inputFile")
+            Arg::new("inputFile")
                 .help("binary hprof input file")
                 .long("inputFile")
-                .short("i")
+                .short('i')
                 .takes_value(true)
                 .required(true),
         )
         .arg(
-            Arg::with_name("top")
+            Arg::new("top")
                 .help("the top results to display")
                 .long("top")
-                .short("t")
+                .short('t')
                 .takes_value(true)
                 .default_value("20")
                 .required(false),
         )
         .arg(
-            Arg::with_name("debug")
+            Arg::new("debug")
                 .help("debug info")
                 .long("debug")
-                .short("d"),
+                .short('d'),
         )
         .arg(
-            Arg::with_name("listStrings")
+            Arg::new("listStrings")
                 .help("list all Strings found")
                 .long("listStrings")
-                .short("l"),
+                .short('l'),
         )
-        .get_matches();
+}
+
+pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
+    let matches = app().get_matches();
 
     let input_file = matches.value_of("inputFile").expect("impossible").trim();
     if !Path::new(input_file).is_file() {
@@ -46,7 +49,7 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
         });
     }
 
-    let top = value_t!(matches, "top", usize)?;
+    let top = matches.value_of_t("top")?;
     if top == 0 {
         return Err(InvalidTopPositiveInt);
     }
@@ -54,4 +57,14 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
     let debug = matches.is_present("debug");
     let list_strings = matches.is_present("listStrings");
     Ok((input_file.to_string(), top, debug, list_strings))
+}
+
+#[cfg(test)]
+mod args_tests {
+    use crate::args::app;
+
+    #[test]
+    fn verify_app() {
+        app().debug_assert();
+    }
 }
