@@ -46,6 +46,6 @@ mod tests {
         };
         let (rest, header) = parse_file_header(&binary).unwrap();
         assert_eq!(header, expected);
-        assert_eq!(rest.is_empty(), true);
+        assert!(rest.is_empty());
     }
 }

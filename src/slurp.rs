@@ -161,14 +161,14 @@ mod tests {
     fn unsupported_32_bits() {
         let file_path = FILE_PATH_32.to_string();
         let result = slurp_file(file_path, 20, false, false);
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
     }
 
     #[test]
     fn supported_64_bits() {
         let file_path = FILE_PATH_64.to_string();
         let result = slurp_file(file_path, 20, false, false);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
         validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_64);
     }
 
@@ -178,7 +178,7 @@ mod tests {
         let file = File::open(file_path).unwrap();
         let mut reader = BufReader::new(file);
         let result = slurp_header(&mut reader);
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
     }
 
     #[test]
