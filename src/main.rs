@@ -16,7 +16,17 @@ use crate::errors::HprofSlurpError;
 use crate::slurp::slurp_file;
 use std::time::Instant;
 
-fn main() -> Result<(), HprofSlurpError> {
+fn main() {
+    std::process::exit(match main_result() {
+        Ok(_) => 0,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            1
+        }
+    });
+}
+
+fn main_result() -> Result<(), HprofSlurpError> {
     let now = Instant::now();
     let (file_path, top, debug_mode, list_strings) = get_args()?;
     let rendered_result = slurp_file(file_path, top, debug_mode, list_strings)?;
