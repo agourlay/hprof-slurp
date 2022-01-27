@@ -163,13 +163,13 @@ fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
 }
 
 fn parse_gc_root_unknown(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| GcRootUnknown { object_id })(i)
+    map(parse_id, |object_id| RootUnknown { object_id })(i)
 }
 
 fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32, parse_u32)),
-        |(thread_object_id, thread_sequence_number, stack_sequence_number)| GcRootThreadObject {
+        |(thread_object_id, thread_sequence_number, stack_sequence_number)| RootThreadObject {
             thread_object_id,
             thread_sequence_number,
             stack_sequence_number,
@@ -180,7 +180,7 @@ fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_jni_global(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_id)),
-        |(object_id, jni_global_ref_id)| GcRootJniGlobal {
+        |(object_id, jni_global_ref_id)| RootJniGlobal {
             object_id,
             jni_global_ref_id,
         },
@@ -190,7 +190,7 @@ fn parse_gc_root_jni_global(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32, parse_u32)),
-        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GcRootJniLocal {
+        |(object_id, thread_serial_number, frame_number_in_stack_trace)| RootJniLocal {
             object_id,
             thread_serial_number,
             frame_number_in_stack_trace,
@@ -201,7 +201,7 @@ fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32, parse_u32)),
-        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GcRootJavaFrame {
+        |(object_id, thread_serial_number, frame_number_in_stack_trace)| RootJavaFrame {
             object_id,
             thread_serial_number,
             frame_number_in_stack_trace,
@@ -212,7 +212,7 @@ fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
 fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32)),
-        |(object_id, thread_serial_number)| GcRootNativeStack {
+        |(object_id, thread_serial_number)| RootNativeStack {
             object_id,
             thread_serial_number,
         },
@@ -220,13 +220,13 @@ fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
 }
 
 fn parse_gc_root_sticky_class(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| GcRootStickyClass { object_id })(i)
+    map(parse_id, |object_id| RootStickyClass { object_id })(i)
 }
 
 fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
         tuple((parse_id, parse_u32)),
-        |(object_id, thread_serial_number)| GcRootThreadBlock {
+        |(object_id, thread_serial_number)| RootThreadBlock {
             object_id,
             thread_serial_number,
         },
@@ -234,7 +234,7 @@ fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
 }
 
 fn parse_gc_root_monitor_used(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| GcRootMonitorUsed { object_id })(i)
+    map(parse_id, |object_id| RootMonitorUsed { object_id })(i)
 }
 
 fn parse_field_value(ty: FieldType) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {
@@ -324,7 +324,7 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     let (r8, instance_fields) =
         count(parse_instance_field_item, instance_field_number as usize)(r7)?;
 
-    let gcd = GcClassDump {
+    let gcd = ClassDump {
         class_object_id,
         stack_trace_serial_number,
         super_class_object_id,
@@ -346,7 +346,7 @@ fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
         tuple((parse_id, parse_u32, parse_id, parse_u32)),
         |(object_id, stack_trace_serial_number, class_object_id, data_size)| {
             map(bytes::streaming::take(data_size), move |_bytes_segment| {
-                GcInstanceDump {
+                InstanceDump {
                     object_id,
                     stack_trace_serial_number,
                     class_object_id,
@@ -363,7 +363,7 @@ fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
         |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
             map(
                 count(parse_id, number_of_elements as usize),
-                move |elements| GcObjectArrayDump {
+                move |elements| ObjectArrayDump {
                     object_id,
                     stack_trace_serial_number,
                     number_of_elements,
@@ -407,7 +407,7 @@ fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
             ArrayValue::Long(res)
         })(r1)?,
     };
-    let gpad = GcPrimitiveArrayDump {
+    let gpad = PrimitiveArrayDump {
         object_id,
         stack_trace_serial_number,
         number_of_elements,

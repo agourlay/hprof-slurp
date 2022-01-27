@@ -68,63 +68,63 @@ pub enum ArrayValue {
 
 #[derive(Debug)]
 pub enum GcRecord {
-    GcRootUnknown {
+    RootUnknown {
         object_id: u64,
     },
-    GcRootThreadObject {
+    RootThreadObject {
         thread_object_id: u64,
         thread_sequence_number: u32,
         stack_sequence_number: u32,
     },
-    GcRootJniGlobal {
+    RootJniGlobal {
         object_id: u64,
         jni_global_ref_id: u64,
     },
-    GcRootJniLocal {
+    RootJniLocal {
         object_id: u64,
         thread_serial_number: u32,
         frame_number_in_stack_trace: u32,
     },
-    GcRootJavaFrame {
+    RootJavaFrame {
         object_id: u64,
         thread_serial_number: u32,
         frame_number_in_stack_trace: u32,
     },
-    GcRootNativeStack {
+    RootNativeStack {
         object_id: u64,
         thread_serial_number: u32,
     },
-    GcRootStickyClass {
+    RootStickyClass {
         object_id: u64,
     },
-    GcRootThreadBlock {
+    RootThreadBlock {
         object_id: u64,
         thread_serial_number: u32,
     },
-    GcRootMonitorUsed {
+    RootMonitorUsed {
         object_id: u64,
     },
-    GcInstanceDump {
+    InstanceDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         class_object_id: u64,
         data_size: u32,
     },
-    GcObjectArrayDump {
+    ObjectArrayDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         array_class_id: u64,
         elements: Vec<u64>,
     },
-    GcPrimitiveArrayDump {
+    PrimitiveArrayDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         element_type: FieldType,
         array_value: ArrayValue,
     },
-    GcClassDump {
+    ClassDump {
         class_object_id: u64,
         stack_trace_serial_number: u32,
         super_class_object_id: u64,

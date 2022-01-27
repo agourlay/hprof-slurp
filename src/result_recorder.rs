@@ -211,34 +211,34 @@ impl ResultRecorder {
                 GcSegment(gc_record) => {
                     self.heap_dump_segments_all_sub_records += 1;
                     match gc_record {
-                        GcRecord::GcRootUnknown { .. } => {
+                        GcRecord::RootUnknown { .. } => {
                             self.heap_dump_segments_gc_root_unknown += 1
                         }
-                        GcRecord::GcRootThreadObject { .. } => {
+                        GcRecord::RootThreadObject { .. } => {
                             self.heap_dump_segments_gc_root_thread_object += 1
                         }
-                        GcRecord::GcRootJniGlobal { .. } => {
+                        GcRecord::RootJniGlobal { .. } => {
                             self.heap_dump_segments_gc_root_jni_global += 1
                         }
-                        GcRecord::GcRootJniLocal { .. } => {
+                        GcRecord::RootJniLocal { .. } => {
                             self.heap_dump_segments_gc_root_jni_local += 1
                         }
-                        GcRecord::GcRootJavaFrame { .. } => {
+                        GcRecord::RootJavaFrame { .. } => {
                             self.heap_dump_segments_gc_root_java_frame += 1
                         }
-                        GcRecord::GcRootNativeStack { .. } => {
+                        GcRecord::RootNativeStack { .. } => {
                             self.heap_dump_segments_gc_root_native_stack += 1
                         }
-                        GcRecord::GcRootStickyClass { .. } => {
+                        GcRecord::RootStickyClass { .. } => {
                             self.heap_dump_segments_gc_root_sticky_class += 1
                         }
-                        GcRecord::GcRootThreadBlock { .. } => {
+                        GcRecord::RootThreadBlock { .. } => {
                             self.heap_dump_segments_gc_root_thread_block += 1
                         }
-                        GcRecord::GcRootMonitorUsed { .. } => {
+                        GcRecord::RootMonitorUsed { .. } => {
                             self.heap_dump_segments_gc_root_monitor_used += 1
                         }
-                        GcRecord::GcInstanceDump {
+                        GcRecord::InstanceDump {
                             class_object_id,
                             data_size,
                             ..
@@ -251,7 +251,7 @@ impl ResultRecorder {
                                 .or_insert_with(ClassInstanceCounter::empty)
                                 .add_instance((data_size + self.id_size + 8) as u64);
                         }
-                        GcRecord::GcObjectArrayDump {
+                        GcRecord::ObjectArrayDump {
                             number_of_elements,
                             array_class_id,
                             ..
@@ -263,7 +263,7 @@ impl ResultRecorder {
 
                             self.heap_dump_segments_gc_object_array_dump += 1
                         }
-                        GcRecord::GcPrimitiveArrayDump {
+                        GcRecord::PrimitiveArrayDump {
                             number_of_elements,
                             element_type,
                             ..
@@ -275,7 +275,7 @@ impl ResultRecorder {
 
                             self.heap_dump_segments_gc_primitive_array_dump += 1
                         }
-                        GcRecord::GcClassDump {
+                        GcRecord::ClassDump {
                             class_object_id,
                             instance_size,
                             ..
