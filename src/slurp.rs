@@ -120,7 +120,7 @@ pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlu
         return Err(InvalidIdSize);
     }
     if id_size == 4 {
-        return Err(UnsupportedHeaderSize {
+        return Err(UnsupportedIdSize {
             message: "32 bits heap dumps are not supported yet".to_string(),
         });
     }
