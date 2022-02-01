@@ -13,9 +13,9 @@ pub enum HprofSlurpError {
     InvalidHeaderSize,
     #[error("unsupported pointer size - {message:?}")]
     UnsupportedIdSize { message: String },
-    #[error("CLI argument error ({e:?})")]
+    #[error("CLI argument error ({e})")]
     ClapError { e: clap::Error },
-    #[error("standard I/O error ({e:?})")]
+    #[error("standard I/O error ({e})")]
     StdIoError { e: std::io::Error },
     #[error("standard thread error ({e:?})")]
     StdThreadError { e: Box<dyn Any + Send + 'static> },
