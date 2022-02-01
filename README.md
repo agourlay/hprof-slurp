@@ -30,17 +30,15 @@ Arnaud Gourlay <arnaud.gourlay@gmail.com>
 JVM heap dump hprof file analyzer
 
 USAGE:
-    hprof-slurp [FLAGS] [OPTIONS] --inputFile <inputFile>
-
-FLAGS:
-    -d, --debug          debug info
-    -h, --help           Prints help information
-    -l, --listStrings    list all Strings found
-    -V, --version        Prints version information
+    hprof-slurp [OPTIONS] --inputFile <inputFile>
 
 OPTIONS:
+    -d, --debug                    debug info
+    -h, --help                     Print help information
     -i, --inputFile <inputFile>    binary hprof input file
+    -l, --listStrings              list all Strings found
     -t, --top <top>                the top results to display [default: 20]
+    -V, --version                  Print version information
 ```
 
 Example:
