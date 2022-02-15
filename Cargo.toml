@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 nom = "7.1.0"
-indicatif = "0.16.2"
+indicatif = "0.17.0-rc.4"
 clap = "3.0.14"
 indoc = "1.0.3"
 ahash = "0.7.6"
