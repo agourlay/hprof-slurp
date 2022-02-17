@@ -1,10 +1,10 @@
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use std::path::Path;
 
-fn app() -> clap::App<'static> {
-    App::new("hprof-slurp")
+fn command() -> clap::Command<'static> {
+    Command::new("hprof-slurp")
         .version("0.2.2")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("JVM heap dump hprof file analyzer")
@@ -40,7 +40,7 @@ fn app() -> clap::App<'static> {
 }
 
 pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
-    let matches = app().get_matches();
+    let matches = command().get_matches();
 
     let input_file = matches.value_of("inputFile").expect("impossible").trim();
     if !Path::new(input_file).is_file() {
@@ -61,10 +61,10 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
 
 #[cfg(test)]
 mod args_tests {
-    use crate::args::app;
+    use crate::args::command;
 
     #[test]
-    fn verify_app() {
-        app().debug_assert();
+    fn verify_command() {
+        command().debug_assert();
     }
 }
