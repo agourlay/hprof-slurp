@@ -11,9 +11,8 @@ env:
 
 jobs:
   build:
-
+    name: Rust CI
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v2
       - name: Check code formatting
