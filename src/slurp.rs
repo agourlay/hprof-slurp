@@ -74,6 +74,7 @@ pub fn slurp_file(
     let pb = ProgressBar::new(file_len as u64);
     pb.set_style(ProgressStyle::default_bar()
         .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
+        .expect("templating should never fail")
         .progress_chars("#>-"));
 
     // Pull data from the parser through the iterator
