@@ -5,7 +5,7 @@ authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-nom = "7.1.0"
+nom = "7.1.1"
 indicatif = "0.17.0-rc.9"
 clap = "3.1.6"
 indoc = "1.0.4"
