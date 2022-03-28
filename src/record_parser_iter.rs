@@ -58,7 +58,7 @@ impl HprofRecordParserIter {
                 }
                 Err(Err::Incomplete(Size(n))) => {
                     if self.debug_mode {
-                        println!("Incomplete size {}", n.get());
+                        eprintln!("Incomplete size {}", n.get());
                     }
                     let extra_buffer = self.rx_reader.recv().expect("channel should not be closed");
                     // warning: extending the buffer is expensive when the extra_buffer is big
