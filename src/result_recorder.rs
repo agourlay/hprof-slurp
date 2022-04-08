@@ -4,9 +4,9 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
 
-use crate::gc_record::*;
-use crate::record::Record;
-use crate::record::Record::*;
+use crate::parser::gc_record::*;
+use crate::parser::record::Record;
+use crate::parser::record::Record::*;
 use crate::utils::pretty_bytes_size;
 
 #[derive(Debug, Copy, Clone)]

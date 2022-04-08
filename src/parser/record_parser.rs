@@ -1,10 +1,10 @@
 extern crate nom;
 
-use crate::gc_record::*;
-use crate::primitive_parsers::*;
-use crate::record::{AllocationSite, CpuSample, Record, RecordHeader};
-use crate::record_parser::GcRecord::*;
-use crate::record_parser::Record::*;
+use crate::parser::gc_record::*;
+use crate::parser::primitive_parsers::*;
+use crate::parser::record::{AllocationSite, CpuSample, Record, RecordHeader};
+use crate::parser::record_parser::GcRecord::*;
+use crate::parser::record_parser::Record::*;
 use nom::combinator::{flat_map, map};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::count;

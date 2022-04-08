@@ -1,5 +1,5 @@
-use crate::record::Record;
-use crate::record_parser::HprofRecordParser;
+use crate::parser::record::Record;
+use crate::parser::record_parser::HprofRecordParser;
 
 use nom::Err;
 use nom::Needed::Size;

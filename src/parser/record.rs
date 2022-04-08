@@ -1,4 +1,4 @@
-use crate::gc_record::GcRecord;
+use crate::parser::gc_record::GcRecord;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RecordHeader {

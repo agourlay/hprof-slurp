@@ -8,11 +8,11 @@ use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
-use crate::file_header_parser::{parse_file_header, FileHeader};
+use crate::parser::file_header_parser::{parse_file_header, FileHeader};
+use crate::parser::record::Record;
+use crate::parser::record_parser::HprofRecordParser;
+use crate::parser::record_parser_iter::HprofRecordParserIter;
 use crate::prefetch_reader::PrefetchReader;
-use crate::record::Record;
-use crate::record_parser::HprofRecordParser;
-use crate::record_parser_iter::HprofRecordParserIter;
 use crate::result_recorder::{RenderedResult, ResultRecorder};
 use crate::utils::pretty_bytes_size;
 

@@ -1,12 +1,7 @@
 mod args;
 mod errors;
-mod file_header_parser;
-mod gc_record;
+mod parser;
 mod prefetch_reader;
-mod primitive_parsers;
-mod record;
-mod record_parser;
-mod record_parser_iter;
 mod result_recorder;
 mod slurp;
 mod utils;

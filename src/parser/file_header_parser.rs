@@ -1,4 +1,4 @@
-use crate::primitive_parsers::*;
+use crate::parser::primitive_parsers::*;
 use nom::combinator::map;
 use nom::sequence::tuple;
 use nom::IResult;
