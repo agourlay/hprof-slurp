@@ -26,7 +26,7 @@ impl PrefetchReader {
         }
     }
 
-    pub fn start_reader(mut self, tx: SyncSender<Vec<u8>>) -> JoinHandle<()> {
+    pub fn start(mut self, send_data: SyncSender<Vec<u8>>) -> std::io::Result<JoinHandle<()>> {
         thread::Builder::new()
             .name("hprof-prefetch".to_string())
             .spawn(move || {
@@ -55,10 +55,11 @@ impl PrefetchReader {
                                 self.file_len - self.processed_len
                             )
                         });
-                    tx.send(extra_buffer).expect("Channel should not be closed");
+                    send_data
+                        .send(extra_buffer)
+                        .expect("Channel should not be closed");
                     self.processed_len += next_size
                 }
             })
-            .unwrap()
     }
 }

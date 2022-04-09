@@ -10,13 +10,16 @@ use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
 use crate::parser::file_header_parser::{parse_file_header, FileHeader};
 use crate::parser::record::Record;
-use crate::parser::record_parser::HprofRecordParser;
-use crate::parser::record_parser_iter::HprofRecordParserIter;
+use crate::parser::record_stream_parser::HprofRecordStreamParser;
 use crate::prefetch_reader::PrefetchReader;
 use crate::result_recorder::{RenderedResult, ResultRecorder};
 use crate::utils::pretty_bytes_size;
 
-const FILE_HEADER_LENGTH: usize = 31; // the exact size of the file header (31 bytes)
+// the exact size of the file header (31 bytes)
+const FILE_HEADER_LENGTH: usize = 31;
+
+// 64 MB buffer performs nicely (higher is faster but increases the memory consumption)
+const READ_BUFFER_SIZE: usize = 64 * 1024 * 1024;
 
 pub fn slurp_file(
     file_path: String,
@@ -37,69 +40,74 @@ pub fn slurp_file(
         header.format
     );
 
-    // 64 MB buffer performs nicely (higher is faster but increases the memory consumption)
-    let stream_buffer_size = 64 * 1024 * 1024;
-
-    // Communication channel to IO prefetch thread
+    // Communication channel from pre-fetcher to parser
     // When the internal buffer becomes full, future sends will block waiting for the buffer to open up.
-    let (tx_reader, rx_reader): (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::sync_channel(2);
+    let (send_data, receive_data): (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::sync_channel(2);
 
-    let prefetcher = PrefetchReader::new(reader, file_len, FILE_HEADER_LENGTH, stream_buffer_size);
-    let prefetch_thread = prefetcher.start_reader(tx_reader);
-
-    // Init parser state
-    let parser = HprofRecordParser::new(debug_mode);
-    let parser_iter = HprofRecordParserIter::new(
-        parser,
-        rx_reader,
-        debug_mode,
-        file_len,
-        FILE_HEADER_LENGTH,
-        stream_buffer_size,
-    );
-
-    // Communication channel to recorder's thread
+    // Communication channel from parser to recorder
     let (send_records, receive_records): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
         mpsc::channel();
 
-    // Communication channel with from recorder's thread
+    // Communication channel from recorder to parser
+    let (send_pooled_vec, receive_pooled_vec): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
+        mpsc::channel();
+
+    // Communication channel from recorder to main
     let (send_result, receive_result): (Sender<RenderedResult>, Receiver<RenderedResult>) =
         mpsc::channel();
 
-    // Recorder
-    let result_recorder = ResultRecorder::new(id_size, list_strings, top);
-    let recorder_thread = result_recorder.start_recorder(receive_records, send_result);
+    // Communication channel from parser to main
+    let (send_progress, receive_progress): (Sender<usize>, Receiver<usize>) = mpsc::channel();
 
-    // Progress bar
+    // Init pre-fetcher
+    let prefetcher = PrefetchReader::new(reader, file_len, FILE_HEADER_LENGTH, READ_BUFFER_SIZE);
+    let prefetch_thread = prefetcher.start(send_data)?;
+
+    // Init pooled vec
+    send_pooled_vec
+        .send(vec![])
+        .expect("recorder channel should be alive");
+
+    // Init stream parser
+    let stream_parser = HprofRecordStreamParser::new(debug_mode, file_len, FILE_HEADER_LENGTH);
+    let parser_thread = stream_parser.start(
+        receive_data,
+        send_progress,
+        receive_pooled_vec,
+        send_records,
+    )?;
+
+    // Init result recorder
+    let result_recorder = ResultRecorder::new(id_size, list_strings, top);
+    let recorder_thread = result_recorder.start(receive_records, send_result, send_pooled_vec)?;
+
+    // Init progress bar
     let pb = ProgressBar::new(file_len as u64);
     pb.set_style(ProgressStyle::default_bar()
         .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
         .expect("templating should never fail")
         .progress_chars("#>-"));
 
-    // Pull data from the parser through the iterator
-    parser_iter.for_each(|(processed, records)| {
-        pb.set_position(processed as u64);
-        // Send records over the channel for processing on a different thread
-        send_records
-            .send(records)
-            .expect("recorder channel should be alive");
-    });
+    // Feed progress bar
+    while let Ok(processed) = receive_progress.recv() {
+        pb.set_position(processed as u64)
+    }
 
     // Finish and remove progress bar
     pb.finish_and_clear();
 
-    // Send empty Vec to signal that there is no more data
-    send_records
-        .send(vec![])
-        .expect("recorder channel should be alive");
-
+    // Wait for rendered result
     let rendered_result = receive_result
         .recv()
         .expect("result channel should be alive");
 
-    // Blocks until prefetcher is done
+    // Blocks until pre-fetcher is done
     prefetch_thread
+        .join()
+        .map_err(|e| HprofSlurpError::StdThreadError { e })?;
+
+    // Blocks until parser is done
+    parser_thread
         .join()
         .map_err(|e| HprofSlurpError::StdThreadError { e })?;
 

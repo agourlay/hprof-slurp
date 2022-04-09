@@ -150,44 +150,53 @@ impl ResultRecorder {
             .to_owned()
     }
 
-    pub fn start_recorder(
+    pub fn start(
         mut self,
-        rx: Receiver<Vec<Record>>,
-        tx: Sender<RenderedResult>,
-    ) -> JoinHandle<()> {
+        receive_records: Receiver<Vec<Record>>,
+        send_result: Sender<RenderedResult>,
+        send_pooled_vec: Sender<Vec<Record>>,
+    ) -> std::io::Result<JoinHandle<()>> {
         thread::Builder::new()
             .name("hprof-recorder".to_string())
             .spawn(move || {
                 loop {
-                    let records = rx.recv().expect("channel should not be closed");
-                    if records.is_empty() {
-                        // empty Vec means we are done
-                        break;
-                    } else {
-                        self.record_records(records)
+                    match receive_records.recv() {
+                        Ok(mut records) => {
+                            self.record_records(&records);
+                            // clear values but retain underlying storage
+                            records.clear();
+                            // send back pooled vec
+                            if send_pooled_vec.send(records).is_err() {
+                                // swallow errors as it is possible the receiver was already dropped
+                                eprintln!("swallowed error")
+                            }
+                        }
+                        Err(_) => {
+                            // no more Record to pull, generate and send back results
+                            let rendered_result = RenderedResult {
+                                summary: self.render_summary(),
+                                analysis: self.render_analysis(self.top),
+                                captured_strings: if self.list_strings {
+                                    Some(self.render_captured_strings())
+                                } else {
+                                    None
+                                },
+                            };
+                            send_result
+                                .send(rendered_result)
+                                .expect("channel should not be closed");
+                            break;
+                        }
                     }
                 }
-                // no more Record to pull, generate and send back results
-                let rendered_result = RenderedResult {
-                    summary: self.render_summary(),
-                    analysis: self.render_analysis(self.top),
-                    captured_strings: if self.list_strings {
-                        Some(self.render_captured_strings())
-                    } else {
-                        None
-                    },
-                };
-                tx.send(rendered_result)
-                    .expect("channel should not be closed");
             })
-            .unwrap()
     }
 
-    fn record_records(&mut self, records: Vec<Record>) {
-        records.into_iter().for_each(|record| {
+    fn record_records(&mut self, records: &[Record]) {
+        records.iter().for_each(|record| {
             match record {
                 Utf8String { id, str } => {
-                    self.utf8_strings_by_id.insert(id, str);
+                    self.utf8_strings_by_id.insert(*id, str.clone());
                 }
                 LoadClass {
                     class_object_id,
@@ -195,7 +204,7 @@ impl ResultRecorder {
                     ..
                 } => {
                     self.classes_loaded_by_id
-                        .insert(class_object_id, class_name_id);
+                        .insert(*class_object_id, *class_name_id);
                 }
                 UnloadClass { .. } => self.classes_unloaded += 1,
                 StackFrame { .. } => self.stack_frames += 1,
@@ -247,7 +256,7 @@ impl ResultRecorder {
                             // data_size is available in the record
                             // total_size = data_size + id_size + mark(4) + padding(4)
                             self.classes_all_instance_total_size_by_id
-                                .entry(class_object_id)
+                                .entry(*class_object_id)
                                 .or_insert_with(ClassInstanceCounter::empty)
                                 .add_instance((data_size + self.id_size + 8) as u64);
                         }
@@ -257,9 +266,9 @@ impl ResultRecorder {
                             ..
                         } => {
                             self.object_array_counters
-                                .entry(array_class_id)
+                                .entry(*array_class_id)
                                 .or_insert_with(ArrayCounter::empty)
-                                .add_elements_from_array(number_of_elements);
+                                .add_elements_from_array(*number_of_elements);
 
                             self.heap_dump_segments_gc_object_array_dump += 1
                         }
@@ -269,9 +278,9 @@ impl ResultRecorder {
                             ..
                         } => {
                             self.primitive_array_counters
-                                .entry(element_type)
+                                .entry(*element_type)
                                 .or_insert_with(ArrayCounter::empty)
-                                .add_elements_from_array(number_of_elements);
+                                .add_elements_from_array(*number_of_elements);
 
                             self.heap_dump_segments_gc_primitive_array_dump += 1
                         }
@@ -282,8 +291,8 @@ impl ResultRecorder {
                         } => {
                             // Unused for now, remove it???
                             self.classes_single_instance_size_by_id
-                                .entry(class_object_id)
-                                .or_insert(instance_size);
+                                .entry(*class_object_id)
+                                .or_insert(*instance_size);
 
                             self.heap_dump_segments_gc_class_dump += 1
                         }

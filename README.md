@@ -13,7 +13,7 @@ In practice, it provides users a quick overview of a heap dump in order to decid
 - displays number of instances per class.
 - displays largest instance size per class.
 - list all Strings found.
-- very low memory usage.
+- low memory usage.
 - easy to use.
 
 ## Limitations
@@ -76,12 +76,9 @@ Total size | Instances |     Largest | Class name
 
 ## Performance
 
-On modern hardware `hprof-slurp` can process heap dump files at around 400 MiB/s.
+On modern hardware `hprof-slurp` can process heap dump files at around 500 MiB/s.
 
-To maximize performance make sure to:
-
-- run on a host with at least 3 cores
-- compile the project yourself on the target host to get a more specialized binary
+To maximize performance make sure to run on a host with at least 4 cores.
 
 ## How it works
 

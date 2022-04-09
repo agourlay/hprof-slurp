@@ -93,8 +93,12 @@ impl<'p> HprofRecordParser {
         }
     }
 
-    pub fn parse_streaming(&'p mut self, i: &'p [u8]) -> IResult<&'p [u8], Vec<Record>> {
-        lazy_many1(self.parse_hprof_record())(i)
+    pub fn parse_streaming(
+        &'p mut self,
+        i: &'p [u8],
+        pooled_vec: &'p mut Vec<Record>,
+    ) -> IResult<&'p [u8], ()> {
+        lazy_many1(self.parse_hprof_record(), pooled_vec)(i)
     }
 }
 
@@ -103,9 +107,13 @@ fn parse_id(i: &[u8]) -> IResult<&[u8], u64> {
     parse_u64(i)
 }
 
-// copy of nom's many1 but returns values accumulated so far on `nom::Err::Incomplete(_)`
-// https://github.com/Geal/nom/pull/1337
-pub fn lazy_many1<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
+// copy of nom's many1 but
+// - returns values accumulated so far on `nom::Err::Incomplete(_)` if any
+// - take a `&mut vector` as input to enable pooling at the call site
+pub fn lazy_many1<'a, I, O, E, F: 'a>(
+    mut f: F,
+    pooled_vec: &'a mut Vec<O>,
+) -> impl FnMut(I) -> IResult<I, (), E> + 'a
 where
     I: Clone + PartialEq,
     F: Parser<I, O, E>,
@@ -115,17 +123,14 @@ where
         Err(nom::Err::Error(err)) => Err(nom::Err::Error(E::append(i, ErrorKind::Many1, err))),
         Err(e) => Err(e),
         Ok((i1, o)) => {
-            // TODO this Vec could be pooled
-            let mut acc = Vec::with_capacity(4);
-            acc.push(o);
+            pooled_vec.push(o);
             i = i1;
-
             loop {
                 match f.parse(i.clone()) {
-                    Err(nom::Err::Error(_)) => return Ok((i, acc)),
+                    Err(nom::Err::Error(_)) => return Ok((i, ())),
                     // magic line here!
                     // return Ok(acc) if we have seen at least one element, otherwise fail
-                    Err(nom::Err::Incomplete(_)) => return Ok((i, acc)),
+                    Err(nom::Err::Incomplete(_)) => return Ok((i, ())),
                     Err(e) => return Err(e),
                     Ok((i1, o)) => {
                         if i1 == i {
@@ -133,7 +138,7 @@ where
                         }
 
                         i = i1;
-                        acc.push(o);
+                        pooled_vec.push(o);
                     }
                 }
             }
