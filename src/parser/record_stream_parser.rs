@@ -44,9 +44,8 @@ impl HprofRecordStreamParser {
                 loop {
                     match receive_data.recv() {
                         Err(_) => break,
-                        Ok(input_buffer) => {
-                            // warning: extending the buffer is expensive when the input_buffer is large
-                            self.loop_buffer.extend_from_slice(&input_buffer);
+                        Ok(mut input_buffer) => {
+                            self.loop_buffer.append(&mut input_buffer);
                             let iteration_res = self
                                 .parser
                                 .parse_streaming(&self.loop_buffer, &mut self.pooled_vec);
@@ -55,9 +54,7 @@ impl HprofRecordStreamParser {
                                     let rest_len = rest.len();
                                     let iteration_processed = self.loop_buffer.len() - rest_len;
                                     self.processed_len += iteration_processed;
-                                    // cleanup buffer while keeping underlying allocated storage
-                                    self.loop_buffer.rotate_left(iteration_processed);
-                                    self.loop_buffer.truncate(rest_len);
+                                    self.loop_buffer.drain(0..iteration_processed);
                                     assert!(
                                         self.processed_len <= self.file_len,
                                         "Can't process more than the file length (processed:{} vs file:{})",
