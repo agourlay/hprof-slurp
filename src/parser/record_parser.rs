@@ -76,10 +76,11 @@ impl<'p> HprofRecordParser {
                     TAG_CPU_SAMPLES => parse_cpu_samples(r1),
                     TAG_HEAP_DUMP_END => parse_heap_dump_end(r1),
                     TAG_HEAP_DUMP | TAG_HEAP_DUMP_SEGMENT => {
-                        let (r2, hr) = parse_header_record(r1)?;
-                        // record expected GC segments length
-                        self.heap_dump_remaining_len = hr.length;
-                        Ok((r2, HeapDumpStart { length: hr.length }))
+                        map(parse_header_record, |hr| {
+                            // record expected GC segments length
+                            self.heap_dump_remaining_len = hr.length;
+                            HeapDumpStart { length: hr.length }
+                        })(r1)
                     }
                     x => panic!("{}", format!("unhandled record tag {}", x)),
                 }
