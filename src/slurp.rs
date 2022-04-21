@@ -122,7 +122,9 @@ pub fn slurp_file(
 pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlurpError> {
     let mut header_buffer = vec![0; FILE_HEADER_LENGTH];
     reader.read_exact(&mut header_buffer)?;
-    let (rest, header) = parse_file_header(&header_buffer).unwrap();
+    let (rest, header) = parse_file_header(&header_buffer).map_err(|e| InvalidHprofFile {
+        message: format!("{:?}", e),
+    })?;
     // Invariants
     let id_size = header.size_pointers;
     if id_size != 4 && id_size != 8 {

@@ -48,4 +48,16 @@ mod tests {
         assert_eq!(header, expected);
         assert!(rest.is_empty());
     }
+
+    #[test]
+    fn parse_header_too_short() {
+        let binary: [u8; 30] = [
+            74, 65, 86, 65, 32, 80, 82, 79, 70, 73, 76, 69, 32, 49, 46, 48, 46, 50, 0, 0, 0, 0, 8,
+            0, 0, 1, 118, 111, 186, 173,
+        ];
+        assert!(matches!(
+            parse_file_header(&binary),
+            Err(nom::Err::Incomplete(_))
+        ))
+    }
 }

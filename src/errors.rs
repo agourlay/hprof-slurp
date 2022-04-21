@@ -11,6 +11,8 @@ pub enum HprofSlurpError {
     InvalidIdSize,
     #[error("invalid content after header")]
     InvalidHeaderSize,
+    #[error("invalid Hprof file - {message:?}")]
+    InvalidHprofFile { message: String },
     #[error("unsupported pointer size - {message:?}")]
     UnsupportedIdSize { message: String },
     #[error("CLI argument error ({e})")]
