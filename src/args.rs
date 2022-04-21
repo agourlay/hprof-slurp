@@ -5,7 +5,7 @@ use std::path::Path;
 
 fn command() -> clap::Command<'static> {
     Command::new("hprof-slurp")
-        .version("0.3.1")
+        .version("0.3.2")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("JVM heap dump hprof file analyzer")
         .arg(
