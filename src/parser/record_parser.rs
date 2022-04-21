@@ -56,7 +56,7 @@ impl<'p> HprofRecordParser {
     }
 
     pub fn parse_hprof_record(&'p mut self) -> impl FnMut(&'p [u8]) -> IResult<&'p [u8], Record> {
-        move |i| {
+        |i| {
             if self.heap_dump_remaining_len == 0 {
                 let (r1, tag) = parse_u8(i)?;
                 if self.debug_mode {
