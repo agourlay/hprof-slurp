@@ -77,7 +77,7 @@ impl HprofRecordStreamParser {
                                     if self.debug_mode {
                                         eprintln!("Incomplete size {}", n.get());
                                     }
-                                    // loop with extended buffer and reset pooled_vec
+                                    // clear what was parsed so far with not enough data
                                     self.pooled_vec.clear();
                                 }
                                 Err(Err::Incomplete(Unknown)) => {
