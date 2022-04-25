@@ -55,41 +55,44 @@ impl<'p> HprofRecordParser {
         }
     }
 
+    // TODO use nom combinators (instead of Result's)
     pub fn parse_hprof_record(&'p mut self) -> impl FnMut(&'p [u8]) -> IResult<&'p [u8], Record> {
         |i| {
             if self.heap_dump_remaining_len == 0 {
-                let (r1, tag) = parse_u8(i)?;
-                if self.debug_mode {
-                    println!("Found record tag:{} remaining bytes:{}", tag, i.len());
-                }
-                match tag {
-                    TAG_STRING => parse_utf8_string(r1),
-                    TAG_LOAD_CLASS => parse_load_class(r1),
-                    TAG_UNLOAD_CLASS => parse_unload_class(r1),
-                    TAG_STACK_FRAME => parse_stack_frame(r1),
-                    TAG_STACK_TRACE => parse_stack_trace(r1),
-                    TAG_ALLOC_SITES => parse_allocation_sites(r1),
-                    TAG_HEAP_SUMMARY => parse_heap_summary(r1),
-                    TAG_START_THREAD => parse_start_thread(r1),
-                    TAG_END_THREAD => parse_end_thread(r1),
-                    TAG_CONTROL_SETTING => parse_control_settings(r1),
-                    TAG_CPU_SAMPLES => parse_cpu_samples(r1),
-                    TAG_HEAP_DUMP_END => parse_heap_dump_end(r1),
-                    TAG_HEAP_DUMP | TAG_HEAP_DUMP_SEGMENT => {
-                        map(parse_header_record, |hr| {
-                            // record expected GC segments length
-                            self.heap_dump_remaining_len = hr.length;
-                            HeapDumpStart { length: hr.length }
-                        })(r1)
+                parse_u8(i).and_then(|(r1, tag)| {
+                    if self.debug_mode {
+                        println!("Found record tag:{} remaining bytes:{}", tag, i.len());
                     }
-                    x => panic!("{}", format!("unhandled record tag {}", x)),
-                }
+                    match tag {
+                        TAG_STRING => parse_utf8_string(r1),
+                        TAG_LOAD_CLASS => parse_load_class(r1),
+                        TAG_UNLOAD_CLASS => parse_unload_class(r1),
+                        TAG_STACK_FRAME => parse_stack_frame(r1),
+                        TAG_STACK_TRACE => parse_stack_trace(r1),
+                        TAG_ALLOC_SITES => parse_allocation_sites(r1),
+                        TAG_HEAP_SUMMARY => parse_heap_summary(r1),
+                        TAG_START_THREAD => parse_start_thread(r1),
+                        TAG_END_THREAD => parse_end_thread(r1),
+                        TAG_CONTROL_SETTING => parse_control_settings(r1),
+                        TAG_CPU_SAMPLES => parse_cpu_samples(r1),
+                        TAG_HEAP_DUMP_END => parse_heap_dump_end(r1),
+                        TAG_HEAP_DUMP | TAG_HEAP_DUMP_SEGMENT => {
+                            map(parse_header_record, |hr| {
+                                // record expected GC segments length
+                                self.heap_dump_remaining_len = hr.length;
+                                HeapDumpStart { length: hr.length }
+                            })(r1)
+                        }
+                        x => panic!("{}", format!("unhandled record tag {}", x)),
+                    }
+                })
             } else {
                 // GC record mode
-                let (r1, gc_sub) = parse_gc_record(i)?;
-                let gc_sub_len = i.len() - r1.len();
-                self.heap_dump_remaining_len -= gc_sub_len as u32;
-                Ok((r1, GcSegment(gc_sub)))
+                parse_gc_record(i).map(|(r1, gc_sub)| {
+                    let gc_sub_len = i.len() - r1.len();
+                    self.heap_dump_remaining_len -= gc_sub_len as u32;
+                    (r1, GcSegment(gc_sub))
+                })
             }
         }
     }
@@ -147,25 +150,27 @@ where
     }
 }
 
+// TODO use nom combinators (instead of Result's)
 fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    let (rest, tag) = parse_u8(i)?;
-    //println!("GC Tag:{} Remaining:{}", tag, i.len());
-    match tag {
-        TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(rest),
-        TAG_GC_ROOT_JNI_GLOBAL => parse_gc_root_jni_global(rest),
-        TAG_GC_ROOT_JNI_LOCAL => parse_gc_root_jni_local(rest),
-        TAG_GC_ROOT_JAVA_FRAME => parse_gc_root_java_frame(rest),
-        TAG_GC_ROOT_NATIVE_STACK => parse_gc_root_native_stack(rest),
-        TAG_GC_ROOT_STICKY_CLASS => parse_gc_root_sticky_class(rest),
-        TAG_GC_ROOT_THREAD_BLOCK => parse_gc_root_thread_block(rest),
-        TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used(rest),
-        TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object(rest),
-        TAG_GC_CLASS_DUMP => parse_gc_class_dump(rest),
-        TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(rest),
-        TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(rest),
-        TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(rest),
-        x => panic!("{}", format!("unhandled gc record tag {}", x)),
-    }
+    parse_u8(i).and_then(|(rest, tag)| {
+        //println!("GC Tag:{} Remaining:{}", tag, i.len());
+        match tag {
+            TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(rest),
+            TAG_GC_ROOT_JNI_GLOBAL => parse_gc_root_jni_global(rest),
+            TAG_GC_ROOT_JNI_LOCAL => parse_gc_root_jni_local(rest),
+            TAG_GC_ROOT_JAVA_FRAME => parse_gc_root_java_frame(rest),
+            TAG_GC_ROOT_NATIVE_STACK => parse_gc_root_native_stack(rest),
+            TAG_GC_ROOT_STICKY_CLASS => parse_gc_root_sticky_class(rest),
+            TAG_GC_ROOT_THREAD_BLOCK => parse_gc_root_thread_block(rest),
+            TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used(rest),
+            TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object(rest),
+            TAG_GC_CLASS_DUMP => parse_gc_class_dump(rest),
+            TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(rest),
+            TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(rest),
+            TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(rest),
+            x => panic!("{}", format!("unhandled gc record tag {}", x)),
+        }
+    })
 }
 
 fn parse_gc_root_unknown(i: &[u8]) -> IResult<&[u8], GcRecord> {
@@ -301,7 +306,7 @@ fn parse_instance_field_item(i: &[u8]) -> IResult<&[u8], FieldInfo> {
     )(i)
 }
 
-// TODO use combinators
+// TODO use nom combinators (instead of Result's)
 fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     let (
         r1,
@@ -315,35 +320,41 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
             _reserved_1,
             _reserved_2,
             instance_size,
+            constant_pool_size,
         ),
     ) = tuple((
         parse_id, parse_u32, parse_id, parse_id, parse_id, parse_id, parse_id, parse_id, parse_u32,
+        parse_u16,
     ))(i)?;
 
-    let (r3, constant_pool_size) = parse_u16(r1)?;
-    let (r4, const_fields) = count(parse_const_pool_item, constant_pool_size as usize)(r3)?;
-
-    let (r5, static_fields_number) = parse_u16(r4)?;
-    let (r6, static_fields) = count(parse_static_field_item, static_fields_number as usize)(r5)?;
-
-    let (r7, instance_field_number) = parse_u16(r6)?;
-    let (r8, instance_fields) =
-        count(parse_instance_field_item, instance_field_number as usize)(r7)?;
-
-    let gcd = ClassDump {
-        class_object_id,
-        stack_trace_serial_number,
-        super_class_object_id,
-        class_loader_object_id,
-        signers_object_id,
-        protection_domain_object_id,
-        instance_size,
-        constant_pool_size,
-        const_fields,
-        static_fields,
-        instance_fields,
-    };
-    Ok((r8, gcd))
+    count(parse_const_pool_item, constant_pool_size as usize)(r1).and_then(|(r2, const_fields)| {
+        parse_u16(r2).and_then(|(r3, static_fields_number)| {
+            count(parse_static_field_item, static_fields_number as usize)(r3).and_then(
+                |(r4, static_fields)| {
+                    parse_u16(r4).and_then(|(r5, instance_field_number)| {
+                        count(parse_instance_field_item, instance_field_number as usize)(r5).map(
+                            |(r6, instance_fields)| {
+                                let gcd = ClassDump {
+                                    class_object_id,
+                                    stack_trace_serial_number,
+                                    super_class_object_id,
+                                    class_loader_object_id,
+                                    signers_object_id,
+                                    protection_domain_object_id,
+                                    instance_size,
+                                    constant_pool_size,
+                                    const_fields,
+                                    static_fields,
+                                    instance_fields,
+                                };
+                                (r6, gcd)
+                            },
+                        )
+                    })
+                },
+            )
+        })
+    })
 }
 
 // TODO analyze bytes_segment to extract real values?
@@ -381,46 +392,49 @@ fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     )(i)
 }
 
-// TODO use combinators
+// TODO use nom combinators (instead of Result's)
 fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    let (r1, (object_id, stack_trace_serial_number, number_of_elements, element_type)) =
-        tuple((parse_id, parse_u32, parse_u32, parse_field_type))(i)?;
-
-    let (r2, array_value) = match element_type {
-        FieldType::Object => panic!("object type in primitive array"),
-        FieldType::Bool => map(count(parse_u8, number_of_elements as usize), |res| {
-            ArrayValue::Bool(res.iter().map(|b| *b != 0).collect())
-        })(r1)?,
-        FieldType::Char => map(count(parse_u16, number_of_elements as usize), |res| {
-            ArrayValue::Char(res)
-        })(r1)?,
-        FieldType::Float => map(count(parse_f32, number_of_elements as usize), |res| {
-            ArrayValue::Float(res)
-        })(r1)?,
-        FieldType::Double => map(count(parse_f64, number_of_elements as usize), |res| {
-            ArrayValue::Double(res)
-        })(r1)?,
-        FieldType::Byte => map(count(parse_i8, number_of_elements as usize), |res| {
-            ArrayValue::Byte(res)
-        })(r1)?,
-        FieldType::Short => map(count(parse_i16, number_of_elements as usize), |res| {
-            ArrayValue::Short(res)
-        })(r1)?,
-        FieldType::Int => map(count(parse_i32, number_of_elements as usize), |res| {
-            ArrayValue::Int(res)
-        })(r1)?,
-        FieldType::Long => map(count(parse_i64, number_of_elements as usize), |res| {
-            ArrayValue::Long(res)
-        })(r1)?,
-    };
-    let gpad = PrimitiveArrayDump {
-        object_id,
-        stack_trace_serial_number,
-        number_of_elements,
-        element_type,
-        array_value,
-    };
-    Ok((r2, gpad))
+    tuple((parse_id, parse_u32, parse_u32, parse_field_type))(i).and_then(
+        |(r1, (object_id, stack_trace_serial_number, number_of_elements, element_type))| {
+            match element_type {
+                FieldType::Object => panic!("object type in primitive array"),
+                FieldType::Bool => map(count(parse_u8, number_of_elements as usize), |res| {
+                    ArrayValue::Bool(res.iter().map(|b| *b != 0).collect())
+                })(r1),
+                FieldType::Char => map(count(parse_u16, number_of_elements as usize), |res| {
+                    ArrayValue::Char(res)
+                })(r1),
+                FieldType::Float => map(count(parse_f32, number_of_elements as usize), |res| {
+                    ArrayValue::Float(res)
+                })(r1),
+                FieldType::Double => map(count(parse_f64, number_of_elements as usize), |res| {
+                    ArrayValue::Double(res)
+                })(r1),
+                FieldType::Byte => map(count(parse_i8, number_of_elements as usize), |res| {
+                    ArrayValue::Byte(res)
+                })(r1),
+                FieldType::Short => map(count(parse_i16, number_of_elements as usize), |res| {
+                    ArrayValue::Short(res)
+                })(r1),
+                FieldType::Int => map(count(parse_i32, number_of_elements as usize), |res| {
+                    ArrayValue::Int(res)
+                })(r1),
+                FieldType::Long => map(count(parse_i64, number_of_elements as usize), |res| {
+                    ArrayValue::Long(res)
+                })(r1),
+            }
+            .map(|(r2, array_value)| {
+                let gpad = PrimitiveArrayDump {
+                    object_id,
+                    stack_trace_serial_number,
+                    number_of_elements,
+                    element_type,
+                    array_value,
+                };
+                (r2, gpad)
+            })
+        },
+    )
 }
 
 fn parse_header_record(i: &[u8]) -> IResult<&[u8], RecordHeader> {
