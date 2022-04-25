@@ -165,11 +165,8 @@ impl ResultRecorder {
                             self.record_records(&records);
                             // clear values but retain underlying storage
                             records.clear();
-                            // send back pooled vec
-                            if send_pooled_vec.send(records).is_err() {
-                                // swallow errors as it is possible the receiver was already dropped
-                                eprintln!("swallowed error")
-                            }
+                            // send back pooled vec (swallow errors as it is possible the receiver was already dropped)
+                            send_pooled_vec.send(records).unwrap_or_default();
                         }
                         Err(_) => {
                             // no more Record to pull, generate and send back results
