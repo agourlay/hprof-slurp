@@ -150,27 +150,23 @@ where
     }
 }
 
-// TODO use nom combinators (instead of Result's)
 fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    parse_u8(i).and_then(|(rest, tag)| {
-        //println!("GC Tag:{} Remaining:{}", tag, i.len());
-        match tag {
-            TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(rest),
-            TAG_GC_ROOT_JNI_GLOBAL => parse_gc_root_jni_global(rest),
-            TAG_GC_ROOT_JNI_LOCAL => parse_gc_root_jni_local(rest),
-            TAG_GC_ROOT_JAVA_FRAME => parse_gc_root_java_frame(rest),
-            TAG_GC_ROOT_NATIVE_STACK => parse_gc_root_native_stack(rest),
-            TAG_GC_ROOT_STICKY_CLASS => parse_gc_root_sticky_class(rest),
-            TAG_GC_ROOT_THREAD_BLOCK => parse_gc_root_thread_block(rest),
-            TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used(rest),
-            TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object(rest),
-            TAG_GC_CLASS_DUMP => parse_gc_class_dump(rest),
-            TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(rest),
-            TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(rest),
-            TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(rest),
-            x => panic!("{}", format!("unhandled gc record tag {}", x)),
-        }
-    })
+    flat_map(parse_u8, |tag| match tag {
+        TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown,
+        TAG_GC_ROOT_JNI_GLOBAL => parse_gc_root_jni_global,
+        TAG_GC_ROOT_JNI_LOCAL => parse_gc_root_jni_local,
+        TAG_GC_ROOT_JAVA_FRAME => parse_gc_root_java_frame,
+        TAG_GC_ROOT_NATIVE_STACK => parse_gc_root_native_stack,
+        TAG_GC_ROOT_STICKY_CLASS => parse_gc_root_sticky_class,
+        TAG_GC_ROOT_THREAD_BLOCK => parse_gc_root_thread_block,
+        TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used,
+        TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object,
+        TAG_GC_CLASS_DUMP => parse_gc_class_dump,
+        TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump,
+        TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump,
+        TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump,
+        x => panic!("{}", format!("unhandled gc record tag {}", x)),
+    })(i)
 }
 
 fn parse_gc_root_unknown(i: &[u8]) -> IResult<&[u8], GcRecord> {
