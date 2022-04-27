@@ -67,6 +67,7 @@ pub enum ArrayValue {
 }
 
 #[derive(Debug)]
+#[allow(clippy::box_collection)]
 pub enum GcRecord {
     RootUnknown {
         object_id: u64,
