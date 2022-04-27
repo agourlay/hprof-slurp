@@ -339,9 +339,9 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
                                     protection_domain_object_id,
                                     instance_size,
                                     constant_pool_size,
-                                    const_fields,
-                                    static_fields,
-                                    instance_fields,
+                                    const_fields: Box::new(const_fields),
+                                    static_fields: Box::new(static_fields),
+                                    instance_fields: Box::new(instance_fields),
                                 };
                                 (r6, gcd)
                             },

@@ -133,8 +133,8 @@ pub enum GcRecord {
         protection_domain_object_id: u64,
         instance_size: u32,
         constant_pool_size: u16,
-        const_fields: Vec<(ConstFieldInfo, FieldValue)>,
-        static_fields: Vec<(FieldInfo, FieldValue)>,
-        instance_fields: Vec<FieldInfo>,
+        const_fields: Box<Vec<(ConstFieldInfo, FieldValue)>>,
+        static_fields: Box<Vec<(FieldInfo, FieldValue)>>,
+        instance_fields: Box<Vec<FieldInfo>>,
     },
 }
