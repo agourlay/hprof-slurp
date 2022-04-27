@@ -76,7 +76,7 @@ Total size | Instances |     Largest | Class name
 
 ## Performance
 
-On modern hardware `hprof-slurp` can process heap dump files at around 500 MiB/s.
+On modern hardware `hprof-slurp` can process heap dump files at around 700 MiB/s.
 
 To maximize performance make sure to run on a host with at least 4 cores.
 
