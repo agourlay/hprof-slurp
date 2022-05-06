@@ -4,7 +4,7 @@ use std::io::{BufReader, Read};
 use indicatif::{ProgressBar, ProgressStyle};
 
 use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::mpsc::{Receiver, Sender};
 
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
@@ -41,14 +41,24 @@ pub fn slurp_file(
     );
 
     // Communication channel from pre-fetcher to parser
-    // When the internal buffer becomes full, future sends will block waiting for the buffer to open up.
-    let (send_data, receive_data): (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::sync_channel(2);
+    let (send_data, receive_data): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
+
+    // Communication channel from parser to pre-fetcher (pooled input buffers)
+    let (send_pooled_data, receive_pooled_data): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
+        mpsc::channel();
+
+    // Init pooled data (at most two buffers in flight)
+    for _ in 0..2 {
+        send_pooled_data
+            .send(Vec::with_capacity(READ_BUFFER_SIZE))
+            .expect("pre-fetcher channel should be alive");
+    }
 
     // Communication channel from parser to recorder
     let (send_records, receive_records): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
         mpsc::channel();
 
-    // Communication channel from recorder to parser
+    // Communication channel from recorder to parser (pooled record buffers)
     let (send_pooled_vec, receive_pooled_vec): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
         mpsc::channel();
 
@@ -61,7 +71,7 @@ pub fn slurp_file(
 
     // Init pre-fetcher
     let prefetcher = PrefetchReader::new(reader, file_len, FILE_HEADER_LENGTH, READ_BUFFER_SIZE);
-    let prefetch_thread = prefetcher.start(send_data)?;
+    let prefetch_thread = prefetcher.start(send_data, receive_pooled_data)?;
 
     // Init pooled vec
     send_pooled_vec
@@ -72,6 +82,7 @@ pub fn slurp_file(
     let stream_parser = HprofRecordStreamParser::new(debug_mode, file_len, FILE_HEADER_LENGTH);
     let parser_thread = stream_parser.start(
         receive_data,
+        send_pooled_data,
         send_progress,
         receive_pooled_vec,
         send_records,

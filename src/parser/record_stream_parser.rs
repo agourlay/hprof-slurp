@@ -34,6 +34,7 @@ impl HprofRecordStreamParser {
     pub fn start(
         mut self,
         receive_data: Receiver<Vec<u8>>,
+        send_pooled_data: Sender<Vec<u8>>,
         send_progress: Sender<usize>,
         receive_pooled_vec: Receiver<Vec<Record>>,
         send_records: Sender<Vec<Record>>,
@@ -44,8 +45,11 @@ impl HprofRecordStreamParser {
                 loop {
                     match receive_data.recv() {
                         Err(_) => break,
-                        Ok(mut input_buffer) => {
-                            self.loop_buffer.append(&mut input_buffer);
+                        Ok(mut pooled_buffer) => {
+                            // Move input buffer into working buffer
+                            self.loop_buffer.append(&mut pooled_buffer);
+                            // Send back empty pooled_buffer with storage
+                            send_pooled_data.send(pooled_buffer).unwrap_or_default();
                             let iteration_res = self
                                 .parser
                                 .parse_streaming(&self.loop_buffer, &mut self.pooled_vec);
@@ -74,6 +78,8 @@ impl HprofRecordStreamParser {
                                         .expect("channel should not be closed");
                                 }
                                 Err(Err::Incomplete(Size(n))) => {
+                                    // TODO if needed > read_buffer size
+                                    // we know that we need several buffers, no need to even start parsing!
                                     if self.debug_mode {
                                         eprintln!("Incomplete size {}", n.get());
                                     }
