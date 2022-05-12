@@ -370,25 +370,31 @@ fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     )(i)
 }
 
+// TODO inject real id_size instead of '8'
 fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    flat_map(
-        tuple((parse_id, parse_u32, parse_u32, parse_id)),
-        |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
-            map(
-                count(parse_id, number_of_elements as usize),
-                move |elements| ObjectArrayDump {
-                    object_id,
-                    stack_trace_serial_number,
-                    number_of_elements,
-                    array_class_id,
-                    elements,
-                },
-            )
+    let (r1, (object_id, stack_trace_serial_number, number_of_elements, array_class_id)) =
+        tuple((parse_id, parse_u32, parse_u32, parse_id))(i)?;
+
+    // load eagerly memory in order to parse elements in a single pass
+    // avoid pathological case of repeated parsing failures on a growing buffer
+    let (r2, data_elements) = bytes::streaming::take(number_of_elements * 8)(r1)?;
+
+    let (r3, oad) = map(
+        count(parse_id, number_of_elements as usize),
+        move |elements| ObjectArrayDump {
+            object_id,
+            stack_trace_serial_number,
+            number_of_elements,
+            array_class_id,
+            elements,
         },
-    )(i)
+    )(data_elements)?;
+    assert!(r3.is_empty());
+    Ok((r2, oad))
 }
 
 // TODO use nom combinators (instead of Result's)
+// TODO could be optimized with `bytes::streaming::take` like in `parse_gc_object_array_dump`
 fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     tuple((parse_id, parse_u32, parse_u32, parse_field_type))(i).and_then(
         |(r1, (object_id, stack_trace_serial_number, number_of_elements, element_type))| {

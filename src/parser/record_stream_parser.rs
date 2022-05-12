@@ -16,6 +16,7 @@ pub struct HprofRecordStreamParser {
     processed_len: usize,
     loop_buffer: Vec<u8>,
     pooled_vec: Vec<Record>,
+    needed: usize,
 }
 
 impl HprofRecordStreamParser {
@@ -28,6 +29,7 @@ impl HprofRecordStreamParser {
             processed_len,
             loop_buffer: Vec::new(),
             pooled_vec: Vec::new(),
+            needed: 0,
         }
     }
 
@@ -50,6 +52,10 @@ impl HprofRecordStreamParser {
                             self.loop_buffer.append(&mut pooled_buffer);
                             // Send back empty pooled_buffer with storage
                             send_pooled_data.send(pooled_buffer).unwrap_or_default();
+                            if self.needed > self.loop_buffer.len() {
+                                // need more data for the ongoing object
+                                continue;
+                            }
                             let iteration_res = self
                                 .parser
                                 .parse_streaming(&self.loop_buffer, &mut self.pooled_vec);
@@ -76,15 +82,15 @@ impl HprofRecordStreamParser {
                                     send_records
                                         .send(next_pooled_vec)
                                         .expect("channel should not be closed");
+                                    // parsing iteration complete without extra data needed
+                                    self.needed = 0;
                                 }
                                 Err(Err::Incomplete(Size(n))) => {
-                                    // TODO if needed > read_buffer size
-                                    // we know that we need several buffers, no need to even start parsing!
                                     if self.debug_mode {
-                                        eprintln!("Incomplete size {}", n.get());
+                                        println!("Incomplete: {} bytes required to finish parsing object & current buffer len {}", n.get(), self.loop_buffer.len());
                                     }
-                                    // clear what was parsed so far with not enough data
-                                    self.pooled_vec.clear();
+                                    // capture needed data (missing + existing)
+                                    self.needed = n.get() + self.loop_buffer.len();
                                 }
                                 Err(Err::Incomplete(Unknown)) => {
                                     panic!("Unexpected Incomplete with unknown size")
