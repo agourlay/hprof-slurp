@@ -1,6 +1,6 @@
 [package]
 name = "hprof-slurp"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 edition = "2021"
 
