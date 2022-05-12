@@ -92,6 +92,7 @@ pub struct ResultRecorder {
     heap_dump_segments_gc_root_thread_block: i32,
     heap_dump_segments_gc_root_monitor_used: i32,
     heap_dump_segments_gc_object_array_dump: i32,
+    heap_dump_segments_gc_instance_dump: i32,
     heap_dump_segments_gc_primitive_array_dump: i32,
     heap_dump_segments_gc_class_dump: i32,
     // Captured state
@@ -132,6 +133,7 @@ impl ResultRecorder {
             heap_dump_segments_gc_root_monitor_used: 0,
             heap_dump_segments_gc_object_array_dump: 0,
             heap_dump_segments_gc_primitive_array_dump: 0,
+            heap_dump_segments_gc_instance_dump: 0,
             heap_dump_segments_gc_class_dump: 0,
             utf8_strings_by_id: AHashMap::new(),
             classes_loaded_by_id: AHashMap::new(),
@@ -251,11 +253,20 @@ impl ResultRecorder {
                         } => {
                             // no need to perform a lookup in `classes_instance_size_by_id`
                             // data_size is available in the record
-                            // total_size = data_size + id_size + mark(4) + padding(4)
+
+                            // https://www.baeldung.com/java-memory-layout
+                            // total_size = object_header + data
+                            // on a 64-bit arch.
+                            // object_header = mark(ref_size) + klass(4) + padding_gap(4) = 16 bytes
+                            // data = data_size + padding_next(??)
+                            let object_header = self.id_size + 4 + 4;
+                            let padding_next = (object_header + data_size).rem_euclid(8);
                             self.classes_all_instance_total_size_by_id
                                 .entry(*class_object_id)
                                 .or_insert_with(ClassInstanceCounter::empty)
-                                .add_instance((data_size + self.id_size + 8) as u64);
+                                .add_instance((object_header + data_size + padding_next) as u64);
+
+                            self.heap_dump_segments_gc_instance_dump += 1
                         }
                         GcRecord::ObjectArrayDump {
                             number_of_elements,
@@ -327,44 +338,68 @@ impl ResultRecorder {
             .collect();
 
         // https://www.baeldung.com/java-memory-layout
-        // the array's `elements` size are already computed via `GcInstanceDump`
-        // here we are interested in the total size of the array headers and outgoing elements references
+        // the array's `elements` size is already accounted for via `GcInstanceDump` for objects
+        // unlike primitives which are packed in the array itself
+        // array headers already aligned for 64-bit arch - no need for padding
+        // array_header = mark(ref_size) + klass(4) + array_length(4) = 16 bytes
+        // data_primitive = primitive_size * length + padding(??)
+        // data_object = ref_size * length (no padding because the ref size is already aligned!)
         let ref_size = self.id_size as u64;
-        let array_header_size = ref_size + 4 + 4; // 4 bytes of klass + 4 bytes for the array length.
+        let array_header_size = ref_size + 4 + 4;
 
         let array_primitives_dump_vec = self.primitive_array_counters.iter().map(|(ft, &ac)| {
-            let primitive_array_label = format!("{:?}[]", ft);
+            let primitive_type = format!("{:?}", ft).to_lowercase();
+            let primitive_array_label = format!("{}[]", primitive_type);
+            let primitive_size = primitive_byte_size(ft);
+
             let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-            let cost_of_all_values = primitive_byte_size(ft) * ac.total_number_of_elements;
-            let cost_of_biggest_array = primitive_byte_size(ft) * ac.max_size_seen as u64;
+            let cost_of_all_values = primitive_size * ac.total_number_of_elements;
+            // info lost at this point to compute the real padding for each array
+            // assume mid value of 4 bytes per array for an estimation
+            let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
+
+            let cost_data_largest_array = primitive_size * ac.max_size_seen as u64;
+            let cost_padding_largest_array =
+                (array_header_size + cost_data_largest_array).rem_euclid(8);
             (
                 primitive_array_label,
                 ac.number_of_arrays,
-                cost_of_biggest_array,
-                cost_of_all_array_headers + cost_of_all_values,
+                array_header_size + cost_data_largest_array + cost_padding_largest_array,
+                cost_of_all_array_headers + cost_of_all_values + estimated_cost_of_all_padding,
             )
         });
 
+        // For array of objects we are interested in the total size of the array headers and outgoing elements references
         let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, &ac)| {
             let raw_class_name = self.get_class_name_string(class_id);
-            // remove '[L' prefix and ';' suffix
-            let cleaned_class_name: String = raw_class_name
-                .chars()
-                .skip(2)
-                .take(raw_class_name.chars().count() - 3)
-                .collect();
-            let class_name = format!("{}[]", cleaned_class_name);
+            let cleaned_class_name: String = if raw_class_name.starts_with("[L") {
+                // remove '[L' prefix and ';' suffix
+                raw_class_name
+                    .chars()
+                    .skip(2)
+                    .take(raw_class_name.chars().count() - 3)
+                    .collect()
+            } else if raw_class_name.starts_with("[[L") {
+                // remove '[[L' prefix and ';' suffix
+                raw_class_name
+                    .chars()
+                    .skip(3)
+                    .take(raw_class_name.chars().count() - 4)
+                    .collect()
+            } else {
+                // TODO: what are those ([[C, [[D, [[B, [[S ...)? boxed primitives are already present
+                raw_class_name
+            };
+
+            let object_array_label = format!("{}[]", cleaned_class_name);
 
             let cost_of_all_refs = ref_size * ac.total_number_of_elements;
             let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-
-            let cost_of_biggest_array_refs = ref_size * ac.max_size_seen as u64;
-            let cost_of_biggest_array_header = array_header_size;
-
+            let cost_of_largest_array_refs = ref_size * ac.max_size_seen as u64;
             (
-                class_name,
+                object_array_label,
                 ac.number_of_arrays,
-                cost_of_biggest_array_refs + cost_of_biggest_array_header,
+                array_header_size + cost_of_largest_array_refs,
                 cost_of_all_array_headers + cost_of_all_refs,
             )
         });
@@ -372,29 +407,49 @@ impl ResultRecorder {
         // Merge results
         classes_dump_vec.extend(array_primitives_dump_vec);
         classes_dump_vec.extend(array_objects_dump_vec);
-        // reverse sort by size
-        classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
 
+        // Holds the final result
+        let mut analysis = String::new();
+
+        // Total heap size found banner
         let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s as u64).sum();
         let display_total_size = pretty_bytes_size(total_size);
-
-        let mut analysis = String::new();
-        let title = format!(
-            "\nTop {} allocations for the {} heap total size:\n\n",
-            top, display_total_size
+        let allocation_classes_title = format!(
+            "\nFound a total of {} of instances allocated on the heap.\n",
+            display_total_size
         );
-        analysis.push_str(&title);
+        analysis.push_str(&allocation_classes_title);
 
-        let rows_formatted: Vec<_> = classes_dump_vec
-            .into_iter()
+        // Sort by class name first for stability in test results :s
+        classes_dump_vec.sort_by(|a, b| b.0.cmp(&a.0));
+
+        // Top allocated classes analysis
+        let allocation_classes_title = format!("\nTop {} allocated classes:\n\n", top);
+        analysis.push_str(&allocation_classes_title);
+        classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
+        ResultRecorder::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
+
+        // Top largest instances analysis
+        let allocation_largest_title = format!("\nTop {} largest instances:\n\n", top);
+        analysis.push_str(&allocation_largest_title);
+        classes_dump_vec.sort_by(|a, b| b.2.cmp(&a.2));
+        ResultRecorder::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
+
+        analysis
+    }
+
+    // Render table from [(class_name, count, largest_allocation, instance_size)]
+    fn render_table(top: usize, analysis: &mut String, rows: &[(String, u64, u64, u64)]) {
+        let rows_formatted: Vec<_> = rows
+            .iter()
             .take(top)
-            .map(|(class_name, count, biggest_allocation, allocation_size)| {
-                let display_allocation = pretty_bytes_size(allocation_size as u64);
-                let biggest_display_allocation = pretty_bytes_size(biggest_allocation as u64);
+            .map(|(class_name, count, largest_allocation, allocation_size)| {
+                let display_allocation = pretty_bytes_size(*allocation_size as u64);
+                let largest_display_allocation = pretty_bytes_size(*largest_allocation as u64);
                 (
                     display_allocation,
-                    count,
-                    biggest_display_allocation,
+                    *count,
+                    largest_display_allocation,
                     class_name,
                 )
             })
@@ -402,7 +457,7 @@ impl ResultRecorder {
 
         let total_size_header = "Total size";
         let total_size_header_padding = ResultRecorder::padding_for_header(
-            &rows_formatted,
+            rows_formatted.as_slice(),
             |r| r.0.to_string(),
             total_size_header,
         );
@@ -411,25 +466,25 @@ impl ResultRecorder {
 
         let instance_count_header = "Instances";
         let instance_count_header_padding = ResultRecorder::padding_for_header(
-            &rows_formatted,
+            rows_formatted.as_slice(),
             |r| r.1.to_string(),
             instance_count_header,
         );
         let instance_len =
             instance_count_header.chars().count() + instance_count_header_padding.chars().count();
 
-        let biggest_instance_header = "Largest";
-        let biggest_instance_padding = ResultRecorder::padding_for_header(
-            &rows_formatted,
+        let largest_instance_header = "Largest";
+        let largest_instance_padding = ResultRecorder::padding_for_header(
+            rows_formatted.as_slice(),
             |r| r.2.to_string(),
-            biggest_instance_header,
+            largest_instance_header,
         );
-        let biggest_len =
-            biggest_instance_header.chars().count() + biggest_instance_padding.chars().count();
+        let largest_len =
+            largest_instance_header.chars().count() + largest_instance_padding.chars().count();
 
         let class_name_header = "Class name";
         let class_name_padding = ResultRecorder::padding_for_header(
-            &rows_formatted,
+            rows_formatted.as_slice(),
             |r| r.3.to_string(),
             class_name_header,
         );
@@ -440,8 +495,8 @@ impl ResultRecorder {
             total_size_header,
             instance_count_header_padding,
             instance_count_header,
-            biggest_instance_padding,
-            biggest_instance_header,
+            largest_instance_padding,
+            largest_instance_header,
             class_name_header,
             class_name_padding
         );
@@ -451,13 +506,13 @@ impl ResultRecorder {
         analysis.push('\n');
 
         rows_formatted.into_iter().for_each(
-            |(allocation_size, count, biggest_allocation_size, class_name)| {
+            |(allocation_size, count, largest_allocation_size, class_name)| {
                 let padding_size_str =
                     ResultRecorder::column_padding(&allocation_size, total_size_len);
                 let padding_count_str =
                     ResultRecorder::column_padding(&count.to_string(), instance_len);
-                let padding_biggest_size_str =
-                    ResultRecorder::column_padding(&biggest_allocation_size, biggest_len);
+                let padding_largest_size_str =
+                    ResultRecorder::column_padding(&largest_allocation_size, largest_len);
 
                 let row = format!(
                     "{}{} | {}{} | {}{} | {}\n",
@@ -465,23 +520,22 @@ impl ResultRecorder {
                     allocation_size,
                     padding_count_str,
                     count,
-                    padding_biggest_size_str,
-                    biggest_allocation_size,
+                    padding_largest_size_str,
+                    largest_allocation_size,
                     class_name
                 );
                 analysis.push_str(&row);
             },
         );
-        analysis
     }
 
     fn padding_for_header<F>(
-        rows: &[(String, u64, String, String)],
+        rows: &[(String, u64, String, &String)],
         field_selector: F,
         header_label: &str,
     ) -> String
     where
-        F: Fn(&(String, u64, String, String)) -> String,
+        F: Fn(&(String, u64, String, &String)) -> String,
     {
         let max_elem_size = rows
             .iter()
@@ -541,8 +595,8 @@ impl ResultRecorder {
             ..GC root monitor used: {}
             ..GC primitive array dump: {}
             ..GC object array dump: {}
-            ..GC root class dump: {}
-            ..GC root instance dump: {}",
+            ..GC class dump: {}
+            ..GC instance dump: {}",
             self.heap_summaries,
             self.heap_dumps,
             self.heap_dump_segments_all_sub_records,
@@ -558,7 +612,7 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_primitive_array_dump,
             self.heap_dump_segments_gc_object_array_dump,
             self.heap_dump_segments_gc_class_dump,
-            self.classes_all_instance_total_size_by_id.len()
+            self.heap_dump_segments_gc_instance_dump,
         );
 
         format!("{}\n{}", top_summary, heap_summary)

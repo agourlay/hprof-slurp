@@ -24,30 +24,57 @@ Heap summaries: 0
 ..GC root monitor used: 4
 ..GC primitive array dump: 2891
 ..GC object array dump: 748
-..GC root class dump: 474
-..GC root instance dump: 201
+..GC class dump: 474
+..GC instance dump: 4149
 
-Top 20 allocations for the 2.49MiB heap total size:
+Found a total of 2.51MiB of instances allocated on the heap.
+
+Top 20 allocated classes:
 
 Total size | Instances |     Largest | Class name
 -----------------------------------------------------------------------------------
-   1.99MiB |       436 |   634.77KiB | Int[]
- 189.33KiB |      1991 |    16.00KiB | Char[]
-  83.52KiB |       443 |     8.00KiB | Byte[]
+   1.99MiB |       436 |   634.78KiB | int[]
+ 197.11KiB |      1991 |    16.02KiB | char[]
+  85.25KiB |       443 |     8.02KiB | byte[]
+  47.38KiB |      1516 |  32.00bytes | java/lang/String
   45.42KiB |       560 |     8.02KiB | java/lang/Object[]
-  41.45KiB |      1516 |  28.00bytes | java/lang/String
   14.77KiB |       378 |  40.00bytes | java/util/LinkedList$Node
-  13.90KiB |       126 | 113.00bytes | java/lang/reflect/Field
-   9.11KiB |       212 |  44.00bytes | java/util/HashMap$Node
+  14.03KiB |       126 | 114.00bytes | java/lang/reflect/Field
+   9.94KiB |       212 |  48.00bytes | java/util/HashMap$Node
    7.42KiB |       190 |  40.00bytes | java/util/LinkedList
+   6.05KiB |       258 |  24.00bytes | java/lang/Integer
    5.91KiB |        18 |     2.02KiB | java/util/HashMap$Node[]
+   5.44KiB |       116 |  48.00bytes | java/util/Hashtable$Entry
    5.36KiB |        98 |  56.00bytes | java/lang/ref/SoftReference
-   5.04KiB |       258 |  20.00bytes | java/lang/Integer
-   4.98KiB |       116 |  44.00bytes | java/util/Hashtable$Entry
-   4.10KiB |       150 |  28.00bytes | java/lang/StringBuilder
+   4.69KiB |       150 |  32.00bytes | java/lang/StringBuilder
    3.50KiB |        32 | 112.00bytes | java/net/URL
+   3.42KiB |        73 |  48.00bytes | java/io/File
    3.17KiB |        12 | 776.00bytes | java/util/Hashtable$Entry[]
-   3.14KiB |        73 |  44.00bytes | java/io/File
    3.13KiB |        56 | 144.00bytes | java/lang/String[]
-   2.71KiB |        63 |  44.00bytes | java/util/concurrent/ConcurrentHashMap$Node
+   2.95KiB |        63 |  48.00bytes | java/util/concurrent/ConcurrentHashMap$Node
    2.50KiB |        40 |  64.00bytes | java/lang/ref/Finalizer
+
+Top 20 largest instances:
+
+ Total size | Instances |     Largest | Class name
+--------------------------------------------------------------------------------------
+    1.99MiB |       436 |   634.78KiB | int[]
+  197.11KiB |      1991 |    16.02KiB | char[]
+   85.25KiB |       443 |     8.02KiB | byte[]
+   45.42KiB |       560 |     8.02KiB | java/lang/Object[]
+    5.91KiB |        18 |     2.02KiB | java/util/HashMap$Node[]
+    2.05KiB |         2 |     2.02KiB | java/lang/invoke/MethodHandle[]
+    2.02KiB |         1 |     2.02KiB | java/lang/Integer[]
+    3.17KiB |        12 | 776.00bytes | java/util/Hashtable$Entry[]
+    1.01KiB |         9 | 312.00bytes | java/lang/reflect/Field[]
+    1.48KiB |         7 | 272.00bytes | java/util/concurrent/ConcurrentHashMap$Node[]
+380.00bytes |         2 | 190.00bytes | simple/Producer
+380.00bytes |         2 | 190.00bytes | simple/Consumer
+176.00bytes |         1 | 176.00bytes | java/lang/ref/Finalizer$FinalizerThread
+    1.36KiB |         8 | 174.00bytes | java/lang/Thread
+174.00bytes |         1 | 174.00bytes | java/lang/ref/Reference$ReferenceHandler
+296.00bytes |         2 | 148.00bytes | java/lang/reflect/Method
+148.00bytes |         1 | 148.00bytes | sun/misc/Launcher$AppClassLoader
+    3.13KiB |        56 | 144.00bytes | java/lang/String[]
+    1.97KiB |        14 | 144.00bytes | java/util/WeakHashMap$Entry[]
+144.00bytes |         1 | 144.00bytes | sun/net/www/protocol/file/FileURLConnection
