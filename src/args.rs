@@ -1,7 +1,7 @@
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
+use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Arg, Command};
-use clap::{crate_authors, crate_version, crate_name, crate_description};
 use std::path::Path;
 
 fn command() -> clap::Command<'static> {
