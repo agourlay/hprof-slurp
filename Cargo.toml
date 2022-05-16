@@ -1,6 +1,6 @@
 [package]
 name = "hprof-slurp"
-version = "0.4.2"
+version = "0.4.3"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 description = "JVM heap dump hprof file analyzer"
 edition = "2021"
