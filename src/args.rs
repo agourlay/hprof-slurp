@@ -1,14 +1,14 @@
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
 use clap::{Arg, Command};
-use clap::crate_version;
+use clap::{crate_authors, crate_version, crate_name, crate_description};
 use std::path::Path;
 
 fn command() -> clap::Command<'static> {
-    Command::new("hprof-slurp")
+    Command::new(crate_name!())
         .version(crate_version!())
-        .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
-        .about("JVM heap dump hprof file analyzer")
+        .author(crate_authors!("\n"))
+        .about(crate_description!())
         .arg(
             Arg::new("inputFile")
                 .help("binary hprof input file")
