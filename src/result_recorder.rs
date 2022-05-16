@@ -10,26 +10,33 @@ use crate::parser::record::Record::*;
 use crate::utils::pretty_bytes_size;
 
 #[derive(Debug, Copy, Clone)]
+pub struct ClassInfo {
+    super_class_object_id: u64,
+    instance_size: u32,
+}
+
+impl ClassInfo {
+    fn new(super_class_object_id: u64, instance_size: u32) -> Self {
+        Self {
+            super_class_object_id,
+            instance_size,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct ClassInstanceCounter {
-    number_of_instance: u64,
-    max_size_seen: u64,
-    total_size: u64,
+    number_of_instances: u64,
 }
 
 impl ClassInstanceCounter {
-    pub fn add_instance(&mut self, size: u64) {
-        self.number_of_instance += 1;
-        self.total_size += size;
-        if size > self.max_size_seen {
-            self.max_size_seen = size
-        }
+    pub fn add_instance(&mut self) {
+        self.number_of_instances += 1;
     }
 
     pub fn empty() -> ClassInstanceCounter {
         ClassInstanceCounter {
-            number_of_instance: 0,
-            total_size: 0,
-            max_size_seen: 0,
+            number_of_instances: 0,
         }
     }
 }
@@ -99,7 +106,7 @@ pub struct ResultRecorder {
     // "object_id" -> "class_id" -> "class_name_id" -> "utf8_string"
     utf8_strings_by_id: AHashMap<u64, String>,
     classes_loaded_by_id: AHashMap<u64, u64>,
-    classes_single_instance_size_by_id: AHashMap<u64, u32>,
+    classes_single_instance_size_by_id: AHashMap<u64, ClassInfo>,
     classes_all_instance_total_size_by_id: AHashMap<u64, ClassInstanceCounter>,
     primitive_array_counters: AHashMap<FieldType, ArrayCounter>,
     object_array_counters: AHashMap<u64, ArrayCounter>,
@@ -192,118 +199,102 @@ impl ResultRecorder {
     }
 
     fn record_records(&mut self, records: &[Record]) {
-        records.iter().for_each(|record| {
-            match record {
-                Utf8String { id, str } => {
-                    self.utf8_strings_by_id.insert(*id, str.clone());
-                }
-                LoadClass {
-                    class_object_id,
-                    class_name_id,
-                    ..
-                } => {
-                    self.classes_loaded_by_id
-                        .insert(*class_object_id, *class_name_id);
-                }
-                UnloadClass { .. } => self.classes_unloaded += 1,
-                StackFrame { .. } => self.stack_frames += 1,
-                StackTrace { .. } => self.stack_traces += 1,
-                StartThread { .. } => self.start_threads += 1,
-                EndThread { .. } => self.end_threads += 1,
-                AllocationSites { .. } => self.allocation_sites += 1,
-                HeapSummary { .. } => self.heap_summaries += 1,
-                ControlSettings { .. } => self.control_settings += 1,
-                CpuSamples { .. } => self.cpu_samples += 1,
-                HeapDumpEnd { .. } => (),
-                HeapDumpStart { .. } => self.heap_dumps += 1,
-                GcSegment(gc_record) => {
-                    self.heap_dump_segments_all_sub_records += 1;
-                    match gc_record {
-                        GcRecord::RootUnknown { .. } => {
-                            self.heap_dump_segments_gc_root_unknown += 1
-                        }
-                        GcRecord::RootThreadObject { .. } => {
-                            self.heap_dump_segments_gc_root_thread_object += 1
-                        }
-                        GcRecord::RootJniGlobal { .. } => {
-                            self.heap_dump_segments_gc_root_jni_global += 1
-                        }
-                        GcRecord::RootJniLocal { .. } => {
-                            self.heap_dump_segments_gc_root_jni_local += 1
-                        }
-                        GcRecord::RootJavaFrame { .. } => {
-                            self.heap_dump_segments_gc_root_java_frame += 1
-                        }
-                        GcRecord::RootNativeStack { .. } => {
-                            self.heap_dump_segments_gc_root_native_stack += 1
-                        }
-                        GcRecord::RootStickyClass { .. } => {
-                            self.heap_dump_segments_gc_root_sticky_class += 1
-                        }
-                        GcRecord::RootThreadBlock { .. } => {
-                            self.heap_dump_segments_gc_root_thread_block += 1
-                        }
-                        GcRecord::RootMonitorUsed { .. } => {
-                            self.heap_dump_segments_gc_root_monitor_used += 1
-                        }
-                        GcRecord::InstanceDump {
-                            class_object_id,
-                            data_size,
-                            ..
-                        } => {
-                            // no need to perform a lookup in `classes_instance_size_by_id`
-                            // data_size is available in the record
+        records.iter().for_each(|record| match record {
+            Utf8String { id, str } => {
+                self.utf8_strings_by_id.insert(*id, str.clone());
+            }
+            LoadClass {
+                class_object_id,
+                class_name_id,
+                ..
+            } => {
+                self.classes_loaded_by_id
+                    .insert(*class_object_id, *class_name_id);
+            }
+            UnloadClass { .. } => self.classes_unloaded += 1,
+            StackFrame { .. } => self.stack_frames += 1,
+            StackTrace { .. } => self.stack_traces += 1,
+            StartThread { .. } => self.start_threads += 1,
+            EndThread { .. } => self.end_threads += 1,
+            AllocationSites { .. } => self.allocation_sites += 1,
+            HeapSummary { .. } => self.heap_summaries += 1,
+            ControlSettings { .. } => self.control_settings += 1,
+            CpuSamples { .. } => self.cpu_samples += 1,
+            HeapDumpEnd { .. } => (),
+            HeapDumpStart { .. } => self.heap_dumps += 1,
+            GcSegment(gc_record) => {
+                self.heap_dump_segments_all_sub_records += 1;
+                match gc_record {
+                    GcRecord::RootUnknown { .. } => self.heap_dump_segments_gc_root_unknown += 1,
+                    GcRecord::RootThreadObject { .. } => {
+                        self.heap_dump_segments_gc_root_thread_object += 1
+                    }
+                    GcRecord::RootJniGlobal { .. } => {
+                        self.heap_dump_segments_gc_root_jni_global += 1
+                    }
+                    GcRecord::RootJniLocal { .. } => self.heap_dump_segments_gc_root_jni_local += 1,
+                    GcRecord::RootJavaFrame { .. } => {
+                        self.heap_dump_segments_gc_root_java_frame += 1
+                    }
+                    GcRecord::RootNativeStack { .. } => {
+                        self.heap_dump_segments_gc_root_native_stack += 1
+                    }
+                    GcRecord::RootStickyClass { .. } => {
+                        self.heap_dump_segments_gc_root_sticky_class += 1
+                    }
+                    GcRecord::RootThreadBlock { .. } => {
+                        self.heap_dump_segments_gc_root_thread_block += 1
+                    }
+                    GcRecord::RootMonitorUsed { .. } => {
+                        self.heap_dump_segments_gc_root_monitor_used += 1
+                    }
+                    GcRecord::InstanceDump {
+                        class_object_id, ..
+                    } => {
+                        self.classes_all_instance_total_size_by_id
+                            .entry(*class_object_id)
+                            .or_insert_with(ClassInstanceCounter::empty)
+                            .add_instance();
 
-                            // https://www.baeldung.com/java-memory-layout
-                            // total_size = object_header + data
-                            // on a 64-bit arch.
-                            // object_header = mark(ref_size) + klass(4) + padding_gap(4) = 16 bytes
-                            // data = data_size + padding_next(??)
-                            let object_header = self.id_size + 4 + 4;
-                            let padding_next = (object_header + data_size).rem_euclid(8);
-                            self.classes_all_instance_total_size_by_id
-                                .entry(*class_object_id)
-                                .or_insert_with(ClassInstanceCounter::empty)
-                                .add_instance((object_header + data_size + padding_next) as u64);
+                        self.heap_dump_segments_gc_instance_dump += 1
+                    }
+                    GcRecord::ObjectArrayDump {
+                        number_of_elements,
+                        array_class_id,
+                        ..
+                    } => {
+                        self.object_array_counters
+                            .entry(*array_class_id)
+                            .or_insert_with(ArrayCounter::empty)
+                            .add_elements_from_array(*number_of_elements);
 
-                            self.heap_dump_segments_gc_instance_dump += 1
-                        }
-                        GcRecord::ObjectArrayDump {
-                            number_of_elements,
-                            array_class_id,
-                            ..
-                        } => {
-                            self.object_array_counters
-                                .entry(*array_class_id)
-                                .or_insert_with(ArrayCounter::empty)
-                                .add_elements_from_array(*number_of_elements);
+                        self.heap_dump_segments_gc_object_array_dump += 1
+                    }
+                    GcRecord::PrimitiveArrayDump {
+                        number_of_elements,
+                        element_type,
+                        ..
+                    } => {
+                        self.primitive_array_counters
+                            .entry(*element_type)
+                            .or_insert_with(ArrayCounter::empty)
+                            .add_elements_from_array(*number_of_elements);
 
-                            self.heap_dump_segments_gc_object_array_dump += 1
-                        }
-                        GcRecord::PrimitiveArrayDump {
-                            number_of_elements,
-                            element_type,
-                            ..
-                        } => {
-                            self.primitive_array_counters
-                                .entry(*element_type)
-                                .or_insert_with(ArrayCounter::empty)
-                                .add_elements_from_array(*number_of_elements);
+                        self.heap_dump_segments_gc_primitive_array_dump += 1
+                    }
+                    GcRecord::ClassDump {
+                        class_object_id,
+                        instance_size,
+                        super_class_object_id,
+                        ..
+                    } => {
+                        self.classes_single_instance_size_by_id
+                            .entry(*class_object_id)
+                            .or_insert_with(|| {
+                                ClassInfo::new(*super_class_object_id, *instance_size)
+                            });
 
-                            self.heap_dump_segments_gc_primitive_array_dump += 1
-                        }
-                        GcRecord::ClassDump {
-                            class_object_id,
-                            instance_size,
-                            ..
-                        } => {
-                            // Unused for now, remove it???
-                            self.classes_single_instance_size_by_id
-                                .entry(*class_object_id)
-                                .or_insert(*instance_size);
-
-                            self.heap_dump_segments_gc_class_dump += 1
-                        }
+                        self.heap_dump_segments_gc_class_dump += 1
                     }
                 }
             }
@@ -323,16 +314,52 @@ impl ResultRecorder {
     }
 
     fn render_analysis(&self, top: usize) -> String {
+        // https://www.baeldung.com/java-memory-layout
+        // total_size = object_header + data
+        // on a 64-bit arch.
+        // object_header = mark(ref_size) + klass(4) + padding_gap(4) = 16 bytes
+        // data = instance_size + padding_next(??)
+        let object_header = self.id_size + 4 + 4;
+
         let mut classes_dump_vec: Vec<_> = self
             .classes_all_instance_total_size_by_id
             .iter()
             .map(|(class_id, v)| {
                 let class_name = self.get_class_name_string(class_id);
+                let mut size = 0;
+
+                let ClassInfo {
+                    super_class_object_id,
+                    instance_size,
+                } = self
+                    .classes_single_instance_size_by_id
+                    .get(class_id)
+                    .unwrap();
+                let mut parent_class_id = *super_class_object_id;
+                size += instance_size;
+
+                // recursively add sizes from parent classes
+                while parent_class_id != 0 {
+                    let ClassInfo {
+                        super_class_object_id,
+                        instance_size,
+                    } = self
+                        .classes_single_instance_size_by_id
+                        .get(&parent_class_id)
+                        .unwrap();
+                    size += instance_size;
+                    parent_class_id = *super_class_object_id;
+                }
+                // add object header
+                size += object_header;
+                // add extra padding if any
+                size += size.rem_euclid(8);
+                let total_size = size as u64 * v.number_of_instances;
                 (
                     class_name,
-                    v.number_of_instance,
-                    v.max_size_seen,
-                    v.total_size,
+                    v.number_of_instances,
+                    size as u64, // all instances have the same size
+                    total_size,
                 )
             })
             .collect();

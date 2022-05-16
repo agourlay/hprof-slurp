@@ -310,9 +310,9 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
             class_object_id,
             stack_trace_serial_number,
             super_class_object_id,
-            class_loader_object_id,
-            signers_object_id,
-            protection_domain_object_id,
+            _class_loader_object_id,
+            _signers_object_id,
+            _protection_domain_object_id,
             _reserved_1,
             _reserved_2,
             instance_size,
@@ -334,11 +334,7 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
                                     class_object_id,
                                     stack_trace_serial_number,
                                     super_class_object_id,
-                                    class_loader_object_id,
-                                    signers_object_id,
-                                    protection_domain_object_id,
                                     instance_size,
-                                    constant_pool_size,
                                     const_fields: Box::new(const_fields),
                                     static_fields: Box::new(static_fields),
                                     instance_fields: Box::new(instance_fields),
@@ -353,12 +349,15 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     })
 }
 
-// TODO analyze bytes_segment to extract real values?
 fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     flat_map(
         tuple((parse_id, parse_u32, parse_id, parse_u32)),
         |(object_id, stack_trace_serial_number, class_object_id, data_size)| {
             map(bytes::streaming::take(data_size), move |_bytes_segment| {
+                // Important: The actual content of the instance cannot be analyzed at this point because we miss the class information!
+                // Given that instances are found before the class info in the dump file, it would require two passes on the
+                // dump file with the additional storage of intermediary results on the disk to fully analyze the instances.
+                // hprof-slurp performs a single pass and makes no assumptions on the memory or storage available.
                 InstanceDump {
                     object_id,
                     stack_trace_serial_number,
