@@ -3,13 +3,17 @@
 
 `hprof-slurp` is a specialized JVM heap dump analyzer.
 
-It is named after the `hprof` format which is the used by the [JDK](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62) to encode heap dumps.
+It is named after the `hprof` format which is used by the [JDK](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62) to encode heap dumps.
+
+## Motivation
 
 The underlying motivation is to enable the analysis of **huge** heap dumps which are much larger than the amount of RAM available on the host system.
 
 `hprof-slurp` processes dump files in a **streaming fashion in a single pass** without storing intermediary results on the host.
 
-This tool provides a fast and cheap overview of dump file in order to decide if it makes sense to spin up an expensive beefy instance to run more exhaustive tools.
+This approach makes it possible to provide an extremely fast overview of dump files without the need to spin up expensive beefy instance.
+
+However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/mat/) and [VisualVM](https://visualvm.github.io/) which provide more advanced features at a different cost.
 
 ## Features
 
