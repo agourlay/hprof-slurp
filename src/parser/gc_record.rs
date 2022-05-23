@@ -116,14 +116,12 @@ pub enum GcRecord {
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         array_class_id: u64,
-        elements: Vec<u64>,
     },
     PrimitiveArrayDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         element_type: FieldType,
-        array_value: ArrayValue,
     },
     ClassDump {
         class_object_id: u64,

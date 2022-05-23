@@ -41,7 +41,9 @@ const TAG_GC_INSTANCE_DUMP: u8 = 0x21;
 const TAG_GC_OBJ_ARRAY_DUMP: u8 = 0x22;
 const TAG_GC_PRIM_ARRAY_DUMP: u8 = 0x23;
 
-// TODO use `id_size` to change impl. of parse_id to support 32 bits dump
+// TODO currently defaults to 64 bits - use instead caller's `id_size` to change impl. of parse_id to support 32 bits dump.
+const ID_SIZE: u32 = 8;
+
 pub struct HprofRecordParser {
     debug_mode: bool,
     heap_dump_remaining_len: u32,
@@ -258,6 +260,58 @@ fn parse_field_value(ty: FieldType) -> impl Fn(&[u8]) -> IResult<&[u8], FieldVal
     }
 }
 
+#[allow(dead_code)]
+// could be used in the future to analyze content of largest arrays
+fn parse_array_value(
+    element_type: FieldType,
+    number_of_elements: u32,
+) -> impl Fn(&[u8]) -> IResult<&[u8], ArrayValue> {
+    move |i| match element_type {
+        FieldType::Object => panic!("object type in primitive array"),
+        FieldType::Bool => map(count(parse_u8, number_of_elements as usize), |res| {
+            ArrayValue::Bool(res.iter().map(|b| *b != 0).collect())
+        })(i),
+        FieldType::Char => map(count(parse_u16, number_of_elements as usize), |res| {
+            ArrayValue::Char(res)
+        })(i),
+        FieldType::Float => map(count(parse_f32, number_of_elements as usize), |res| {
+            ArrayValue::Float(res)
+        })(i),
+        FieldType::Double => map(count(parse_f64, number_of_elements as usize), |res| {
+            ArrayValue::Double(res)
+        })(i),
+        FieldType::Byte => map(count(parse_i8, number_of_elements as usize), |res| {
+            ArrayValue::Byte(res)
+        })(i),
+        FieldType::Short => map(count(parse_i16, number_of_elements as usize), |res| {
+            ArrayValue::Short(res)
+        })(i),
+        FieldType::Int => map(count(parse_i32, number_of_elements as usize), |res| {
+            ArrayValue::Int(res)
+        })(i),
+        FieldType::Long => map(count(parse_i64, number_of_elements as usize), |res| {
+            ArrayValue::Long(res)
+        })(i),
+    }
+}
+
+fn skip_array_value(
+    element_type: FieldType,
+    number_of_elements: u32,
+) -> impl Fn(&[u8]) -> IResult<&[u8], &[u8]> {
+    move |i| match element_type {
+        FieldType::Object => panic!("object type in primitive array"),
+        FieldType::Bool => bytes::streaming::take(number_of_elements)(i),
+        FieldType::Char => bytes::streaming::take(number_of_elements * 2)(i),
+        FieldType::Float => bytes::streaming::take(number_of_elements * 4)(i),
+        FieldType::Double => bytes::streaming::take(number_of_elements * 8)(i),
+        FieldType::Byte => bytes::streaming::take(number_of_elements)(i),
+        FieldType::Short => bytes::streaming::take(number_of_elements * 2)(i),
+        FieldType::Int => bytes::streaming::take(number_of_elements * 4)(i),
+        FieldType::Long => bytes::streaming::take(number_of_elements * 8)(i),
+    }
+}
+
 fn parse_field_type(i: &[u8]) -> IResult<&[u8], FieldType> {
     map(parse_i8, FieldType::from_value)(i)
 }
@@ -369,73 +423,44 @@ fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     )(i)
 }
 
-// TODO inject real id_size instead of '8'
 fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    let (r1, (object_id, stack_trace_serial_number, number_of_elements, array_class_id)) =
-        tuple((parse_id, parse_u32, parse_u32, parse_id))(i)?;
-
-    // load eagerly memory in order to parse elements in a single pass
-    // avoid pathological case of repeated parsing failures on a growing buffer
-    let (r2, data_elements) = bytes::streaming::take(number_of_elements * 8)(r1)?;
-
-    let (r3, oad) = map(
-        count(parse_id, number_of_elements as usize),
-        move |elements| ObjectArrayDump {
-            object_id,
-            stack_trace_serial_number,
-            number_of_elements,
-            array_class_id,
-            elements,
+    flat_map(
+        tuple((parse_id, parse_u32, parse_u32, parse_id)),
+        |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
+            map(
+                bytes::streaming::take(number_of_elements * ID_SIZE),
+                move |_byte_array_elements| {
+                    // Do not parse the array of object references as it is not needed for any analyses so far.
+                    // see `count(parse_id, number_of_elements as usize)(byte_array_elements)`
+                    ObjectArrayDump {
+                        object_id,
+                        stack_trace_serial_number,
+                        number_of_elements,
+                        array_class_id,
+                    }
+                },
+            )
         },
-    )(data_elements)?;
-    assert!(r3.is_empty());
-    Ok((r2, oad))
+    )(i)
 }
 
-// TODO use nom combinators (instead of Result's)
-// TODO could be optimized with `bytes::streaming::take` like in `parse_gc_object_array_dump`
 fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    tuple((parse_id, parse_u32, parse_u32, parse_field_type))(i).and_then(
-        |(r1, (object_id, stack_trace_serial_number, number_of_elements, element_type))| {
-            match element_type {
-                FieldType::Object => panic!("object type in primitive array"),
-                FieldType::Bool => map(count(parse_u8, number_of_elements as usize), |res| {
-                    ArrayValue::Bool(res.iter().map(|b| *b != 0).collect())
-                })(r1),
-                FieldType::Char => map(count(parse_u16, number_of_elements as usize), |res| {
-                    ArrayValue::Char(res)
-                })(r1),
-                FieldType::Float => map(count(parse_f32, number_of_elements as usize), |res| {
-                    ArrayValue::Float(res)
-                })(r1),
-                FieldType::Double => map(count(parse_f64, number_of_elements as usize), |res| {
-                    ArrayValue::Double(res)
-                })(r1),
-                FieldType::Byte => map(count(parse_i8, number_of_elements as usize), |res| {
-                    ArrayValue::Byte(res)
-                })(r1),
-                FieldType::Short => map(count(parse_i16, number_of_elements as usize), |res| {
-                    ArrayValue::Short(res)
-                })(r1),
-                FieldType::Int => map(count(parse_i32, number_of_elements as usize), |res| {
-                    ArrayValue::Int(res)
-                })(r1),
-                FieldType::Long => map(count(parse_i64, number_of_elements as usize), |res| {
-                    ArrayValue::Long(res)
-                })(r1),
-            }
-            .map(|(r2, array_value)| {
-                let gpad = PrimitiveArrayDump {
+    flat_map(
+        tuple((parse_id, parse_u32, parse_u32, parse_field_type)),
+        |(object_id, stack_trace_serial_number, number_of_elements, element_type)| {
+            // Do not parse the array of primitives as it is not needed for any analyses so far.
+            // see `parse_array_value(element_type, number_of_elements)`
+            map(
+                skip_array_value(element_type, number_of_elements),
+                move |_data_array_elements| PrimitiveArrayDump {
                     object_id,
                     stack_trace_serial_number,
                     number_of_elements,
                     element_type,
-                    array_value,
-                };
-                (r2, gpad)
-            })
+                },
+            )
         },
-    )
+    )(i)
 }
 
 fn parse_header_record(i: &[u8]) -> IResult<&[u8], RecordHeader> {
@@ -444,11 +469,13 @@ fn parse_header_record(i: &[u8]) -> IResult<&[u8], RecordHeader> {
     })(i)
 }
 
-// TODO inject real id_size instead of '8'
 fn parse_utf8_string(i: &[u8]) -> IResult<&[u8], Record> {
     flat_map(parse_header_record, |header_record| {
         map(
-            tuple((parse_id, bytes::streaming::take(header_record.length - 8))),
+            tuple((
+                parse_id,
+                bytes::streaming::take(header_record.length - ID_SIZE),
+            )),
             |(id, b)| {
                 let str = String::from_utf8_lossy(b).to_string();
                 Utf8String { id, str }
@@ -507,11 +534,10 @@ fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
     )(i)
 }
 
-// TODO inject correct id_size instead of '8'
 fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
     flat_map(parse_header_record, |header_record| {
         // (header_record.length - (3 * parse_u32)) / id_size = (header_record.length - 12) / 8
-        let stack_frame_ids_len = (header_record.length - 12) / 8;
+        let stack_frame_ids_len = (header_record.length - 12) / ID_SIZE;
         map(
             tuple((
                 parse_u32,
