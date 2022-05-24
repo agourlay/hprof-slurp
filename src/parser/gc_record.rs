@@ -67,7 +67,6 @@ pub enum ArrayValue {
 }
 
 #[derive(Debug)]
-#[allow(clippy::box_collection)]
 pub enum GcRecord {
     RootUnknown {
         object_id: u64,
@@ -128,8 +127,28 @@ pub enum GcRecord {
         stack_trace_serial_number: u32,
         super_class_object_id: u64,
         instance_size: u32,
-        const_fields: Box<Vec<(ConstFieldInfo, FieldValue)>>,
-        static_fields: Box<Vec<(FieldInfo, FieldValue)>>,
-        instance_fields: Box<Vec<FieldInfo>>,
+        fields: Box<ClassDumpFields>, // keep largest variant size low
     },
+}
+
+#[derive(Debug)]
+#[allow(unused)]
+pub struct ClassDumpFields {
+    const_fields: Vec<(ConstFieldInfo, FieldValue)>,
+    static_fields: Vec<(FieldInfo, FieldValue)>,
+    instance_fields: Vec<FieldInfo>,
+}
+
+impl ClassDumpFields {
+    pub fn new(
+        const_fields: Vec<(ConstFieldInfo, FieldValue)>,
+        static_fields: Vec<(FieldInfo, FieldValue)>,
+        instance_fields: Vec<FieldInfo>,
+    ) -> Self {
+        Self {
+            const_fields,
+            static_fields,
+            instance_fields,
+        }
+    }
 }

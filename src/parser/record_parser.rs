@@ -384,14 +384,17 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
                     parse_u16(r4).and_then(|(r5, instance_field_number)| {
                         count(parse_instance_field_item, instance_field_number as usize)(r5).map(
                             |(r6, instance_fields)| {
+                                let fields = ClassDumpFields::new(
+                                    const_fields,
+                                    static_fields,
+                                    instance_fields,
+                                );
                                 let gcd = ClassDump {
                                     class_object_id,
                                     stack_trace_serial_number,
                                     super_class_object_id,
                                     instance_size,
-                                    const_fields: Box::new(const_fields),
-                                    static_fields: Box::new(static_fields),
-                                    instance_fields: Box::new(instance_fields),
+                                    fields: Box::new(fields),
                                 };
                                 (r6, gcd)
                             },
