@@ -49,7 +49,7 @@ pub struct HprofRecordParser {
     heap_dump_remaining_len: u32,
 }
 
-impl<'p> HprofRecordParser {
+impl HprofRecordParser {
     pub fn new(debug_mode: bool) -> Self {
         HprofRecordParser {
             debug_mode,
@@ -58,7 +58,7 @@ impl<'p> HprofRecordParser {
     }
 
     // TODO use nom combinators (instead of Result's)
-    pub fn parse_hprof_record(&'p mut self) -> impl FnMut(&'p [u8]) -> IResult<&'p [u8], Record> {
+    pub fn parse_hprof_record(&mut self) -> impl FnMut(&[u8]) -> IResult<&[u8], Record> + '_ {
         |i| {
             if self.heap_dump_remaining_len == 0 {
                 parse_u8(i).and_then(|(r1, tag)| {
@@ -99,11 +99,11 @@ impl<'p> HprofRecordParser {
         }
     }
 
-    pub fn parse_streaming(
-        &'p mut self,
-        i: &'p [u8],
-        pooled_vec: &'p mut Vec<Record>,
-    ) -> IResult<&'p [u8], ()> {
+    pub fn parse_streaming<'a>(
+        &mut self,
+        i: &'a [u8],
+        pooled_vec: &mut Vec<Record>,
+    ) -> IResult<&'a [u8], ()> {
         lazy_many1(self.parse_hprof_record(), pooled_vec)(i)
     }
 }
