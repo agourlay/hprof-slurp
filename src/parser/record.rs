@@ -24,6 +24,7 @@ pub struct CpuSample {
 }
 
 #[derive(Debug)]
+#[allow(clippy::box_collection)]
 pub enum Record {
     Utf8String {
         id: u64,
@@ -60,7 +61,7 @@ pub enum Record {
         total_bytes_allocated: u64,
         total_instances_allocated: u64,
         number_of_sites: u32,
-        allocation_sites: Vec<AllocationSite>,
+        allocation_sites: Box<Vec<AllocationSite>>,
     },
     StartThread {
         thread_serial_number: u32,

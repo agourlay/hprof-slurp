@@ -665,7 +665,7 @@ fn parse_allocation_sites(i: &[u8]) -> IResult<&[u8], Record> {
                     total_bytes_allocated,
                     total_instances_allocated,
                     number_of_sites,
-                    allocation_sites,
+                    allocation_sites: Box::new(allocation_sites),
                 },
             )
         },
