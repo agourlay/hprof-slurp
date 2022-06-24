@@ -5,7 +5,7 @@ use nom::Err;
 use nom::Needed::Size;
 use nom::Needed::Unknown;
 
-use std::sync::mpsc::{Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
 

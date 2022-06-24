@@ -3,8 +3,7 @@ use std::io::{BufReader, Read};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender};
 
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::*;
@@ -41,11 +40,12 @@ pub fn slurp_file(
     );
 
     // Communication channel from pre-fetcher to parser
-    let (send_data, receive_data): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
+    let (send_data, receive_data): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
+        crossbeam_channel::unbounded();
 
     // Communication channel from parser to pre-fetcher (pooled input buffers)
     let (send_pooled_data, receive_pooled_data): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
-        mpsc::channel();
+        crossbeam_channel::unbounded();
 
     // Init pooled data (at most two buffers in flight)
     for _ in 0..2 {
@@ -56,18 +56,19 @@ pub fn slurp_file(
 
     // Communication channel from parser to recorder
     let (send_records, receive_records): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
-        mpsc::channel();
+        crossbeam_channel::unbounded();
 
     // Communication channel from recorder to parser (pooled record buffers)
     let (send_pooled_vec, receive_pooled_vec): (Sender<Vec<Record>>, Receiver<Vec<Record>>) =
-        mpsc::channel();
+        crossbeam_channel::unbounded();
 
     // Communication channel from recorder to main
     let (send_result, receive_result): (Sender<RenderedResult>, Receiver<RenderedResult>) =
-        mpsc::channel();
+        crossbeam_channel::unbounded();
 
     // Communication channel from parser to main
-    let (send_progress, receive_progress): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+    let (send_progress, receive_progress): (Sender<usize>, Receiver<usize>) =
+        crossbeam_channel::unbounded();
 
     // Init pre-fetcher
     let prefetcher = PrefetchReader::new(reader, file_len, FILE_HEADER_LENGTH, READ_BUFFER_SIZE);

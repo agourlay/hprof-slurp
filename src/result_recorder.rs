@@ -1,6 +1,6 @@
 use ahash::AHashMap;
+use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
-use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
 

@@ -1,6 +1,6 @@
+use crossbeam_channel::{Receiver, Sender};
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
 
