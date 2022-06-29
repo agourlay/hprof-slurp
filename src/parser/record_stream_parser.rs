@@ -20,14 +20,19 @@ pub struct HprofRecordStreamParser {
 }
 
 impl HprofRecordStreamParser {
-    pub fn new(debug_mode: bool, file_len: usize, processed_len: usize) -> Self {
+    pub fn new(
+        debug_mode: bool,
+        file_len: usize,
+        processed_len: usize,
+        initial_loop_buffer: Vec<u8>,
+    ) -> Self {
         let parser = HprofRecordParser::new(debug_mode);
         HprofRecordStreamParser {
             parser,
             debug_mode,
             file_len,
             processed_len,
-            loop_buffer: Vec::new(),
+            loop_buffer: initial_loop_buffer,
             pooled_vec: Vec::new(),
             needed: 0,
         }

@@ -47,7 +47,7 @@ pub fn slurp_file(
     let (send_pooled_data, receive_pooled_data): (Sender<Vec<u8>>, Receiver<Vec<u8>>) =
         crossbeam_channel::unbounded();
 
-    // Init pooled data (at most two buffers in flight)
+    // Init pooled binary data with more than 1 element to enable the reader to make progress interdependently
     for _ in 0..2 {
         send_pooled_data
             .send(Vec::with_capacity(READ_BUFFER_SIZE))
@@ -74,13 +74,21 @@ pub fn slurp_file(
     let prefetcher = PrefetchReader::new(reader, file_len, FILE_HEADER_LENGTH, READ_BUFFER_SIZE);
     let prefetch_thread = prefetcher.start(send_data, receive_pooled_data)?;
 
-    // Init pooled vec
+    // Init pooled result vec
     send_pooled_vec
-        .send(vec![])
+        .send(Vec::new())
         .expect("recorder channel should be alive");
 
     // Init stream parser
-    let stream_parser = HprofRecordStreamParser::new(debug_mode, file_len, FILE_HEADER_LENGTH);
+    let initial_loop_buffer = Vec::with_capacity(READ_BUFFER_SIZE); // will be added to the data pool after the first chunk
+    let stream_parser = HprofRecordStreamParser::new(
+        debug_mode,
+        file_len,
+        FILE_HEADER_LENGTH,
+        initial_loop_buffer,
+    );
+
+    // Start stream parser
     let parser_thread = stream_parser.start(
         receive_data,
         send_pooled_data,
@@ -108,7 +116,7 @@ pub fn slurp_file(
     // Finish and remove progress bar
     pb.finish_and_clear();
 
-    // Wait for rendered result
+    // Wait for final result
     let rendered_result = receive_result
         .recv()
         .expect("result channel should be alive");
