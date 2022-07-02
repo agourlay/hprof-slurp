@@ -5,6 +5,7 @@ use nom::Err;
 use nom::Needed::Size;
 use nom::Needed::Unknown;
 
+use crate::slurp::READ_BUFFER_SIZE;
 use crossbeam_channel::{Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
@@ -87,8 +88,13 @@ impl HprofRecordStreamParser {
                                     send_records
                                         .send(next_pooled_vec)
                                         .expect("channel should not be closed");
-                                    // parsing iteration complete without extra data needed
-                                    self.needed = 0;
+                                    if self.needed > 0 {
+                                        // Multi-buffer object successfully parsed
+                                        // Do not hold on too much working memory
+                                        self.loop_buffer.shrink_to(READ_BUFFER_SIZE * 2);
+                                        // Reset extra data needed flag
+                                        self.needed = 0;
+                                    }
                                 }
                                 Err(Err::Incomplete(Size(n))) => {
                                     if self.debug_mode {
