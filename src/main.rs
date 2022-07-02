@@ -34,8 +34,8 @@ fn main_result() -> Result<(), HprofSlurpError> {
     }
 
     println!(
-        "File successfully processed in {} seconds",
-        now.elapsed().as_secs()
+        "File successfully processed in {:?}",
+        now.elapsed()
     );
     Ok(())
 }
