@@ -1,8 +1,8 @@
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
-use std::thread;
 use std::thread::JoinHandle;
+use std::{mem, thread};
 
 use crate::parser::gc_record::*;
 use crate::parser::record::Record;
@@ -104,7 +104,7 @@ pub struct ResultRecorder {
     heap_dump_segments_gc_class_dump: i32,
     // Captured state
     // "object_id" -> "class_id" -> "class_name_id" -> "utf8_string"
-    utf8_strings_by_id: AHashMap<u64, String>,
+    utf8_strings_by_id: AHashMap<u64, Box<str>>,
     classes_loaded_by_id: AHashMap<u64, u64>,
     classes_single_instance_size_by_id: AHashMap<u64, ClassInfo>,
     classes_all_instance_total_size_by_id: AHashMap<u64, ClassInstanceCounter>,
@@ -156,7 +156,7 @@ impl ResultRecorder {
             .get(class_id)
             .and_then(|class_id| self.utf8_strings_by_id.get(class_id))
             .expect("class_id must have an UTF-8 string representation available")
-            .to_owned()
+            .to_string()
     }
 
     pub fn start(
@@ -171,7 +171,7 @@ impl ResultRecorder {
                 loop {
                     match receive_records.recv() {
                         Ok(mut records) => {
-                            self.record_records(&records);
+                            self.record_records(&mut records);
                             // clear values but retain underlying storage
                             records.clear();
                             // send back pooled vec (swallow errors as it is possible the receiver was already dropped)
@@ -198,10 +198,10 @@ impl ResultRecorder {
             })
     }
 
-    fn record_records(&mut self, records: &[Record]) {
-        records.iter().for_each(|record| match record {
+    fn record_records(&mut self, records: &mut [Record]) {
+        records.iter_mut().for_each(|record| match record {
             Utf8String { id, str } => {
-                self.utf8_strings_by_id.insert(*id, str.clone());
+                self.utf8_strings_by_id.insert(*id, mem::take(str));
             }
             LoadClass {
                 class_object_id,

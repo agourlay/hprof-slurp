@@ -33,9 +33,6 @@ fn main_result() -> Result<(), HprofSlurpError> {
         println!("{}", list_strings);
     }
 
-    println!(
-        "File successfully processed in {:?}",
-        now.elapsed()
-    );
+    println!("File successfully processed in {:?}", now.elapsed());
     Ok(())
 }

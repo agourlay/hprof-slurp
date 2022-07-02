@@ -28,7 +28,7 @@ pub struct CpuSample {
 pub enum Record {
     Utf8String {
         id: u64,
-        str: String,
+        str: Box<str>,
     },
     LoadClass {
         serial_number: u32,

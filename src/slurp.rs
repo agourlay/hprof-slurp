@@ -18,7 +18,7 @@ use crate::utils::pretty_bytes_size;
 const FILE_HEADER_LENGTH: usize = 31;
 
 // 64 MB buffer performs nicely (higher is faster but increases the memory consumption)
-const READ_BUFFER_SIZE: usize = 64 * 1024 * 1024;
+pub const READ_BUFFER_SIZE: usize = 64 * 1024 * 1024;
 
 pub fn slurp_file(
     file_path: String,

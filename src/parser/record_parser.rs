@@ -480,7 +480,7 @@ fn parse_utf8_string(i: &[u8]) -> IResult<&[u8], Record> {
                 bytes::streaming::take(header_record.length - ID_SIZE),
             )),
             |(id, b)| {
-                let str = String::from_utf8_lossy(b).to_string();
+                let str = String::from_utf8_lossy(b).into();
                 Utf8String { id, str }
             },
         )
