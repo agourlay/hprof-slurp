@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 nom = "7.1.1"
 indicatif = "0.17.0-rc.11"
-clap = { version = "3.2.8", features = ["cargo"] }
+clap = { version = "3.2.10", features = ["cargo"] }
 indoc = "1.0.6"
 ahash = "0.7.6"
 thiserror = "1.0.31"
