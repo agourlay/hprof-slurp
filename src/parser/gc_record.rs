@@ -144,7 +144,8 @@ impl ClassDumpFields {
         instance_size: u32,
         const_fields: Vec<(ConstFieldInfo, FieldValue)>,
         static_fields: Vec<(FieldInfo, FieldValue)>,
-        instance_fields: Vec<FieldInfo>) -> Self {
+        instance_fields: Vec<FieldInfo>,
+    ) -> Self {
         Self {
             class_object_id,
             stack_trace_serial_number,
@@ -152,7 +153,7 @@ impl ClassDumpFields {
             instance_size,
             const_fields,
             static_fields,
-            instance_fields
+            instance_fields,
         }
     }
 }
