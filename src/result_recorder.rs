@@ -282,16 +282,14 @@ impl ResultRecorder {
 
                         self.heap_dump_segments_gc_primitive_array_dump += 1
                     }
-                    GcRecord::ClassDump {
-                        class_object_id,
-                        instance_size,
-                        super_class_object_id,
-                        ..
-                    } => {
+                    GcRecord::ClassDump(class_dump_fields) => {
+                        let class_object_id = class_dump_fields.class_object_id;
                         self.classes_single_instance_size_by_id
-                            .entry(*class_object_id)
+                            .entry(class_object_id)
                             .or_insert_with(|| {
-                                ClassInfo::new(*super_class_object_id, *instance_size)
+                                let instance_size = class_dump_fields.instance_size;
+                                let super_class_object_id = class_dump_fields.super_class_object_id;
+                                ClassInfo::new(super_class_object_id, instance_size)
                             });
 
                         self.heap_dump_segments_gc_class_dump += 1

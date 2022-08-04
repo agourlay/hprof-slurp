@@ -122,33 +122,37 @@ pub enum GcRecord {
         number_of_elements: u32,
         element_type: FieldType,
     },
-    ClassDump {
-        class_object_id: u64,
-        stack_trace_serial_number: u32,
-        super_class_object_id: u64,
-        instance_size: u32,
-        fields: Box<ClassDumpFields>, // keep largest variant size low
-    },
+    ClassDump(Box<ClassDumpFields>), // rare enough to be boxed to avoid large variant cost
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct ClassDumpFields {
-    const_fields: Vec<(ConstFieldInfo, FieldValue)>,
-    static_fields: Vec<(FieldInfo, FieldValue)>,
-    instance_fields: Vec<FieldInfo>,
+    pub class_object_id: u64,
+    pub stack_trace_serial_number: u32,
+    pub super_class_object_id: u64,
+    pub instance_size: u32,
+    pub const_fields: Vec<(ConstFieldInfo, FieldValue)>,
+    pub static_fields: Vec<(FieldInfo, FieldValue)>,
+    pub instance_fields: Vec<FieldInfo>,
 }
 
 impl ClassDumpFields {
     pub fn new(
+        class_object_id: u64,
+        stack_trace_serial_number: u32,
+        super_class_object_id: u64,
+        instance_size: u32,
         const_fields: Vec<(ConstFieldInfo, FieldValue)>,
         static_fields: Vec<(FieldInfo, FieldValue)>,
-        instance_fields: Vec<FieldInfo>,
-    ) -> Self {
+        instance_fields: Vec<FieldInfo>) -> Self {
         Self {
+            class_object_id,
+            stack_trace_serial_number,
+            super_class_object_id,
+            instance_size,
             const_fields,
             static_fields,
-            instance_fields,
+            instance_fields
         }
     }
 }
