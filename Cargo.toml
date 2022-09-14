@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 nom = "7.1.1"
-indicatif = "0.17.0"
+indicatif = "0.17.1"
 clap = { version = "3.2.21", features = ["cargo"] }
 indoc = "1.0.7"
 ahash = "0.8.0"
