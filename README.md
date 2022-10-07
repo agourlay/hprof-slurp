@@ -26,20 +26,18 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 
 ```
 ./hprof-slurp --help
-hprof-slurp x.x.x
-Arnaud Gourlay <arnaud.gourlay@gmail.com>
 JVM heap dump hprof file analyzer
 
-USAGE:
-    hprof-slurp [OPTIONS] --inputFile <inputFile>
+Usage: hprof-slurp [OPTIONS] --inputFile <inputFile>
 
-OPTIONS:
-    -d, --debug                    debug info
-    -h, --help                     Print help information
-    -i, --inputFile <inputFile>    binary hprof input file
-    -l, --listStrings              list all Strings found
-    -t, --top <top>                the top results to display [default: 20]
-    -V, --version                  Print version information
+Options:
+  -i, --inputFile <inputFile>  binary hprof input file
+  -t, --top <top>              the top results to display [default: 20]
+  -d, --debug                  debug info
+  -l, --listStrings            list all Strings found
+  -h, --help                   Print help information
+  -V, --version                Print version information
+
 ```
 
 Example:

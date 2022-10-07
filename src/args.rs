@@ -4,7 +4,7 @@ use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Arg, Command};
 use std::path::Path;
 
-fn command() -> clap::Command<'static> {
+fn command() -> Command {
     Command::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!("\n"))
@@ -14,7 +14,7 @@ fn command() -> clap::Command<'static> {
                 .help("binary hprof input file")
                 .long("inputFile")
                 .short('i')
-                .takes_value(true)
+                .num_args(1)
                 .required(true),
         )
         .arg(
@@ -22,41 +22,47 @@ fn command() -> clap::Command<'static> {
                 .help("the top results to display")
                 .long("top")
                 .short('t')
-                .takes_value(true)
+                .num_args(1)
                 .default_value("20")
+                .value_parser(clap::value_parser!(usize))
                 .required(false),
         )
         .arg(
             Arg::new("debug")
                 .help("debug info")
                 .long("debug")
-                .short('d'),
+                .short('d')
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("listStrings")
                 .help("list all Strings found")
                 .long("listStrings")
-                .short('l'),
+                .short('l')
+                .action(clap::ArgAction::SetTrue),
         )
 }
 
 pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
     let matches = command().get_matches();
 
-    let input_file = matches.value_of("inputFile").expect("impossible").trim();
-    if !Path::new(input_file).is_file() {
+    let input_file = matches
+        .get_one::<String>("inputFile")
+        .expect("impossible")
+        .trim();
+    if !Path::new(&input_file).is_file() {
         return Err(InputFileNotFound {
             name: input_file.to_string(),
         });
     }
 
-    let top = matches.value_of_t("top")?;
+    let top: usize = *matches.get_one("top").expect("impossible");
     if top == 0 {
         return Err(InvalidTopPositiveInt);
     }
 
-    let debug = matches.is_present("debug");
-    let list_strings = matches.is_present("listStrings");
+    let debug = matches.get_flag("debug");
+    let list_strings = matches.get_flag("listStrings");
     Ok((input_file.to_string(), top, debug, list_strings))
 }
 
