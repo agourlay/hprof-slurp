@@ -5,6 +5,8 @@
 
 It is named after the `hprof` format which is used by the [JDK](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62) to encode heap dumps.
 
+The design of this tool is described in details in the [following blog articles series](https://agourlay.github.io/tags/hprof-slurp/).
+
 ## Motivation
 
 The underlying motivation is to enable the analysis of **huge** heap dumps which are much larger than the amount of RAM available on the host system.
