@@ -23,6 +23,32 @@ pub struct CpuSample {
     pub stack_trace_serial_number: u32,
 }
 
+#[derive(Debug, Default)]
+pub struct StackFrameData {
+    pub stack_frame_id: u64,
+    pub method_name_id: u64,
+    pub method_signature_id: u64,
+    pub source_file_name_id: u64,
+    pub class_serial_number: u32,
+    pub line_number: i32,
+}
+
+#[derive(Debug, Default)]
+pub struct StackTraceData {
+    pub serial_number: u32,
+    pub thread_serial_number: u32,
+    pub number_of_frames: u32,
+    pub stack_frame_ids: Vec<u64>,
+}
+
+#[derive(Debug, Default)]
+pub struct LoadClassData {
+    pub serial_number: u32,
+    pub class_object_id: u64,
+    pub stack_trace_serial_number: u32,
+    pub class_name_id: u64,
+}
+
 #[derive(Debug)]
 #[allow(clippy::box_collection)]
 pub enum Record {
@@ -30,29 +56,12 @@ pub enum Record {
         id: u64,
         str: Box<str>,
     },
-    LoadClass {
-        serial_number: u32,
-        class_object_id: u64,
-        stack_trace_serial_number: u32,
-        class_name_id: u64,
-    },
+    LoadClass(LoadClassData),
     UnloadClass {
         serial_number: u32,
     },
-    StackFrame {
-        stack_frame_id: u64,
-        method_name_id: u64,
-        method_signature_id: u64,
-        source_file_name_id: u64,
-        class_serial_number: u32,
-        line_number: u32,
-    },
-    StackTrace {
-        serial_number: u32,
-        thread_serial_number: u32,
-        number_of_frames: u32,
-        stack_frame_ids: Vec<u64>,
-    },
+    StackFrame(StackFrameData),
+    StackTrace(StackTraceData),
     AllocationSites {
         flags: u16,
         cutoff_ratio: u32,

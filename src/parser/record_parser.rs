@@ -2,7 +2,9 @@ extern crate nom;
 
 use crate::parser::gc_record::*;
 use crate::parser::primitive_parsers::*;
-use crate::parser::record::{AllocationSite, CpuSample, Record, RecordHeader};
+use crate::parser::record::{
+    AllocationSite, CpuSample, LoadClassData, Record, RecordHeader, StackFrameData, StackTraceData,
+};
 use crate::parser::record_parser::GcRecord::*;
 use crate::parser::record_parser::Record::*;
 use nom::combinator::{flat_map, map};
@@ -491,12 +493,12 @@ fn parse_load_class(i: &[u8]) -> IResult<&[u8], Record> {
         map(
             tuple((parse_u32, parse_id, parse_u32, parse_id)),
             |(serial_number, class_object_id, stack_trace_serial_number, class_name_id)| {
-                LoadClass {
+                LoadClass(LoadClassData {
                     serial_number,
                     class_object_id,
                     stack_trace_serial_number,
                     class_name_id,
-                }
+                })
             },
         ),
     )(i)
@@ -513,7 +515,7 @@ fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            tuple((parse_id, parse_id, parse_id, parse_id, parse_u32, parse_u32)),
+            tuple((parse_id, parse_id, parse_id, parse_id, parse_u32, parse_i32)),
             |(
                 stack_frame_id,
                 method_name_id,
@@ -522,14 +524,14 @@ fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
                 class_serial_number,
                 line_number,
             )| {
-                StackFrame {
+                StackFrame(StackFrameData {
                     stack_frame_id,
                     method_name_id,
                     method_signature_id,
                     source_file_name_id,
                     class_serial_number,
                     line_number,
-                }
+                })
             },
         ),
     )(i)
@@ -546,11 +548,13 @@ fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
                 parse_u32,
                 count(parse_id, stack_frame_ids_len as usize),
             )),
-            |(serial_number, thread_serial_number, number_of_frames, stack_frame_ids)| StackTrace {
-                serial_number,
-                thread_serial_number,
-                number_of_frames,
-                stack_frame_ids,
+            |(serial_number, thread_serial_number, number_of_frames, stack_frame_ids)| {
+                StackTrace(StackTraceData {
+                    serial_number,
+                    thread_serial_number,
+                    number_of_frames,
+                    stack_frame_ids,
+                })
             },
         )
     })(i)

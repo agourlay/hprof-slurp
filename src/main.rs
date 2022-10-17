@@ -28,7 +28,8 @@ fn main_result() -> Result<(), HprofSlurpError> {
 
     // Print results
     println!("{}", rendered_result.summary);
-    println!("{}", rendered_result.analysis);
+    println!("{}", rendered_result.thread_info);
+    println!("{}", rendered_result.memory_usage);
     if let Some(list_strings) = rendered_result.captured_strings {
         println!("{}", list_strings);
     }

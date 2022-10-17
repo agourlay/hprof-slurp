@@ -1,12 +1,13 @@
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
+use std::ops::Deref;
 use std::thread::JoinHandle;
 use std::{mem, thread};
 
 use crate::parser::gc_record::*;
-use crate::parser::record::Record;
 use crate::parser::record::Record::*;
+use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
 use crate::utils::pretty_bytes_size;
 
 #[derive(Debug, Copy, Clone)]
@@ -68,7 +69,8 @@ impl ArrayCounter {
 
 pub struct RenderedResult {
     pub summary: String,
-    pub analysis: String,
+    pub thread_info: String,
+    pub memory_usage: String,
     pub captured_strings: Option<String>,
 }
 
@@ -105,11 +107,15 @@ pub struct ResultRecorder {
     // Captured state
     // "object_id" -> "class_id" -> "class_name_id" -> "utf8_string"
     utf8_strings_by_id: AHashMap<u64, Box<str>>,
-    classes_loaded_by_id: AHashMap<u64, u64>,
+    class_data: Vec<LoadClassData>,         // holds class_data
+    class_data_by_id: AHashMap<u64, usize>, // value is index into class_data
+    class_data_by_serial_number: AHashMap<u32, usize>, // value is index into class_data
     classes_single_instance_size_by_id: AHashMap<u64, ClassInfo>,
     classes_all_instance_total_size_by_id: AHashMap<u64, ClassInstanceCounter>,
     primitive_array_counters: AHashMap<FieldType, ArrayCounter>,
     object_array_counters: AHashMap<u64, ArrayCounter>,
+    stack_trace_by_serial_number: AHashMap<u32, StackTraceData>,
+    stack_frame_by_id: AHashMap<u64, StackFrameData>,
 }
 
 impl ResultRecorder {
@@ -143,20 +149,25 @@ impl ResultRecorder {
             heap_dump_segments_gc_instance_dump: 0,
             heap_dump_segments_gc_class_dump: 0,
             utf8_strings_by_id: AHashMap::new(),
-            classes_loaded_by_id: AHashMap::new(),
+            class_data: vec![],
+            class_data_by_id: AHashMap::new(),
+            class_data_by_serial_number: AHashMap::default(),
             classes_single_instance_size_by_id: AHashMap::new(),
             classes_all_instance_total_size_by_id: AHashMap::new(),
             primitive_array_counters: AHashMap::new(),
             object_array_counters: AHashMap::new(),
+            stack_trace_by_serial_number: AHashMap::default(),
+            stack_frame_by_id: AHashMap::default(),
         }
     }
 
     fn get_class_name_string(&self, class_id: &u64) -> String {
-        self.classes_loaded_by_id
+        self.class_data_by_id
             .get(class_id)
-            .and_then(|class_id| self.utf8_strings_by_id.get(class_id))
+            .and_then(|data_index| self.class_data.get(*data_index))
+            .and_then(|class_data| self.utf8_strings_by_id.get(&class_data.class_name_id))
             .expect("class_id must have an UTF-8 string representation available")
-            .to_string()
+            .replace('/', ".")
     }
 
     pub fn start(
@@ -181,7 +192,8 @@ impl ResultRecorder {
                             // no more Record to pull, generate and send back results
                             let rendered_result = RenderedResult {
                                 summary: self.render_summary(),
-                                analysis: self.render_analysis(self.top),
+                                thread_info: self.render_thread_info(),
+                                memory_usage: self.render_memory_usage(self.top),
                                 captured_strings: if self.list_strings {
                                     Some(self.render_captured_strings())
                                 } else {
@@ -203,17 +215,26 @@ impl ResultRecorder {
             Utf8String { id, str } => {
                 self.utf8_strings_by_id.insert(*id, mem::take(str));
             }
-            LoadClass {
-                class_object_id,
-                class_name_id,
-                ..
-            } => {
-                self.classes_loaded_by_id
-                    .insert(*class_object_id, *class_name_id);
+            LoadClass(load_class_data) => {
+                let class_object_id = load_class_data.class_object_id;
+                let class_serial_number = load_class_data.serial_number;
+                self.class_data.push(mem::take(load_class_data));
+                let data_index = self.class_data.len() - 1;
+                self.class_data_by_id.insert(class_object_id, data_index);
+                self.class_data_by_serial_number
+                    .insert(class_serial_number, data_index);
             }
             UnloadClass { .. } => self.classes_unloaded += 1,
-            StackFrame { .. } => self.stack_frames += 1,
-            StackTrace { .. } => self.stack_traces += 1,
+            StackFrame(stack_frame_data) => {
+                self.stack_frames += 1;
+                self.stack_frame_by_id
+                    .insert(stack_frame_data.stack_frame_id, mem::take(stack_frame_data));
+            }
+            StackTrace(stack_trace_data) => {
+                self.stack_traces += 1;
+                self.stack_trace_by_serial_number
+                    .insert(stack_trace_data.serial_number, mem::take(stack_trace_data));
+            }
             StartThread { .. } => self.start_threads += 1,
             EndThread { .. } => self.end_threads += 1,
             AllocationSites { .. } => self.allocation_sites += 1,
@@ -311,7 +332,70 @@ impl ResultRecorder {
         result
     }
 
-    fn render_analysis(&self, top: usize) -> String {
+    fn render_thread_info(&self) -> String {
+        let mut thread_info = String::new();
+
+        // for each stacktrace
+        let mut stack_traces: Vec<_> = self
+            .stack_trace_by_serial_number
+            .iter()
+            .filter(|(_, stack)| !stack.stack_frame_ids.is_empty()) // omit empty stacktraces
+            .collect();
+
+        stack_traces.sort_by_key(|(serial_number, _)| **serial_number);
+
+        thread_info.push_str(&format!(
+            "\nFound {} threads with stacktraces:\n",
+            stack_traces.len()
+        ));
+
+        for (index, (_id, stack_data)) in stack_traces.iter().enumerate() {
+            thread_info.push_str(&format!("\nThread {}\n", index + 1));
+
+            //  for each stack frames
+            for stack_frame_id in &stack_data.stack_frame_ids {
+                let stack_frame = self.stack_frame_by_id.get(stack_frame_id).unwrap();
+                let class_object_id = self
+                    .class_data_by_serial_number
+                    .get(&stack_frame.class_serial_number)
+                    .and_then(|index| self.class_data.get(*index))
+                    .expect("Class not found")
+                    .class_object_id;
+                let class_name = self.get_class_name_string(&class_object_id);
+                let method_name = self
+                    .utf8_strings_by_id
+                    .get(&stack_frame.method_name_id)
+                    .map(|b| b.deref())
+                    .unwrap_or("unknown method name");
+                let file_name = self
+                    .utf8_strings_by_id
+                    .get(&stack_frame.source_file_name_id)
+                    .map(|b| b.deref())
+                    .unwrap_or("unknown source file");
+
+                // >0: normal
+                // -1: unknown
+                // -2: compiled method
+                // -3: native method
+                let pretty_line_number = match stack_frame.line_number {
+                    -1 => "unknown line number".to_string(),
+                    -2 => "compiled method".to_string(),
+                    -3 => "native method".to_string(),
+                    number => format!("{}", number),
+                };
+
+                // pretty frame output
+                let stack_frame_pretty = format!(
+                    "  at {}.{} ({}:{})\n",
+                    class_name, method_name, file_name, pretty_line_number
+                );
+                thread_info.push_str(&stack_frame_pretty);
+            }
+        }
+        thread_info
+    }
+
+    fn render_memory_usage(&self, top: usize) -> String {
         // https://www.baeldung.com/java-memory-layout
         // total_size = object_header + data
         // on a 64-bit arch.
@@ -440,7 +524,7 @@ impl ResultRecorder {
         let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s as u64).sum();
         let display_total_size = pretty_bytes_size(total_size);
         let allocation_classes_title = format!(
-            "\nFound a total of {} of instances allocated on the heap.\n",
+            "Found a total of {} of instances allocated on the heap.\n",
             display_total_size
         );
         analysis.push_str(&allocation_classes_title);
@@ -595,7 +679,7 @@ impl ResultRecorder {
             Control settings: {}
             CPU samples: {}",
             self.utf8_strings_by_id.len(),
-            self.classes_loaded_by_id.len(),
+            self.class_data_by_id.len(),
             self.classes_unloaded,
             self.stack_traces,
             self.stack_frames,
