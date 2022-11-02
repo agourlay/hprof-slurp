@@ -10,6 +10,6 @@ nom = "7.1.1"
 indicatif = "0.17.1"
 clap = { version = "4.0.18", features = ["cargo"] }
 indoc = "1.0.7"
-ahash = "0.8.0"
+ahash = "0.8.1"
 thiserror = "1.0.37"
 crossbeam-channel = "0.5.6"
