@@ -521,7 +521,7 @@ impl ResultRecorder {
         let mut analysis = String::new();
 
         // Total heap size found banner
-        let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s as u64).sum();
+        let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s).sum();
         let display_total_size = pretty_bytes_size(total_size);
         let allocation_classes_title = format!(
             "Found a total of {} of instances allocated on the heap.\n",
@@ -553,8 +553,8 @@ impl ResultRecorder {
             .iter()
             .take(top)
             .map(|(class_name, count, largest_allocation, allocation_size)| {
-                let display_allocation = pretty_bytes_size(*allocation_size as u64);
-                let largest_display_allocation = pretty_bytes_size(*largest_allocation as u64);
+                let display_allocation = pretty_bytes_size(*allocation_size);
+                let largest_display_allocation = pretty_bytes_size(*largest_allocation);
                 (
                     display_allocation,
                     *count,
