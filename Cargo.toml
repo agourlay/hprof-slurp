@@ -9,7 +9,7 @@ edition = "2021"
 nom = "7.1.1"
 indicatif = "0.17.2"
 clap = { version = "4.0.29", features = ["cargo"] }
-indoc = "1.0.7"
+indoc = "1.0.8"
 ahash = "0.8.2"
 thiserror = "1.0.37"
 crossbeam-channel = "0.5.6"
