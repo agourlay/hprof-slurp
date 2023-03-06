@@ -11,5 +11,5 @@ indicatif = "0.17.3"
 clap = { version = "4.1.8", features = ["cargo"] }
 indoc = "2.0.0"
 ahash = "0.8.3"
-thiserror = "1.0.38"
+thiserror = "1.0.39"
 crossbeam-channel = "0.5.7"
