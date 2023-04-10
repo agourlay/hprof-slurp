@@ -12,4 +12,4 @@ clap = { version = "4.2.1", features = ["cargo"] }
 indoc = "2.0.1"
 ahash = "0.8.3"
 thiserror = "1.0.40"
-crossbeam-channel = "0.5.7"
+crossbeam-channel = "0.5.8"
