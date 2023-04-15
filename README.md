@@ -22,8 +22,8 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 - displays top `n` allocated classes.
 - displays number of instances per class.
 - displays largest instance size per class.
-- display threads stack traces.
-- can list all `Strings` found.
+- displays threads stack traces.
+- lists all `Strings` found.
 
 ## Usage
 
@@ -38,9 +38,8 @@ Options:
   -t, --top <top>              the top results to display [default: 20]
   -d, --debug                  debug info
   -l, --listStrings            list all Strings found
-  -h, --help                   Print help information
-  -V, --version                Print version information
-
+  -h, --help                   Print help
+  -V, --version                Print version
 ```
 
 Example:
