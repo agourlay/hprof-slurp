@@ -55,28 +55,30 @@ Found a total of 2.53MiB of instances allocated on the heap.
 
 Top 20 allocated classes:
 
-Total size | Instances |     Largest | Class name
-----------------------------------------------------------------------------------
-   1.99MiB |       436 |   634.78KiB | int[]
- 197.11KiB |      1991 |    16.02KiB | char[]
-  85.25KiB |       443 |     8.02KiB | byte[]
-  47.38KiB |      1516 |  32.00bytes | java.lang.String
-  45.42KiB |       560 |     8.02KiB | java.lang.Object[]
-  15.26KiB |       126 | 124.00bytes | java.lang.reflect.Field
-  14.77KiB |       378 |  40.00bytes | java.util.LinkedList$Node
-   9.94KiB |       212 |  48.00bytes | java.util.HashMap$Node
-   8.91KiB |       190 |  48.00bytes | java.util.LinkedList
-   8.42KiB |        98 |  88.00bytes | java.lang.ref.SoftReference
-   6.05KiB |       258 |  24.00bytes | java.lang.Integer
-   5.91KiB |        18 |     2.02KiB | java.util.HashMap$Node[]
-   5.86KiB |       150 |  40.00bytes | java.lang.StringBuilder
-   5.44KiB |       116 |  48.00bytes | java.util.Hashtable$Entry
-   5.05KiB |        38 | 136.00bytes | sun.util.locale.LocaleObjectCache$CacheEntry
-   5.00KiB |        40 | 128.00bytes | java.lang.ref.Finalizer
-   3.50KiB |        32 | 112.00bytes | java.net.URL
-   3.42KiB |        73 |  48.00bytes | java.io.File
-   3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]
-   3.13KiB |        56 | 144.00bytes | java.lang.String[]
++------------+-----------+-------------+----------------------------------------------+
+| Total size | Instances |     Largest | Class name                                   |
++------------+-----------+-------------+----------------------------------------------+
+|    1.99MiB |       436 |   634.78KiB | int[]                                        |
+|  197.11KiB |      1991 |    16.02KiB | char[]                                       |
+|   85.25KiB |       443 |     8.02KiB | byte[]                                       |
+|   47.38KiB |      1516 |  32.00bytes | java.lang.String                             |
+|   45.42KiB |       560 |     8.02KiB | java.lang.Object[]                           |
+|   15.26KiB |       126 | 124.00bytes | java.lang.reflect.Field                      |
+|   14.77KiB |       378 |  40.00bytes | java.util.LinkedList$Node                    |
+|    9.94KiB |       212 |  48.00bytes | java.util.HashMap$Node                       |
+|    8.91KiB |       190 |  48.00bytes | java.util.LinkedList                         |
+|    8.42KiB |        98 |  88.00bytes | java.lang.ref.SoftReference                  |
+|    6.05KiB |       258 |  24.00bytes | java.lang.Integer                            |
+|    5.91KiB |        18 |     2.02KiB | java.util.HashMap$Node[]                     |
+|    5.86KiB |       150 |  40.00bytes | java.lang.StringBuilder                      |
+|    5.44KiB |       116 |  48.00bytes | java.util.Hashtable$Entry                    |
+|    5.05KiB |        38 | 136.00bytes | sun.util.locale.LocaleObjectCache$CacheEntry |
+|    5.00KiB |        40 | 128.00bytes | java.lang.ref.Finalizer                      |
+|    3.50KiB |        32 | 112.00bytes | java.net.URL                                 |
+|    3.42KiB |        73 |  48.00bytes | java.io.File                                 |
+|    3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]                  |
+|    3.13KiB |        56 | 144.00bytes | java.lang.String[]                           |
++------------+-----------+-------------+----------------------------------------------+
 ```
 
 ## Installation

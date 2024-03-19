@@ -597,45 +597,96 @@ impl ResultRecorder {
             |r| r.3.to_string(),
             class_name_header,
         );
+        let class_name_len = class_name_header.chars().count() + class_name_padding.chars().count();
 
-        let header = format!(
-            "{}{} | {}{} | {}{} | {}{}\n",
-            total_size_header_padding,
-            total_size_header,
-            instance_count_header_padding,
-            instance_count_header,
-            largest_instance_padding,
-            largest_instance_header,
-            class_name_header,
-            class_name_padding
+        // headers with padding
+        let total_size_header = format!(" {}{} ", total_size_header_padding, total_size_header);
+        let instance_count_header = format!(
+            " {}{} ",
+            instance_count_header_padding, instance_count_header
         );
-        let header_len = header.chars().count();
+        let largest_instance_header =
+            format!(" {}{} ", largest_instance_padding, largest_instance_header,);
+        let class_name_header = format!(" {}{} ", class_name_header, class_name_padding);
+
+        // render line before header
+        Self::render_table_vertical_line(
+            analysis,
+            &total_size_header,
+            &instance_count_header,
+            &largest_instance_header,
+            &class_name_header,
+        );
+
+        // render header
+        let header = format!(
+            "|{}|{}|{}|{}|",
+            total_size_header, instance_count_header, largest_instance_header, class_name_header
+        );
         analysis.push_str(&header);
-        analysis.push_str(&("-".repeat(header_len)));
         analysis.push('\n');
 
-        rows_formatted.into_iter().for_each(
-            |(allocation_size, count, largest_allocation_size, class_name)| {
-                let padding_size_str =
-                    ResultRecorder::column_padding(&allocation_size, total_size_len);
-                let padding_count_str =
-                    ResultRecorder::column_padding(&count.to_string(), instance_len);
-                let padding_largest_size_str =
-                    ResultRecorder::column_padding(&largest_allocation_size, largest_len);
-
-                let row = format!(
-                    "{}{} | {}{} | {}{} | {}\n",
-                    padding_size_str,
-                    allocation_size,
-                    padding_count_str,
-                    count,
-                    padding_largest_size_str,
-                    largest_allocation_size,
-                    class_name
-                );
-                analysis.push_str(&row);
-            },
+        // render line after header
+        Self::render_table_vertical_line(
+            analysis,
+            &total_size_header,
+            &instance_count_header,
+            &largest_instance_header,
+            &class_name_header,
         );
+
+        // render rows
+        for (allocation_size, count, largest_allocation_size, class_name) in rows_formatted {
+            let padding_size_str = ResultRecorder::column_padding(&allocation_size, total_size_len);
+            let padding_count_str =
+                ResultRecorder::column_padding(&count.to_string(), instance_len);
+            let padding_largest_size_str =
+                ResultRecorder::column_padding(&largest_allocation_size, largest_len);
+            let padding_largest_class_name_str =
+                ResultRecorder::column_padding(class_name, class_name_len);
+
+            let row = format!(
+                "| {}{} | {}{} | {}{} | {}{} |",
+                padding_size_str,
+                allocation_size,
+                padding_count_str,
+                count,
+                padding_largest_size_str,
+                largest_allocation_size,
+                class_name,
+                padding_largest_class_name_str
+            );
+            analysis.push_str(&row);
+            analysis.push('\n');
+        }
+
+        // render line after rows
+        Self::render_table_vertical_line(
+            analysis,
+            &total_size_header,
+            &instance_count_header,
+            &largest_instance_header,
+            &class_name_header,
+        );
+    }
+
+    pub fn render_table_vertical_line(
+        analysis: &mut String,
+        total_size_header: &str,
+        instance_count_header: &str,
+        largest_instance_header: &str,
+        class_name_header: &str,
+    ) {
+        analysis.push('+');
+        analysis.push_str(&("-".repeat(total_size_header.chars().count())));
+        analysis.push('+');
+        analysis.push_str(&("-".repeat(instance_count_header.chars().count())));
+        analysis.push('+');
+        analysis.push_str(&("-".repeat(largest_instance_header.chars().count())));
+        analysis.push('+');
+        analysis.push_str(&("-".repeat(class_name_header.chars().count())));
+        analysis.push('+');
+        analysis.push('\n');
     }
 
     fn padding_for_header<F>(
