@@ -1,5 +1,7 @@
 # hprof-slurp
-[![Build](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml)
+
+[![Build status](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/hprof-slurp.svg)](https://crates.io/crates/hprof-slurp)
 
 `hprof-slurp` is a specialized JVM heap dump analyzer.
 
@@ -75,6 +77,20 @@ Total size | Instances |     Largest | Class name
    3.42KiB |        73 |  48.00bytes | java.io.File
    3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]
    3.13KiB |        56 | 144.00bytes | java.lang.String[]
+```
+
+## Installation
+
+### Releases
+
+Using the provided binaries in https://github.com/agourlay/hprof-slurp/releases
+
+### Crates.io
+
+Using Cargo via [crates.io](https://crates.io/crates/hprof-slurp).
+
+```bash
+cargo install hprof-slurp
 ```
 
 ## Performance
