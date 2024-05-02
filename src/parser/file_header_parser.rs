@@ -58,6 +58,6 @@ mod tests {
         assert!(matches!(
             parse_file_header(&binary),
             Err(nom::Err::Incomplete(_))
-        ))
+        ));
     }
 }

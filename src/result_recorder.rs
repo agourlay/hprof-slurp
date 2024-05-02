@@ -325,10 +325,10 @@ impl ResultRecorder {
         strings.sort();
         let mut result = String::new();
         result.push_str("\nList of Strings\n");
-        strings.iter().for_each(|s| {
+        for s in strings.iter() {
             result.push_str(s);
-            result.push('\n')
-        });
+            result.push('\n');
+        }
         result
     }
 
@@ -459,12 +459,12 @@ impl ResultRecorder {
         let array_primitives_dump_vec = self.primitive_array_counters.iter().map(|(ft, &ac)| {
             let primitive_type = format!("{:?}", ft).to_lowercase();
             let primitive_array_label = format!("{}[]", primitive_type);
-            let primitive_size = primitive_byte_size(ft);
+            let primitive_size = primitive_byte_size(*ft);
 
             let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
             let cost_of_all_values = primitive_size * ac.total_number_of_elements;
             // info lost at this point to compute the real padding for each array
-            // assume mid value of 4 bytes per array for an estimation
+            // assume mid-value of 4 bytes per array for an estimation
             let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
 
             let cost_data_largest_array = primitive_size * ac.max_size_seen as u64;
@@ -779,7 +779,7 @@ impl ResultRecorder {
     }
 }
 
-fn primitive_byte_size(field_type: &FieldType) -> u64 {
+fn primitive_byte_size(field_type: FieldType) -> u64 {
     match field_type {
         FieldType::Byte | FieldType::Bool => 1,
         FieldType::Char | FieldType::Short => 2,

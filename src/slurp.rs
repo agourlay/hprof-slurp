@@ -110,7 +110,7 @@ pub fn slurp_file(
 
     // Feed progress bar
     while let Ok(processed) = receive_progress.recv() {
-        pb.set_position(processed as u64)
+        pb.set_position(processed as u64);
     }
 
     // Finish and remove progress bar
@@ -122,19 +122,13 @@ pub fn slurp_file(
         .expect("result channel should be alive");
 
     // Blocks until pre-fetcher is done
-    prefetch_thread
-        .join()
-        .map_err(|e| HprofSlurpError::StdThreadError { e })?;
+    prefetch_thread.join().map_err(|e| StdThreadError { e })?;
 
     // Blocks until parser is done
-    parser_thread
-        .join()
-        .map_err(|e| HprofSlurpError::StdThreadError { e })?;
+    parser_thread.join().map_err(|e| StdThreadError { e })?;
 
     // Blocks until recorder is done
-    recorder_thread
-        .join()
-        .map_err(|e| HprofSlurpError::StdThreadError { e })?;
+    recorder_thread.join().map_err(|e| StdThreadError { e })?;
 
     Ok(rendered_result)
 }
@@ -186,7 +180,7 @@ mod tests {
                 println!("## ACTUAL ##");
                 println!("{}", l2.trim_end());
                 println!("#####");
-                assert_eq!(l1, l2)
+                assert_eq!(l1, l2);
             }
         }
     }

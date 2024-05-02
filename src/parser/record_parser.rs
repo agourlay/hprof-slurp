@@ -118,13 +118,13 @@ fn parse_id(i: &[u8]) -> IResult<&[u8], u64> {
 // copy of nom's many1 but
 // - returns values accumulated so far on `nom::Err::Incomplete(_)` if any
 // - take a `&mut vector` as input to enable pooling at the call site
-pub fn lazy_many1<'a, I, O, E, F: 'a>(
+pub fn lazy_many1<'a, I, O, E, F>(
     mut f: F,
     pooled_vec: &'a mut Vec<O>,
 ) -> impl FnMut(I) -> IResult<I, (), E> + 'a
 where
     I: Clone + PartialEq,
-    F: Parser<I, O, E>,
+    F: Parser<I, O, E> + 'a,
     E: ParseError<I>,
 {
     move |mut i: I| match f.parse(i.clone()) {

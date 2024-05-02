@@ -65,7 +65,7 @@ impl PrefetchReader {
                     send_data
                         .send(pooled_buffer)
                         .expect("Channel should not be closed");
-                    self.processed_len += next_size
+                    self.processed_len += next_size;
                 }
             })
     }

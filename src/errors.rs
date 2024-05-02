@@ -23,13 +23,13 @@ pub enum HprofSlurpError {
     StdThreadError { e: Box<dyn Any + Send + 'static> },
 }
 
-impl std::convert::From<std::io::Error> for HprofSlurpError {
+impl From<std::io::Error> for HprofSlurpError {
     fn from(e: std::io::Error) -> Self {
         HprofSlurpError::StdIoError { e }
     }
 }
 
-impl std::convert::From<clap::Error> for HprofSlurpError {
+impl From<clap::Error> for HprofSlurpError {
     fn from(e: clap::Error) -> Self {
         HprofSlurpError::ClapError { e }
     }
