@@ -42,7 +42,7 @@ mod tests {
         let expected = FileHeader {
             format: "JAVA PROFILE 1.0.2".to_string(),
             size_pointers: 8,
-            timestamp: 1608192273831,
+            timestamp: 1_608_192_273_831,
         };
         let (rest, header) = parse_file_header(&binary).unwrap();
         assert_eq!(header, expected);

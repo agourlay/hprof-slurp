@@ -25,12 +25,12 @@ pub enum HprofSlurpError {
 
 impl From<std::io::Error> for HprofSlurpError {
     fn from(e: std::io::Error) -> Self {
-        HprofSlurpError::StdIoError { e }
+        Self::StdIoError { e }
     }
 }
 
 impl From<clap::Error> for HprofSlurpError {
     fn from(e: clap::Error) -> Self {
-        HprofSlurpError::ClapError { e }
+        Self::ClapError { e }
     }
 }

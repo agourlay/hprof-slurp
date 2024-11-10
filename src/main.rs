@@ -13,7 +13,7 @@ use std::time::Instant;
 
 fn main() {
     std::process::exit(match main_result() {
-        Ok(_) => 0,
+        Ok(()) => 0,
         Err(err) => {
             eprintln!("error: {}", err);
             1

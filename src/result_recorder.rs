@@ -161,9 +161,9 @@ impl ResultRecorder {
         }
     }
 
-    fn get_class_name_string(&self, class_id: &u64) -> String {
+    fn get_class_name_string(&self, class_id: u64) -> String {
         self.class_data_by_id
-            .get(class_id)
+            .get(&class_id)
             .and_then(|data_index| self.class_data.get(*data_index))
             .and_then(|class_data| self.utf8_strings_by_id.get(&class_data.class_name_id))
             .expect("class_id must have an UTF-8 string representation available")
@@ -325,7 +325,7 @@ impl ResultRecorder {
         strings.sort();
         let mut result = String::new();
         result.push_str("\nList of Strings\n");
-        for s in strings.iter() {
+        for s in strings {
             result.push_str(s);
             result.push('\n');
         }
@@ -361,7 +361,7 @@ impl ResultRecorder {
                     .and_then(|index| self.class_data.get(*index))
                     .expect("Class not found")
                     .class_object_id;
-                let class_name = self.get_class_name_string(&class_object_id);
+                let class_name = self.get_class_name_string(class_object_id);
                 let method_name = self
                     .utf8_strings_by_id
                     .get(&stack_frame.method_name_id)
@@ -407,7 +407,7 @@ impl ResultRecorder {
             .classes_all_instance_total_size_by_id
             .iter()
             .map(|(class_id, v)| {
-                let class_name = self.get_class_name_string(class_id);
+                let class_name = self.get_class_name_string(*class_id);
                 let mut size = 0;
 
                 let ClassInfo {
@@ -480,7 +480,7 @@ impl ResultRecorder {
 
         // For array of objects we are interested in the total size of the array headers and outgoing elements references
         let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, &ac)| {
-            let raw_class_name = self.get_class_name_string(class_id);
+            let raw_class_name = self.get_class_name_string(*class_id);
             let cleaned_class_name: String = if raw_class_name.starts_with("[L") {
                 // remove '[L' prefix and ';' suffix
                 raw_class_name

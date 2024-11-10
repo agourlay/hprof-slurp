@@ -165,7 +165,7 @@ mod tests {
     const FILE_PATH_64: &str = "test-heap-dumps/hprof-64.bin";
     const FILE_PATH_RESULT_64: &str = "test-heap-dumps/hprof-64-result.txt";
 
-    fn validate_gold_rendered_result(result: RenderedResult, gold_path: &str) {
+    fn validate_gold_rendered_result(result: &RenderedResult, gold_path: &str) {
         let gold = fs::read_to_string(gold_path).expect("gold file not found!");
         let expected = format!(
             "{}\n{}\n{}",
@@ -197,7 +197,7 @@ mod tests {
         let file_path = FILE_PATH_64.to_string();
         let result = slurp_file(file_path, 20, false, false);
         assert!(result.is_ok());
-        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_64);
+        validate_gold_rendered_result(&result.unwrap(), FILE_PATH_RESULT_64);
     }
 
     #[test]

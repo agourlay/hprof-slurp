@@ -66,7 +66,7 @@ impl HprofRecordStreamParser {
                                 .parser
                                 .parse_streaming(&self.loop_buffer, &mut self.pooled_vec);
                             match iteration_res {
-                                Ok((rest, _)) => {
+                                Ok((rest, ())) => {
                                     let rest_len = rest.len();
                                     let iteration_processed = self.loop_buffer.len() - rest_len;
                                     self.processed_len += iteration_processed;
