@@ -708,11 +708,7 @@ impl ResultRecorder {
 
     fn column_padding(column_name: &str, max_item_length: usize) -> String {
         let column_label_len = column_name.chars().count();
-        let padding_size = if max_item_length > column_label_len {
-            max_item_length - column_label_len
-        } else {
-            0
-        };
+        let padding_size = max_item_length.saturating_sub(column_label_len);
         " ".repeat(padding_size)
     }
 
