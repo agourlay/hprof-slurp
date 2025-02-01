@@ -6,7 +6,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::errors::HprofSlurpError;
-use crate::errors::HprofSlurpError::{InvalidHeaderSize, InvalidHprofFile, InvalidIdSize, StdThreadError, UnsupportedIdSize};
+use crate::errors::HprofSlurpError::{
+    InvalidHeaderSize, InvalidHprofFile, InvalidIdSize, StdThreadError, UnsupportedIdSize,
+};
 use crate::parser::file_header_parser::{parse_file_header, FileHeader};
 use crate::parser::record::Record;
 use crate::parser::record_stream_parser::HprofRecordStreamParser;

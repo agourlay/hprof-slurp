@@ -1,12 +1,24 @@
 extern crate nom;
 
-use crate::parser::gc_record::{ArrayValue, ClassDumpFields, ConstFieldInfo, FieldInfo, FieldType, FieldValue, GcRecord};
-use crate::parser::primitive_parsers::{parse_f32, parse_f64, parse_i16, parse_i32, parse_i64, parse_i8, parse_u16, parse_u32, parse_u64, parse_u8};
+use crate::parser::gc_record::{
+    ArrayValue, ClassDumpFields, ConstFieldInfo, FieldInfo, FieldType, FieldValue, GcRecord,
+};
+use crate::parser::primitive_parsers::{
+    parse_f32, parse_f64, parse_i16, parse_i32, parse_i64, parse_i8, parse_u16, parse_u32,
+    parse_u64, parse_u8,
+};
 use crate::parser::record::{
     AllocationSite, CpuSample, LoadClassData, Record, RecordHeader, StackFrameData, StackTraceData,
 };
-use crate::parser::record_parser::GcRecord::{ClassDump, InstanceDump, ObjectArrayDump, PrimitiveArrayDump, RootJavaFrame, RootJniGlobal, RootJniLocal, RootMonitorUsed, RootNativeStack, RootStickyClass, RootThreadBlock, RootThreadObject, RootUnknown};
-use crate::parser::record_parser::Record::{AllocationSites, ControlSettings, CpuSamples, EndThread, GcSegment, HeapDumpEnd, HeapDumpStart, HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String};
+use crate::parser::record_parser::GcRecord::{
+    ClassDump, InstanceDump, ObjectArrayDump, PrimitiveArrayDump, RootJavaFrame, RootJniGlobal,
+    RootJniLocal, RootMonitorUsed, RootNativeStack, RootStickyClass, RootThreadBlock,
+    RootThreadObject, RootUnknown,
+};
+use crate::parser::record_parser::Record::{
+    AllocationSites, ControlSettings, CpuSamples, EndThread, GcSegment, HeapDumpEnd, HeapDumpStart,
+    HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String,
+};
 use nom::combinator::{flat_map, map};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::count;

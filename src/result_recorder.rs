@@ -5,7 +5,10 @@ use std::thread::JoinHandle;
 use std::{mem, thread};
 
 use crate::parser::gc_record::{FieldType, GcRecord};
-use crate::parser::record::Record::{AllocationSites, ControlSettings, CpuSamples, EndThread, GcSegment, HeapDumpEnd, HeapDumpStart, HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String};
+use crate::parser::record::Record::{
+    AllocationSites, ControlSettings, CpuSamples, EndThread, GcSegment, HeapDumpEnd, HeapDumpStart,
+    HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String,
+};
 use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
 use crate::utils::pretty_bytes_size;
 
@@ -398,9 +401,8 @@ impl ResultRecorder {
                 };
 
                 // pretty frame output
-                let stack_frame_pretty = format!(
-                    "  at {class_name}.{method_name} ({file_name}:{pretty_line_number})\n"
-                );
+                let stack_frame_pretty =
+                    format!("  at {class_name}.{method_name} ({file_name}:{pretty_line_number})\n");
                 thread_info.push_str(&stack_frame_pretty);
             }
         }
@@ -468,27 +470,32 @@ impl ResultRecorder {
         let ref_size = u64::from(self.id_size);
         let array_header_size = ref_size + 4 + 4;
 
-        let array_primitives_dump_vec = self.primitive_array_counters.iter().map(|(field_type, &ac)| {
-            let primitive_type = format!("{field_type:?}").to_lowercase();
-            let primitive_array_label = format!("{primitive_type}[]");
-            let primitive_size = primitive_byte_size(*field_type);
+        let array_primitives_dump_vec =
+            self.primitive_array_counters
+                .iter()
+                .map(|(field_type, &ac)| {
+                    let primitive_type = format!("{field_type:?}").to_lowercase();
+                    let primitive_array_label = format!("{primitive_type}[]");
+                    let primitive_size = primitive_byte_size(*field_type);
 
-            let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-            let cost_of_all_values = primitive_size * ac.total_number_of_elements;
-            // info lost at this point to compute the real padding for each array
-            // assume mid-value of 4 bytes per array for an estimation
-            let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
+                    let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
+                    let cost_of_all_values = primitive_size * ac.total_number_of_elements;
+                    // info lost at this point to compute the real padding for each array
+                    // assume mid-value of 4 bytes per array for an estimation
+                    let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
 
-            let cost_data_largest_array = primitive_size * u64::from(ac.max_size_seen);
-            let cost_padding_largest_array =
-                (array_header_size + cost_data_largest_array).rem_euclid(8);
-            (
-                primitive_array_label,
-                ac.number_of_arrays,
-                array_header_size + cost_data_largest_array + cost_padding_largest_array,
-                cost_of_all_array_headers + cost_of_all_values + estimated_cost_of_all_padding,
-            )
-        });
+                    let cost_data_largest_array = primitive_size * u64::from(ac.max_size_seen);
+                    let cost_padding_largest_array =
+                        (array_header_size + cost_data_largest_array).rem_euclid(8);
+                    (
+                        primitive_array_label,
+                        ac.number_of_arrays,
+                        array_header_size + cost_data_largest_array + cost_padding_largest_array,
+                        cost_of_all_array_headers
+                            + cost_of_all_values
+                            + estimated_cost_of_all_padding,
+                    )
+                });
 
         // For array of objects we are interested in the total size of the array headers and outgoing elements references
         let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, &ac)| {
@@ -535,9 +542,8 @@ impl ResultRecorder {
         // Total heap size found banner
         let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s).sum();
         let display_total_size = pretty_bytes_size(total_size);
-        let allocation_classes_title = format!(
-            "Found a total of {display_total_size} of instances allocated on the heap.\n"
-        );
+        let allocation_classes_title =
+            format!("Found a total of {display_total_size} of instances allocated on the heap.\n");
         analysis.push_str(&allocation_classes_title);
 
         // Sort by class name first for stability in test results :s
@@ -612,9 +618,8 @@ impl ResultRecorder {
 
         // headers with padding
         let total_size_header = format!(" {total_size_header_padding}{total_size_header} ");
-        let instance_count_header = format!(
-            " {instance_count_header_padding}{instance_count_header} "
-        );
+        let instance_count_header =
+            format!(" {instance_count_header_padding}{instance_count_header} ");
         let largest_instance_header =
             format!(" {largest_instance_padding}{largest_instance_header} ",);
         let class_name_header = format!(" {class_name_header}{class_name_padding} ");
@@ -647,12 +652,10 @@ impl ResultRecorder {
         // render rows
         for (allocation_size, count, largest_allocation_size, class_name) in rows_formatted {
             let padding_size_str = Self::column_padding(&allocation_size, total_size_len);
-            let padding_count_str =
-                Self::column_padding(&count.to_string(), instance_len);
+            let padding_count_str = Self::column_padding(&count.to_string(), instance_len);
             let padding_largest_size_str =
                 Self::column_padding(&largest_allocation_size, largest_len);
-            let padding_largest_class_name_str =
-                Self::column_padding(class_name, class_name_len);
+            let padding_largest_class_name_str = Self::column_padding(class_name, class_name_len);
 
             let row = format!(
                 "| {padding_size_str}{allocation_size} | {padding_count_str}{count} | {padding_largest_size_str}{largest_allocation_size} | {class_name}{padding_largest_class_name_str} |"
