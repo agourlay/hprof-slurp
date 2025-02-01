@@ -71,6 +71,7 @@ pub struct RenderedResult {
     pub summary: String,
     pub thread_info: String,
     pub memory_usage: String,
+    pub duplicated_strings: Option<String>,
     pub captured_strings: Option<String>,
 }
 
@@ -194,6 +195,7 @@ impl ResultRecorder {
                                 summary: self.render_summary(),
                                 thread_info: self.render_thread_info(),
                                 memory_usage: self.render_memory_usage(self.top),
+                                duplicated_strings: self.render_duplicated_strings(),
                                 captured_strings: if self.list_strings {
                                     Some(self.render_captured_strings())
                                 } else {
@@ -330,6 +332,23 @@ impl ResultRecorder {
             result.push('\n');
         }
         result
+    }
+
+    fn render_duplicated_strings(&self) -> Option<String> {
+        let mut strings: Vec<_> = self.utf8_strings_by_id.values().collect();
+        strings.sort();
+        let all_len = strings.len();
+        strings.dedup();
+        let dedup_len = strings.len();
+        if all_len == dedup_len {
+            None
+        } else {
+            Some(format!(
+                "\nFound {} duplicated strings out of {} unique strings\n",
+                all_len - dedup_len,
+                all_len
+            ))
+        }
     }
 
     fn render_thread_info(&self) -> String {

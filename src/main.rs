@@ -8,6 +8,7 @@ mod utils;
 
 use crate::args::get_args;
 use crate::errors::HprofSlurpError;
+use crate::result_recorder::RenderedResult;
 use crate::slurp::slurp_file;
 use std::time::Instant;
 
@@ -27,10 +28,20 @@ fn main_result() -> Result<(), HprofSlurpError> {
     let rendered_result = slurp_file(file_path, top, debug_mode, list_strings)?;
 
     // Print results
-    println!("{}", rendered_result.summary);
-    println!("{}", rendered_result.thread_info);
-    println!("{}", rendered_result.memory_usage);
-    if let Some(list_strings) = rendered_result.captured_strings {
+    let RenderedResult {
+        summary,
+        thread_info,
+        memory_usage,
+        duplicated_strings,
+        captured_strings,
+    } = rendered_result;
+    println!("{}", summary);
+    println!("{}", thread_info);
+    println!("{}", memory_usage);
+    if let Some(duplicated_strings) = duplicated_strings {
+        println!("{}", duplicated_strings);
+    }
+    if let Some(list_strings) = captured_strings {
         println!("{}", list_strings);
     }
 
