@@ -6,7 +6,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::errors::HprofSlurpError;
-use crate::errors::HprofSlurpError::*;
+use crate::errors::HprofSlurpError::{InvalidHeaderSize, InvalidHprofFile, InvalidIdSize, StdThreadError, UnsupportedIdSize};
 use crate::parser::file_header_parser::{parse_file_header, FileHeader};
 use crate::parser::record::Record;
 use crate::parser::record_stream_parser::HprofRecordStreamParser;
@@ -137,7 +137,7 @@ pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlu
     let mut header_buffer = vec![0; FILE_HEADER_LENGTH];
     reader.read_exact(&mut header_buffer)?;
     let (rest, header) = parse_file_header(&header_buffer).map_err(|e| InvalidHprofFile {
-        message: format!("{:?}", e),
+        message: format!("{e:?}"),
     })?;
     // Invariants
     let id_size = header.size_pointers;

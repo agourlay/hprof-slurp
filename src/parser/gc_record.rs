@@ -23,7 +23,7 @@ impl FieldType {
             9 => FieldType::Short,
             10 => FieldType::Int,
             11 => FieldType::Long,
-            x => panic!("{}", format!("FieldType {} not found", x)),
+            x => panic!("{}", format!("FieldType {x} not found")),
         }
     }
 }

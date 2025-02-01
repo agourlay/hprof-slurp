@@ -13,7 +13,7 @@ pub fn pretty_bytes_size(len: u64) -> String {
     } else {
         ("bytes", float_len)
     };
-    format!("{:.2}{}", value, unit)
+    format!("{value:.2}{unit}")
 }
 
 #[cfg(test)]

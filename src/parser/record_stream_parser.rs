@@ -107,10 +107,10 @@ impl HprofRecordStreamParser {
                                     panic!("Unexpected Incomplete with unknown size")
                                 }
                                 Err(Err::Failure(e)) => {
-                                    panic!("parsing failed with {:?}", e)
+                                    panic!("parsing failed with {e:?}")
                                 }
                                 Err(Err::Error(e)) => {
-                                    panic!("parsing failed with {:?}", e)
+                                    panic!("parsing failed with {e:?}")
                                 }
                             }
                         }

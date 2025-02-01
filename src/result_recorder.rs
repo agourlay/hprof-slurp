@@ -1,12 +1,11 @@
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
-use std::ops::Deref;
 use std::thread::JoinHandle;
 use std::{mem, thread};
 
-use crate::parser::gc_record::*;
-use crate::parser::record::Record::*;
+use crate::parser::gc_record::{FieldType, GcRecord};
+use crate::parser::record::Record::{AllocationSites, ControlSettings, CpuSamples, EndThread, GcSegment, HeapDumpEnd, HeapDumpStart, HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String};
 use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
 use crate::utils::pretty_bytes_size;
 
@@ -52,9 +51,9 @@ pub struct ArrayCounter {
 impl ArrayCounter {
     pub fn add_elements_from_array(&mut self, elements: u32) {
         self.number_of_arrays += 1;
-        self.total_number_of_elements += elements as u64;
+        self.total_number_of_elements += u64::from(elements);
         if elements > self.max_size_seen {
-            self.max_size_seen = elements
+            self.max_size_seen = elements;
         }
     }
 
@@ -181,32 +180,29 @@ impl ResultRecorder {
             .name("hprof-recorder".to_string())
             .spawn(move || {
                 loop {
-                    match receive_records.recv() {
-                        Ok(mut records) => {
-                            self.record_records(&mut records);
-                            // clear values but retain underlying storage
-                            records.clear();
-                            // send back pooled vec (swallow errors as it is possible the receiver was already dropped)
-                            send_pooled_vec.send(records).unwrap_or_default();
-                        }
-                        Err(_) => {
-                            // no more Record to pull, generate and send back results
-                            let rendered_result = RenderedResult {
-                                summary: self.render_summary(),
-                                thread_info: self.render_thread_info(),
-                                memory_usage: self.render_memory_usage(self.top),
-                                duplicated_strings: self.render_duplicated_strings(),
-                                captured_strings: if self.list_strings {
-                                    Some(self.render_captured_strings())
-                                } else {
-                                    None
-                                },
-                            };
-                            send_result
-                                .send(rendered_result)
-                                .expect("channel should not be closed");
-                            break;
-                        }
+                    if let Ok(mut records) = receive_records.recv() {
+                        self.record_records(&mut records);
+                        // clear values but retain underlying storage
+                        records.clear();
+                        // send back pooled vec (swallow errors as it is possible the receiver was already dropped)
+                        send_pooled_vec.send(records).unwrap_or_default();
+                    } else {
+                        // no more Record to pull, generate and send back results
+                        let rendered_result = RenderedResult {
+                            summary: self.render_summary(),
+                            thread_info: self.render_thread_info(),
+                            memory_usage: self.render_memory_usage(self.top),
+                            duplicated_strings: self.render_duplicated_strings(),
+                            captured_strings: if self.list_strings {
+                                Some(self.render_captured_strings())
+                            } else {
+                                None
+                            },
+                        };
+                        send_result
+                            .send(rendered_result)
+                            .expect("channel should not be closed");
+                        break;
                     }
                 }
             })
@@ -250,26 +246,26 @@ impl ResultRecorder {
                 match gc_record {
                     GcRecord::RootUnknown { .. } => self.heap_dump_segments_gc_root_unknown += 1,
                     GcRecord::RootThreadObject { .. } => {
-                        self.heap_dump_segments_gc_root_thread_object += 1
+                        self.heap_dump_segments_gc_root_thread_object += 1;
                     }
                     GcRecord::RootJniGlobal { .. } => {
-                        self.heap_dump_segments_gc_root_jni_global += 1
+                        self.heap_dump_segments_gc_root_jni_global += 1;
                     }
                     GcRecord::RootJniLocal { .. } => self.heap_dump_segments_gc_root_jni_local += 1,
                     GcRecord::RootJavaFrame { .. } => {
-                        self.heap_dump_segments_gc_root_java_frame += 1
+                        self.heap_dump_segments_gc_root_java_frame += 1;
                     }
                     GcRecord::RootNativeStack { .. } => {
-                        self.heap_dump_segments_gc_root_native_stack += 1
+                        self.heap_dump_segments_gc_root_native_stack += 1;
                     }
                     GcRecord::RootStickyClass { .. } => {
-                        self.heap_dump_segments_gc_root_sticky_class += 1
+                        self.heap_dump_segments_gc_root_sticky_class += 1;
                     }
                     GcRecord::RootThreadBlock { .. } => {
-                        self.heap_dump_segments_gc_root_thread_block += 1
+                        self.heap_dump_segments_gc_root_thread_block += 1;
                     }
                     GcRecord::RootMonitorUsed { .. } => {
-                        self.heap_dump_segments_gc_root_monitor_used += 1
+                        self.heap_dump_segments_gc_root_monitor_used += 1;
                     }
                     GcRecord::InstanceDump {
                         class_object_id, ..
@@ -279,7 +275,7 @@ impl ResultRecorder {
                             .or_insert_with(ClassInstanceCounter::empty)
                             .add_instance();
 
-                        self.heap_dump_segments_gc_instance_dump += 1
+                        self.heap_dump_segments_gc_instance_dump += 1;
                     }
                     GcRecord::ObjectArrayDump {
                         number_of_elements,
@@ -291,7 +287,7 @@ impl ResultRecorder {
                             .or_insert_with(ArrayCounter::empty)
                             .add_elements_from_array(*number_of_elements);
 
-                        self.heap_dump_segments_gc_object_array_dump += 1
+                        self.heap_dump_segments_gc_object_array_dump += 1;
                     }
                     GcRecord::PrimitiveArrayDump {
                         number_of_elements,
@@ -303,7 +299,7 @@ impl ResultRecorder {
                             .or_insert_with(ArrayCounter::empty)
                             .add_elements_from_array(*number_of_elements);
 
-                        self.heap_dump_segments_gc_primitive_array_dump += 1
+                        self.heap_dump_segments_gc_primitive_array_dump += 1;
                     }
                     GcRecord::ClassDump(class_dump_fields) => {
                         let class_object_id = class_dump_fields.class_object_id;
@@ -315,7 +311,7 @@ impl ResultRecorder {
                                 ClassInfo::new(super_class_object_id, instance_size)
                             });
 
-                        self.heap_dump_segments_gc_class_dump += 1
+                        self.heap_dump_segments_gc_class_dump += 1;
                     }
                 }
             }
@@ -384,13 +380,11 @@ impl ResultRecorder {
                 let method_name = self
                     .utf8_strings_by_id
                     .get(&stack_frame.method_name_id)
-                    .map(|b| b.deref())
-                    .unwrap_or("unknown method name");
+                    .map_or("unknown method name", |b| &**b);
                 let file_name = self
                     .utf8_strings_by_id
                     .get(&stack_frame.source_file_name_id)
-                    .map(|b| b.deref())
-                    .unwrap_or("unknown source file");
+                    .map_or("unknown source file", |b| &**b);
 
                 // >0: normal
                 // -1: unknown
@@ -400,13 +394,12 @@ impl ResultRecorder {
                     -1 => "unknown line number".to_string(),
                     -2 => "compiled method".to_string(),
                     -3 => "native method".to_string(),
-                    number => format!("{}", number),
+                    number => format!("{number}"),
                 };
 
                 // pretty frame output
                 let stack_frame_pretty = format!(
-                    "  at {}.{} ({}:{})\n",
-                    class_name, method_name, file_name, pretty_line_number
+                    "  at {class_name}.{method_name} ({file_name}:{pretty_line_number})\n"
                 );
                 thread_info.push_str(&stack_frame_pretty);
             }
@@ -455,11 +448,11 @@ impl ResultRecorder {
                 size += object_header;
                 // add extra padding if any
                 size += size.rem_euclid(8);
-                let total_size = size as u64 * v.number_of_instances;
+                let total_size = u64::from(size) * v.number_of_instances;
                 (
                     class_name,
                     v.number_of_instances,
-                    size as u64, // all instances have the same size
+                    u64::from(size), // all instances have the same size
                     total_size,
                 )
             })
@@ -472,13 +465,13 @@ impl ResultRecorder {
         // array_header = mark(ref_size) + klass(4) + array_length(4) = 16 bytes
         // data_primitive = primitive_size * length + padding(??)
         // data_object = ref_size * length (no padding because the ref size is already aligned!)
-        let ref_size = self.id_size as u64;
+        let ref_size = u64::from(self.id_size);
         let array_header_size = ref_size + 4 + 4;
 
-        let array_primitives_dump_vec = self.primitive_array_counters.iter().map(|(ft, &ac)| {
-            let primitive_type = format!("{:?}", ft).to_lowercase();
-            let primitive_array_label = format!("{}[]", primitive_type);
-            let primitive_size = primitive_byte_size(*ft);
+        let array_primitives_dump_vec = self.primitive_array_counters.iter().map(|(field_type, &ac)| {
+            let primitive_type = format!("{field_type:?}").to_lowercase();
+            let primitive_array_label = format!("{primitive_type}[]");
+            let primitive_size = primitive_byte_size(*field_type);
 
             let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
             let cost_of_all_values = primitive_size * ac.total_number_of_elements;
@@ -486,7 +479,7 @@ impl ResultRecorder {
             // assume mid-value of 4 bytes per array for an estimation
             let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
 
-            let cost_data_largest_array = primitive_size * ac.max_size_seen as u64;
+            let cost_data_largest_array = primitive_size * u64::from(ac.max_size_seen);
             let cost_padding_largest_array =
                 (array_header_size + cost_data_largest_array).rem_euclid(8);
             (
@@ -519,11 +512,11 @@ impl ResultRecorder {
                 raw_class_name
             };
 
-            let object_array_label = format!("{}[]", cleaned_class_name);
+            let object_array_label = format!("{cleaned_class_name}[]");
 
             let cost_of_all_refs = ref_size * ac.total_number_of_elements;
             let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-            let cost_of_largest_array_refs = ref_size * ac.max_size_seen as u64;
+            let cost_of_largest_array_refs = ref_size * u64::from(ac.max_size_seen);
             (
                 object_array_label,
                 ac.number_of_arrays,
@@ -543,8 +536,7 @@ impl ResultRecorder {
         let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s).sum();
         let display_total_size = pretty_bytes_size(total_size);
         let allocation_classes_title = format!(
-            "Found a total of {} of instances allocated on the heap.\n",
-            display_total_size
+            "Found a total of {display_total_size} of instances allocated on the heap.\n"
         );
         analysis.push_str(&allocation_classes_title);
 
@@ -552,13 +544,13 @@ impl ResultRecorder {
         classes_dump_vec.sort_by(|a, b| b.0.cmp(&a.0));
 
         // Top allocated classes analysis
-        let allocation_classes_title = format!("\nTop {} allocated classes:\n\n", top);
+        let allocation_classes_title = format!("\nTop {top} allocated classes:\n\n");
         analysis.push_str(&allocation_classes_title);
         classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
         ResultRecorder::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
 
         // Top largest instances analysis
-        let allocation_largest_title = format!("\nTop {} largest instances:\n\n", top);
+        let allocation_largest_title = format!("\nTop {top} largest instances:\n\n");
         analysis.push_str(&allocation_largest_title);
         classes_dump_vec.sort_by(|a, b| b.2.cmp(&a.2));
         ResultRecorder::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
@@ -619,14 +611,13 @@ impl ResultRecorder {
         let class_name_len = class_name_header.chars().count() + class_name_padding.chars().count();
 
         // headers with padding
-        let total_size_header = format!(" {}{} ", total_size_header_padding, total_size_header);
+        let total_size_header = format!(" {total_size_header_padding}{total_size_header} ");
         let instance_count_header = format!(
-            " {}{} ",
-            instance_count_header_padding, instance_count_header
+            " {instance_count_header_padding}{instance_count_header} "
         );
         let largest_instance_header =
-            format!(" {}{} ", largest_instance_padding, largest_instance_header,);
-        let class_name_header = format!(" {}{} ", class_name_header, class_name_padding);
+            format!(" {largest_instance_padding}{largest_instance_header} ",);
+        let class_name_header = format!(" {class_name_header}{class_name_padding} ");
 
         // render line before header
         Self::render_table_vertical_line(
@@ -639,8 +630,7 @@ impl ResultRecorder {
 
         // render header
         let header = format!(
-            "|{}|{}|{}|{}|",
-            total_size_header, instance_count_header, largest_instance_header, class_name_header
+            "|{total_size_header}|{instance_count_header}|{largest_instance_header}|{class_name_header}|"
         );
         analysis.push_str(&header);
         analysis.push('\n');
@@ -665,15 +655,7 @@ impl ResultRecorder {
                 ResultRecorder::column_padding(class_name, class_name_len);
 
             let row = format!(
-                "| {}{} | {}{} | {}{} | {}{} |",
-                padding_size_str,
-                allocation_size,
-                padding_count_str,
-                count,
-                padding_largest_size_str,
-                largest_allocation_size,
-                class_name,
-                padding_largest_class_name_str
+                "| {padding_size_str}{allocation_size} | {padding_count_str}{count} | {padding_largest_size_str}{largest_allocation_size} | {class_name}{padding_largest_class_name_str} |"
             );
             analysis.push_str(&row);
             analysis.push('\n');
@@ -719,7 +701,7 @@ impl ResultRecorder {
         let max_elem_size = rows
             .iter()
             .map(|d| field_selector(d).chars().count())
-            .max_by(|x, y| x.cmp(y))
+            .max_by(std::cmp::Ord::cmp)
             .expect("Results can't be empty");
 
         ResultRecorder::column_padding(header_label, max_elem_size)
@@ -790,7 +772,7 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_instance_dump,
         );
 
-        format!("{}\n{}", top_summary, heap_summary)
+        format!("{top_summary}\n{heap_summary}")
     }
 }
 
