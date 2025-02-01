@@ -12,17 +12,17 @@ pub enum FieldType {
 }
 
 impl FieldType {
-    pub fn from_value(v: i8) -> FieldType {
+    pub fn from_value(v: i8) -> Self {
         match v {
-            2 => FieldType::Object,
-            4 => FieldType::Bool,
-            5 => FieldType::Char,
-            6 => FieldType::Float,
-            7 => FieldType::Double,
-            8 => FieldType::Byte,
-            9 => FieldType::Short,
-            10 => FieldType::Int,
-            11 => FieldType::Long,
+            2 => Self::Object,
+            4 => Self::Bool,
+            5 => Self::Char,
+            6 => Self::Float,
+            7 => Self::Double,
+            8 => Self::Byte,
+            9 => Self::Short,
+            10 => Self::Int,
+            11 => Self::Long,
             x => panic!("{}", format!("FieldType {x} not found")),
         }
     }
@@ -137,7 +137,7 @@ pub struct ClassDumpFields {
 }
 
 impl ClassDumpFields {
-    pub fn new(
+    pub const fn new(
         class_object_id: u64,
         stack_trace_serial_number: u32,
         super_class_object_id: u64,

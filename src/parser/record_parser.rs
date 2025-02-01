@@ -52,8 +52,8 @@ pub struct HprofRecordParser {
 }
 
 impl HprofRecordParser {
-    pub fn new(debug_mode: bool) -> Self {
-        HprofRecordParser {
+    pub const fn new(debug_mode: bool) -> Self {
+        Self {
             debug_mode,
             heap_dump_remaining_len: 0,
         }

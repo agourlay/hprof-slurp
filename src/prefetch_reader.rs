@@ -12,13 +12,13 @@ pub struct PrefetchReader {
 }
 
 impl PrefetchReader {
-    pub fn new(
+    pub const fn new(
         reader: BufReader<File>,
         file_len: usize,
         processed_len: usize,
         read_size: usize,
     ) -> Self {
-        PrefetchReader {
+        Self {
             reader,
             file_len,
             processed_len,

@@ -16,7 +16,7 @@ pub struct ClassInfo {
 }
 
 impl ClassInfo {
-    fn new(super_class_object_id: u64, instance_size: u32) -> Self {
+    const fn new(super_class_object_id: u64, instance_size: u32) -> Self {
         Self {
             super_class_object_id,
             instance_size,
@@ -34,8 +34,8 @@ impl ClassInstanceCounter {
         self.number_of_instances += 1;
     }
 
-    pub fn empty() -> ClassInstanceCounter {
-        ClassInstanceCounter {
+    pub const fn empty() -> Self {
+        Self {
             number_of_instances: 0,
         }
     }
@@ -57,8 +57,8 @@ impl ArrayCounter {
         }
     }
 
-    pub fn empty() -> ArrayCounter {
-        ArrayCounter {
+    pub const fn empty() -> Self {
+        Self {
             number_of_arrays: 0,
             total_number_of_elements: 0,
             max_size_seen: 0,
@@ -120,7 +120,7 @@ pub struct ResultRecorder {
 
 impl ResultRecorder {
     pub fn new(id_size: u32, list_strings: bool, top: usize) -> Self {
-        ResultRecorder {
+        Self {
             id_size,
             list_strings,
             top,
@@ -547,13 +547,13 @@ impl ResultRecorder {
         let allocation_classes_title = format!("\nTop {top} allocated classes:\n\n");
         analysis.push_str(&allocation_classes_title);
         classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
-        ResultRecorder::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
+        Self::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
 
         // Top largest instances analysis
         let allocation_largest_title = format!("\nTop {top} largest instances:\n\n");
         analysis.push_str(&allocation_largest_title);
         classes_dump_vec.sort_by(|a, b| b.2.cmp(&a.2));
-        ResultRecorder::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
+        Self::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
 
         analysis
     }
@@ -576,7 +576,7 @@ impl ResultRecorder {
             .collect();
 
         let total_size_header = "Total size";
-        let total_size_header_padding = ResultRecorder::padding_for_header(
+        let total_size_header_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
             |r| r.0.to_string(),
             total_size_header,
@@ -585,7 +585,7 @@ impl ResultRecorder {
             total_size_header.chars().count() + total_size_header_padding.chars().count();
 
         let instance_count_header = "Instances";
-        let instance_count_header_padding = ResultRecorder::padding_for_header(
+        let instance_count_header_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
             |r| r.1.to_string(),
             instance_count_header,
@@ -594,7 +594,7 @@ impl ResultRecorder {
             instance_count_header.chars().count() + instance_count_header_padding.chars().count();
 
         let largest_instance_header = "Largest";
-        let largest_instance_padding = ResultRecorder::padding_for_header(
+        let largest_instance_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
             |r| r.2.to_string(),
             largest_instance_header,
@@ -603,7 +603,7 @@ impl ResultRecorder {
             largest_instance_header.chars().count() + largest_instance_padding.chars().count();
 
         let class_name_header = "Class name";
-        let class_name_padding = ResultRecorder::padding_for_header(
+        let class_name_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
             |r| r.3.to_string(),
             class_name_header,
@@ -646,13 +646,13 @@ impl ResultRecorder {
 
         // render rows
         for (allocation_size, count, largest_allocation_size, class_name) in rows_formatted {
-            let padding_size_str = ResultRecorder::column_padding(&allocation_size, total_size_len);
+            let padding_size_str = Self::column_padding(&allocation_size, total_size_len);
             let padding_count_str =
-                ResultRecorder::column_padding(&count.to_string(), instance_len);
+                Self::column_padding(&count.to_string(), instance_len);
             let padding_largest_size_str =
-                ResultRecorder::column_padding(&largest_allocation_size, largest_len);
+                Self::column_padding(&largest_allocation_size, largest_len);
             let padding_largest_class_name_str =
-                ResultRecorder::column_padding(class_name, class_name_len);
+                Self::column_padding(class_name, class_name_len);
 
             let row = format!(
                 "| {padding_size_str}{allocation_size} | {padding_count_str}{count} | {padding_largest_size_str}{largest_allocation_size} | {class_name}{padding_largest_class_name_str} |"
@@ -704,7 +704,7 @@ impl ResultRecorder {
             .max_by(std::cmp::Ord::cmp)
             .expect("Results can't be empty");
 
-        ResultRecorder::column_padding(header_label, max_elem_size)
+        Self::column_padding(header_label, max_elem_size)
     }
 
     fn column_padding(column_name: &str, max_item_length: usize) -> String {
