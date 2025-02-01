@@ -1,11 +1,13 @@
 use nom::sequence::terminated;
+use nom::Parser;
 use nom::{bytes, number, IResult};
 
 pub fn parse_c_string(i: &[u8]) -> IResult<&[u8], &[u8]> {
     terminated(
         bytes::streaming::take_until("\0"),
         bytes::streaming::tag("\0"),
-    )(i)
+    )
+    .parse(i)
 }
 
 pub fn parse_i8(i: &[u8]) -> IResult<&[u8], i8> {

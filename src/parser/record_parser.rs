@@ -10,7 +10,7 @@ use crate::parser::record_parser::Record::*;
 use nom::combinator::{flat_map, map};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::count;
-use nom::sequence::{preceded, tuple};
+use nom::sequence::preceded;
 use nom::Parser;
 use nom::{bytes, IResult};
 
@@ -85,7 +85,8 @@ impl HprofRecordParser {
                                 // record expected GC segments length
                                 self.heap_dump_remaining_len = hr.length;
                                 HeapDumpStart { length: hr.length }
-                            })(r1)
+                            })
+                            .parse(r1)
                         }
                         x => panic!("{}", format!("unhandled record tag {}", x)),
                     }
@@ -124,7 +125,7 @@ pub fn lazy_many1<'a, I, O, E, F>(
 ) -> impl FnMut(I) -> IResult<I, (), E> + 'a
 where
     I: Clone + PartialEq,
-    F: Parser<I, O, E> + 'a,
+    F: Parser<I, Output = O, Error = E> + 'a,
     E: ParseError<I>,
 {
     move |mut i: I| match f.parse(i.clone()) {
@@ -170,95 +171,101 @@ fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
         TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump,
         TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump,
         x => panic!("{}", format!("unhandled gc record tag {}", x)),
-    })(i)
+    })
+    .parse(i)
 }
 
 fn parse_gc_root_unknown(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| RootUnknown { object_id })(i)
+    map(parse_id, |object_id| RootUnknown { object_id }).parse(i)
 }
 
 fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
-        tuple((parse_id, parse_u32, parse_u32)),
+        (parse_id, parse_u32, parse_u32),
         |(thread_object_id, thread_sequence_number, stack_sequence_number)| RootThreadObject {
             thread_object_id,
             thread_sequence_number,
             stack_sequence_number,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_root_jni_global(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(
-        tuple((parse_id, parse_id)),
-        |(object_id, jni_global_ref_id)| RootJniGlobal {
+    map((parse_id, parse_id), |(object_id, jni_global_ref_id)| {
+        RootJniGlobal {
             object_id,
             jni_global_ref_id,
-        },
-    )(i)
+        }
+    })
+    .parse(i)
 }
 
 fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
-        tuple((parse_id, parse_u32, parse_u32)),
+        (parse_id, parse_u32, parse_u32),
         |(object_id, thread_serial_number, frame_number_in_stack_trace)| RootJniLocal {
             object_id,
             thread_serial_number,
             frame_number_in_stack_trace,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
-        tuple((parse_id, parse_u32, parse_u32)),
+        (parse_id, parse_u32, parse_u32),
         |(object_id, thread_serial_number, frame_number_in_stack_trace)| RootJavaFrame {
             object_id,
             thread_serial_number,
             frame_number_in_stack_trace,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
-        tuple((parse_id, parse_u32)),
+        (parse_id, parse_u32),
         |(object_id, thread_serial_number)| RootNativeStack {
             object_id,
             thread_serial_number,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_root_sticky_class(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| RootStickyClass { object_id })(i)
+    map(parse_id, |object_id| RootStickyClass { object_id }).parse(i)
 }
 
 fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
     map(
-        tuple((parse_id, parse_u32)),
+        (parse_id, parse_u32),
         |(object_id, thread_serial_number)| RootThreadBlock {
             object_id,
             thread_serial_number,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_root_monitor_used(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| RootMonitorUsed { object_id })(i)
+    map(parse_id, |object_id| RootMonitorUsed { object_id }).parse(i)
 }
 
 fn parse_field_value(ty: FieldType) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {
     move |i| match ty {
-        FieldType::Object => map(parse_id, FieldValue::Object)(i),
-        FieldType::Bool => map(parse_u8, |bu8| FieldValue::Bool(bu8 != 0))(i),
-        FieldType::Char => map(parse_u16, FieldValue::Char)(i),
-        FieldType::Float => map(parse_f32, FieldValue::Float)(i),
-        FieldType::Double => map(parse_f64, FieldValue::Double)(i),
-        FieldType::Byte => map(parse_i8, FieldValue::Byte)(i),
-        FieldType::Short => map(parse_i16, FieldValue::Short)(i),
-        FieldType::Int => map(parse_i32, FieldValue::Int)(i),
-        FieldType::Long => map(parse_i64, FieldValue::Long)(i),
+        FieldType::Object => map(parse_id, FieldValue::Object).parse(i),
+        FieldType::Bool => map(parse_u8, |bu8| FieldValue::Bool(bu8 != 0)).parse(i),
+        FieldType::Char => map(parse_u16, FieldValue::Char).parse(i),
+        FieldType::Float => map(parse_f32, FieldValue::Float).parse(i),
+        FieldType::Double => map(parse_f64, FieldValue::Double).parse(i),
+        FieldType::Byte => map(parse_i8, FieldValue::Byte).parse(i),
+        FieldType::Short => map(parse_i16, FieldValue::Short).parse(i),
+        FieldType::Int => map(parse_i32, FieldValue::Int).parse(i),
+        FieldType::Long => map(parse_i64, FieldValue::Long).parse(i),
     }
 }
 
@@ -272,28 +279,36 @@ fn parse_array_value(
         FieldType::Object => panic!("object type in primitive array"),
         FieldType::Bool => map(count(parse_u8, number_of_elements as usize), |res| {
             ArrayValue::Bool(res.iter().map(|b| *b != 0).collect())
-        })(i),
+        })
+        .parse(i),
         FieldType::Char => map(count(parse_u16, number_of_elements as usize), |res| {
             ArrayValue::Char(res)
-        })(i),
+        })
+        .parse(i),
         FieldType::Float => map(count(parse_f32, number_of_elements as usize), |res| {
             ArrayValue::Float(res)
-        })(i),
+        })
+        .parse(i),
         FieldType::Double => map(count(parse_f64, number_of_elements as usize), |res| {
             ArrayValue::Double(res)
-        })(i),
+        })
+        .parse(i),
         FieldType::Byte => map(count(parse_i8, number_of_elements as usize), |res| {
             ArrayValue::Byte(res)
-        })(i),
+        })
+        .parse(i),
         FieldType::Short => map(count(parse_i16, number_of_elements as usize), |res| {
             ArrayValue::Short(res)
-        })(i),
+        })
+        .parse(i),
         FieldType::Int => map(count(parse_i32, number_of_elements as usize), |res| {
             ArrayValue::Int(res)
-        })(i),
+        })
+        .parse(i),
         FieldType::Long => map(count(parse_i64, number_of_elements as usize), |res| {
             ArrayValue::Long(res)
-        })(i),
+        })
+        .parse(i),
     }
 }
 
@@ -315,12 +330,12 @@ fn skip_array_value(
 }
 
 fn parse_field_type(i: &[u8]) -> IResult<&[u8], FieldType> {
-    map(parse_i8, FieldType::from_value)(i)
+    map(parse_i8, FieldType::from_value).parse(i)
 }
 
 fn parse_const_pool_item(i: &[u8]) -> IResult<&[u8], (ConstFieldInfo, FieldValue)> {
     flat_map(
-        tuple((parse_u16, parse_field_type)),
+        (parse_u16, parse_field_type),
         |(const_pool_idx, const_type)| {
             map(parse_field_value(const_type), move |fv| {
                 let const_field_info = ConstFieldInfo {
@@ -330,32 +345,31 @@ fn parse_const_pool_item(i: &[u8]) -> IResult<&[u8], (ConstFieldInfo, FieldValue
                 (const_field_info, fv)
             })
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_static_field_item(i: &[u8]) -> IResult<&[u8], (FieldInfo, FieldValue)> {
-    flat_map(
-        tuple((parse_id, parse_field_type)),
-        |(name_id, field_type)| {
-            map(parse_field_value(field_type), move |fv| {
-                let field_info = FieldInfo {
-                    name_id,
-                    field_type,
-                };
-                (field_info, fv)
-            })
-        },
-    )(i)
+    flat_map((parse_id, parse_field_type), |(name_id, field_type)| {
+        map(parse_field_value(field_type), move |fv| {
+            let field_info = FieldInfo {
+                name_id,
+                field_type,
+            };
+            (field_info, fv)
+        })
+    })
+    .parse(i)
 }
 
 fn parse_instance_field_item(i: &[u8]) -> IResult<&[u8], FieldInfo> {
-    map(
-        tuple((parse_id, parse_field_type)),
-        |(name_id, field_type)| FieldInfo {
+    map((parse_id, parse_field_type), |(name_id, field_type)| {
+        FieldInfo {
             name_id,
             field_type,
-        },
-    )(i)
+        }
+    })
+    .parse(i)
 }
 
 // TODO use nom combinators (instead of Result's)
@@ -374,41 +388,44 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
             instance_size,
             constant_pool_size,
         ),
-    ) = tuple((
+    ) = (
         parse_id, parse_u32, parse_id, parse_id, parse_id, parse_id, parse_id, parse_id, parse_u32,
         parse_u16,
-    ))(i)?;
+    )
+        .parse(i)?;
 
-    count(parse_const_pool_item, constant_pool_size as usize)(r1).and_then(|(r2, const_fields)| {
-        parse_u16(r2).and_then(|(r3, static_fields_number)| {
-            count(parse_static_field_item, static_fields_number as usize)(r3).and_then(
-                |(r4, static_fields)| {
-                    parse_u16(r4).and_then(|(r5, instance_field_number)| {
-                        count(parse_instance_field_item, instance_field_number as usize)(r5).map(
-                            |(r6, instance_fields)| {
-                                let class_dump_fields = ClassDumpFields::new(
-                                    class_object_id,
-                                    stack_trace_serial_number,
-                                    super_class_object_id,
-                                    instance_size,
-                                    const_fields,
-                                    static_fields,
-                                    instance_fields,
-                                );
-                                let gcd = ClassDump(Box::new(class_dump_fields));
-                                (r6, gcd)
-                            },
-                        )
+    count(parse_const_pool_item, constant_pool_size as usize)
+        .parse(r1)
+        .and_then(|(r2, const_fields)| {
+            parse_u16(r2).and_then(|(r3, static_fields_number)| {
+                count(parse_static_field_item, static_fields_number as usize)
+                    .parse(r3)
+                    .and_then(|(r4, static_fields)| {
+                        parse_u16(r4).and_then(|(r5, instance_field_number)| {
+                            count(parse_instance_field_item, instance_field_number as usize)
+                                .parse(r5)
+                                .map(|(r6, instance_fields)| {
+                                    let class_dump_fields = ClassDumpFields::new(
+                                        class_object_id,
+                                        stack_trace_serial_number,
+                                        super_class_object_id,
+                                        instance_size,
+                                        const_fields,
+                                        static_fields,
+                                        instance_fields,
+                                    );
+                                    let gcd = ClassDump(Box::new(class_dump_fields));
+                                    (r6, gcd)
+                                })
+                        })
                     })
-                },
-            )
+            })
         })
-    })
 }
 
 fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     flat_map(
-        tuple((parse_id, parse_u32, parse_id, parse_u32)),
+        (parse_id, parse_u32, parse_id, parse_u32),
         |(object_id, stack_trace_serial_number, class_object_id, data_size)| {
             map(bytes::streaming::take(data_size), move |_bytes_segment| {
                 // Important: The actual content of the instance cannot be analyzed at this point because we miss the class information!
@@ -423,12 +440,13 @@ fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
                 }
             })
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     flat_map(
-        tuple((parse_id, parse_u32, parse_u32, parse_id)),
+        (parse_id, parse_u32, parse_u32, parse_id),
         |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
             map(
                 bytes::streaming::take(number_of_elements * ID_SIZE),
@@ -444,12 +462,13 @@ fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
                 },
             )
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     flat_map(
-        tuple((parse_id, parse_u32, parse_u32, parse_field_type)),
+        (parse_id, parse_u32, parse_u32, parse_field_type),
         |(object_id, stack_trace_serial_number, number_of_elements, element_type)| {
             // Do not parse the array of primitives as it is not needed for any analyses so far.
             // see `parse_array_value(element_type, number_of_elements)`
@@ -463,35 +482,39 @@ fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
                 },
             )
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_header_record(i: &[u8]) -> IResult<&[u8], RecordHeader> {
-    map(tuple((parse_u32, parse_u32)), |(timestamp, length)| {
-        RecordHeader { timestamp, length }
-    })(i)
+    map((parse_u32, parse_u32), |(timestamp, length)| RecordHeader {
+        timestamp,
+        length,
+    })
+    .parse(i)
 }
 
 fn parse_utf8_string(i: &[u8]) -> IResult<&[u8], Record> {
     flat_map(parse_header_record, |header_record| {
         map(
-            tuple((
+            (
                 parse_id,
                 bytes::streaming::take(header_record.length - ID_SIZE),
-            )),
+            ),
             |(id, b)| {
                 let str = String::from_utf8_lossy(b).into();
                 Utf8String { id, str }
             },
         )
-    })(i)
+    })
+    .parse(i)
 }
 
 fn parse_load_class(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            tuple((parse_u32, parse_id, parse_u32, parse_id)),
+            (parse_u32, parse_id, parse_u32, parse_id),
             |(serial_number, class_object_id, stack_trace_serial_number, class_name_id)| {
                 LoadClass(LoadClassData {
                     serial_number,
@@ -501,21 +524,23 @@ fn parse_load_class(i: &[u8]) -> IResult<&[u8], Record> {
                 })
             },
         ),
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_unload_class(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(parse_u32, |serial_number| UnloadClass { serial_number }),
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            tuple((parse_id, parse_id, parse_id, parse_id, parse_u32, parse_i32)),
+            (parse_id, parse_id, parse_id, parse_id, parse_u32, parse_i32),
             |(
                 stack_frame_id,
                 method_name_id,
@@ -534,7 +559,8 @@ fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
                 })
             },
         ),
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
@@ -542,12 +568,12 @@ fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
         // (header_record.length - (3 * parse_u32)) / id_size = (header_record.length - 12) / 8
         let stack_frame_ids_len = (header_record.length - 12) / ID_SIZE;
         map(
-            tuple((
+            (
                 parse_u32,
                 parse_u32,
                 parse_u32,
                 count(parse_id, stack_frame_ids_len as usize),
-            )),
+            ),
             |(serial_number, thread_serial_number, number_of_frames, stack_frame_ids)| {
                 StackTrace(StackTraceData {
                     serial_number,
@@ -557,14 +583,15 @@ fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
                 })
             },
         )
-    })(i)
+    })
+    .parse(i)
 }
 
 fn parse_start_thread(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            tuple((parse_u32, parse_id, parse_u32, parse_id, parse_id, parse_id)),
+            (parse_u32, parse_id, parse_u32, parse_id, parse_id, parse_id),
             |(
                 thread_serial_number,
                 thread_object_id,
@@ -581,14 +608,15 @@ fn parse_start_thread(i: &[u8]) -> IResult<&[u8], Record> {
                 thread_group_parent_name_id,
             },
         ),
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_heap_summary(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            tuple((parse_u32, parse_u32, parse_u64, parse_u64)),
+            (parse_u32, parse_u32, parse_u64, parse_u64),
             |(
                 total_live_bytes,
                 total_live_instances,
@@ -601,7 +629,8 @@ fn parse_heap_summary(i: &[u8]) -> IResult<&[u8], Record> {
                 total_instances_allocated,
             },
         ),
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_end_thread(i: &[u8]) -> IResult<&[u8], Record> {
@@ -610,14 +639,15 @@ fn parse_end_thread(i: &[u8]) -> IResult<&[u8], Record> {
         map(parse_u32, |thread_serial_number| EndThread {
             thread_serial_number,
         }),
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_allocation_site(i: &[u8]) -> IResult<&[u8], AllocationSite> {
     map(
-        tuple((
+        (
             parse_u8, parse_u32, parse_u32, parse_u32, parse_u32, parse_u32, parse_u32,
-        )),
+        ),
         |(
             is_array,
             class_serial_number,
@@ -637,16 +667,17 @@ fn parse_allocation_site(i: &[u8]) -> IResult<&[u8], AllocationSite> {
                 instances_allocated,
             }
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_allocation_sites(i: &[u8]) -> IResult<&[u8], Record> {
     flat_map(
         preceded(
             parse_header_record,
-            tuple((
+            (
                 parse_u16, parse_u32, parse_u32, parse_u32, parse_u64, parse_u64, parse_u32,
-            )),
+            ),
         ),
         |(
             flags,
@@ -671,39 +702,41 @@ fn parse_allocation_sites(i: &[u8]) -> IResult<&[u8], Record> {
                 },
             )
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_heap_dump_end(i: &[u8]) -> IResult<&[u8], Record> {
-    map(parse_header_record, |rb| HeapDumpEnd { length: rb.length })(i)
+    map(parse_header_record, |rb| HeapDumpEnd { length: rb.length }).parse(i)
 }
 
 fn parse_control_settings(i: &[u8]) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
-        map(
-            tuple((parse_u32, parse_u16)),
-            |(flags, stack_trace_depth)| ControlSettings {
+        map((parse_u32, parse_u16), |(flags, stack_trace_depth)| {
+            ControlSettings {
                 flags,
                 stack_trace_depth,
-            },
-        ),
-    )(i)
+            }
+        }),
+    )
+    .parse(i)
 }
 
 fn parse_cpu_sample(i: &[u8]) -> IResult<&[u8], CpuSample> {
     map(
-        tuple((parse_u32, parse_u32)),
+        (parse_u32, parse_u32),
         |(number_of_samples, stack_trace_serial_number)| CpuSample {
             number_of_samples,
             stack_trace_serial_number,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 fn parse_cpu_samples(i: &[u8]) -> IResult<&[u8], Record> {
     flat_map(
-        preceded(parse_header_record, tuple((parse_u32, parse_u32))),
+        preceded(parse_header_record, (parse_u32, parse_u32)),
         |(total_number_of_samples, number_of_traces)| {
             map(
                 count(parse_cpu_sample, total_number_of_samples as usize),
@@ -714,5 +747,6 @@ fn parse_cpu_samples(i: &[u8]) -> IResult<&[u8], Record> {
                 },
             )
         },
-    )(i)
+    )
+    .parse(i)
 }

@@ -1,7 +1,7 @@
 use crate::parser::primitive_parsers::*;
 use nom::combinator::map;
-use nom::sequence::tuple;
 use nom::IResult;
+use nom::Parser;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FileHeader {
@@ -22,11 +22,12 @@ impl FileHeader {
 
 pub fn parse_file_header(i: &[u8]) -> IResult<&[u8], FileHeader> {
     map(
-        tuple((parse_c_string, parse_u32, parse_u64)),
+        (parse_c_string, parse_u32, parse_u64),
         |(format, size_pointers, timestamp)| {
             FileHeader::from_bytes(format, size_pointers, timestamp)
         },
-    )(i)
+    )
+    .parse(i)
 }
 
 #[cfg(test)]
