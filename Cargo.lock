@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "hprof-slurp"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "ahash",
  "clap",
