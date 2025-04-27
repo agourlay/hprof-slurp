@@ -1,6 +1,7 @@
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
+use std::fmt::Write;
 use std::thread::JoinHandle;
 use std::{mem, thread};
 
@@ -33,7 +34,7 @@ pub struct ClassInstanceCounter {
 }
 
 impl ClassInstanceCounter {
-    pub fn add_instance(&mut self) {
+    pub const fn add_instance(&mut self) {
         self.number_of_instances += 1;
     }
 
@@ -323,9 +324,8 @@ impl ResultRecorder {
 
     fn render_captured_strings(&self) -> String {
         let mut strings: Vec<_> = self.utf8_strings_by_id.values().collect();
-        strings.sort();
-        let mut result = String::new();
-        result.push_str("\nList of Strings\n");
+        strings.sort_unstable();
+        let mut result = String::from("\nList of Strings\n");
         for s in strings {
             result.push_str(s);
             result.push('\n');
@@ -335,7 +335,7 @@ impl ResultRecorder {
 
     fn render_duplicated_strings(&self) -> Option<String> {
         let mut strings: Vec<_> = self.utf8_strings_by_id.values().collect();
-        strings.sort();
+        strings.sort_unstable();
         let all_len = strings.len();
         strings.dedup();
         let dedup_len = strings.len();
@@ -362,13 +362,16 @@ impl ResultRecorder {
 
         stack_traces.sort_by_key(|(serial_number, _)| **serial_number);
 
-        thread_info.push_str(&format!(
-            "\nFound {} threads with stacktraces:\n",
+        writeln!(
+            thread_info,
+            "\nFound {} threads with stacktraces:",
             stack_traces.len()
-        ));
+        )
+        .expect("Could not write to thread info");
 
         for (index, (_id, stack_data)) in stack_traces.iter().enumerate() {
-            thread_info.push_str(&format!("\nThread {}\n", index + 1));
+            write!(thread_info, "\nThread {}\n", index + 1)
+                .expect("Could not write to thread info");
 
             //  for each stack frames
             for stack_frame_id in &stack_data.stack_frame_ids {
@@ -401,9 +404,11 @@ impl ResultRecorder {
                 };
 
                 // pretty frame output
-                let stack_frame_pretty =
-                    format!("  at {class_name}.{method_name} ({file_name}:{pretty_line_number})\n");
-                thread_info.push_str(&stack_frame_pretty);
+                writeln!(
+                    thread_info,
+                    "  at {class_name}.{method_name} ({file_name}:{pretty_line_number})"
+                )
+                .expect("Could not write to thread info");
             }
         }
         thread_info
@@ -542,22 +547,24 @@ impl ResultRecorder {
         // Total heap size found banner
         let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s).sum();
         let display_total_size = pretty_bytes_size(total_size);
-        let allocation_classes_title =
-            format!("Found a total of {display_total_size} of instances allocated on the heap.\n");
-        analysis.push_str(&allocation_classes_title);
+        writeln!(
+            analysis,
+            "Found a total of {display_total_size} of instances allocated on the heap."
+        )
+        .expect("Could not write to analysis");
 
         // Sort by class name first for stability in test results :s
         classes_dump_vec.sort_by(|a, b| b.0.cmp(&a.0));
 
         // Top allocated classes analysis
-        let allocation_classes_title = format!("\nTop {top} allocated classes:\n\n");
-        analysis.push_str(&allocation_classes_title);
+        writeln!(analysis, "\nTop {top} allocated classes:\n")
+            .expect("Could not write to analysis");
         classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
         Self::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
 
         // Top largest instances analysis
-        let allocation_largest_title = format!("\nTop {top} largest instances:\n\n");
-        analysis.push_str(&allocation_largest_title);
+        writeln!(analysis, "\nTop {top} largest instances:\n")
+            .expect("Could not write to analysis");
         classes_dump_vec.sort_by(|a, b| b.2.cmp(&a.2));
         Self::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
 
@@ -634,11 +641,7 @@ impl ResultRecorder {
         );
 
         // render header
-        let header = format!(
-            "|{total_size_header}|{instance_count_header}|{largest_instance_header}|{class_name_header}|"
-        );
-        analysis.push_str(&header);
-        analysis.push('\n');
+        writeln!(analysis, "|{total_size_header}|{instance_count_header}|{largest_instance_header}|{class_name_header}|").expect("Could not write to analysis");
 
         // render line after header
         Self::render_table_vertical_line(
@@ -657,11 +660,7 @@ impl ResultRecorder {
                 Self::column_padding(&largest_allocation_size, largest_len);
             let padding_largest_class_name_str = Self::column_padding(class_name, class_name_len);
 
-            let row = format!(
-                "| {padding_size_str}{allocation_size} | {padding_count_str}{count} | {padding_largest_size_str}{largest_allocation_size} | {class_name}{padding_largest_class_name_str} |"
-            );
-            analysis.push_str(&row);
-            analysis.push('\n');
+            writeln!(analysis, "| {padding_size_str}{allocation_size} | {padding_count_str}{count} | {padding_largest_size_str}{largest_allocation_size} | {class_name}{padding_largest_class_name_str} |").expect("Could not write to analysis");
         }
 
         // render line after rows
