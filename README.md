@@ -116,7 +116,6 @@ less hprof-slurp.json | grep jq .
     }
   ],
   "top_largest_instances": [..]
-  ]
 }
 ```
 
