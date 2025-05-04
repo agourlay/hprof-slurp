@@ -11,7 +11,7 @@ use crate::parser::record::Record::{
     HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String,
 };
 use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
-use crate::utils::pretty_bytes_size;
+use crate::rendered_result::{ClassAllocationStats, RenderedResult};
 
 #[derive(Debug, Copy, Clone)]
 pub struct ClassInfo {
@@ -70,18 +70,10 @@ impl ArrayCounter {
     }
 }
 
-pub struct RenderedResult {
-    pub summary: String,
-    pub thread_info: String,
-    pub memory_usage: String,
-    pub duplicated_strings: Option<String>,
-    pub captured_strings: Option<String>,
-}
-
 pub struct ResultRecorder {
+    // Recorder's params
     id_size: u32,
     list_strings: bool,
-    top: usize,
     // Tag counters
     classes_unloaded: u32,
     stack_frames: u32,
@@ -123,11 +115,10 @@ pub struct ResultRecorder {
 }
 
 impl ResultRecorder {
-    pub fn new(id_size: u32, list_strings: bool, top: usize) -> Self {
+    pub fn new(id_size: u32, list_strings: bool) -> Self {
         Self {
             id_size,
             list_strings,
-            top,
             classes_unloaded: 0,
             stack_frames: 0,
             stack_traces: 0,
@@ -195,7 +186,7 @@ impl ResultRecorder {
                         let rendered_result = RenderedResult {
                             summary: self.render_summary(),
                             thread_info: self.render_thread_info(),
-                            memory_usage: self.render_memory_usage(self.top),
+                            memory_usage: self.aggregate_memory_usage(),
                             duplicated_strings: self.render_duplicated_strings(),
                             captured_strings: if self.list_strings {
                                 Some(self.render_captured_strings())
@@ -414,7 +405,7 @@ impl ResultRecorder {
         thread_info
     }
 
-    fn render_memory_usage(&self, top: usize) -> String {
+    fn aggregate_memory_usage(&self) -> Vec<ClassAllocationStats> {
         // https://www.baeldung.com/java-memory-layout
         // total_size = object_header + data
         // on a 64-bit arch.
@@ -456,7 +447,7 @@ impl ResultRecorder {
                 // add extra padding if any
                 size += size.rem_euclid(8);
                 let total_size = u64::from(size) * v.number_of_instances;
-                (
+                ClassAllocationStats::new(
                     class_name,
                     v.number_of_instances,
                     u64::from(size), // all instances have the same size
@@ -492,7 +483,7 @@ impl ResultRecorder {
                     let cost_data_largest_array = primitive_size * u64::from(ac.max_size_seen);
                     let cost_padding_largest_array =
                         (array_header_size + cost_data_largest_array).rem_euclid(8);
-                    (
+                    ClassAllocationStats::new(
                         primitive_array_label,
                         ac.number_of_arrays,
                         array_header_size + cost_data_largest_array + cost_padding_largest_array,
@@ -529,7 +520,7 @@ impl ResultRecorder {
             let cost_of_all_refs = ref_size * ac.total_number_of_elements;
             let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
             let cost_of_largest_array_refs = ref_size * u64::from(ac.max_size_seen);
-            (
+            ClassAllocationStats::new(
                 object_array_label,
                 ac.number_of_arrays,
                 array_header_size + cost_of_largest_array_refs,
@@ -540,179 +531,9 @@ impl ResultRecorder {
         // Merge results
         classes_dump_vec.extend(array_primitives_dump_vec);
         classes_dump_vec.extend(array_objects_dump_vec);
-
-        // Holds the final result
-        let mut analysis = String::new();
-
-        // Total heap size found banner
-        let total_size = classes_dump_vec.iter().map(|(_, _, _, s)| *s).sum();
-        let display_total_size = pretty_bytes_size(total_size);
-        writeln!(
-            analysis,
-            "Found a total of {display_total_size} of instances allocated on the heap."
-        )
-        .expect("Could not write to analysis");
-
         // Sort by class name first for stability in test results :s
-        classes_dump_vec.sort_by(|a, b| b.0.cmp(&a.0));
-
-        // Top allocated classes analysis
-        writeln!(analysis, "\nTop {top} allocated classes:\n")
-            .expect("Could not write to analysis");
-        classes_dump_vec.sort_by(|a, b| b.3.cmp(&a.3));
-        Self::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
-
-        // Top largest instances analysis
-        writeln!(analysis, "\nTop {top} largest instances:\n")
-            .expect("Could not write to analysis");
-        classes_dump_vec.sort_by(|a, b| b.2.cmp(&a.2));
-        Self::render_table(self.top, &mut analysis, classes_dump_vec.as_slice());
-
-        analysis
-    }
-
-    // Render table from [(class_name, count, largest_allocation, instance_size)]
-    fn render_table(top: usize, analysis: &mut String, rows: &[(String, u64, u64, u64)]) {
-        let rows_formatted: Vec<_> = rows
-            .iter()
-            .take(top)
-            .map(|(class_name, count, largest_allocation, allocation_size)| {
-                let display_allocation = pretty_bytes_size(*allocation_size);
-                let largest_display_allocation = pretty_bytes_size(*largest_allocation);
-                (
-                    display_allocation,
-                    *count,
-                    largest_display_allocation,
-                    class_name,
-                )
-            })
-            .collect();
-
-        let total_size_header = "Total size";
-        let total_size_header_padding = Self::padding_for_header(
-            rows_formatted.as_slice(),
-            |r| r.0.to_string(),
-            total_size_header,
-        );
-        let total_size_len =
-            total_size_header.chars().count() + total_size_header_padding.chars().count();
-
-        let instance_count_header = "Instances";
-        let instance_count_header_padding = Self::padding_for_header(
-            rows_formatted.as_slice(),
-            |r| r.1.to_string(),
-            instance_count_header,
-        );
-        let instance_len =
-            instance_count_header.chars().count() + instance_count_header_padding.chars().count();
-
-        let largest_instance_header = "Largest";
-        let largest_instance_padding = Self::padding_for_header(
-            rows_formatted.as_slice(),
-            |r| r.2.to_string(),
-            largest_instance_header,
-        );
-        let largest_len =
-            largest_instance_header.chars().count() + largest_instance_padding.chars().count();
-
-        let class_name_header = "Class name";
-        let class_name_padding = Self::padding_for_header(
-            rows_formatted.as_slice(),
-            |r| r.3.to_string(),
-            class_name_header,
-        );
-        let class_name_len = class_name_header.chars().count() + class_name_padding.chars().count();
-
-        // headers with padding
-        let total_size_header = format!(" {total_size_header_padding}{total_size_header} ");
-        let instance_count_header =
-            format!(" {instance_count_header_padding}{instance_count_header} ");
-        let largest_instance_header =
-            format!(" {largest_instance_padding}{largest_instance_header} ",);
-        let class_name_header = format!(" {class_name_header}{class_name_padding} ");
-
-        // render line before header
-        Self::render_table_vertical_line(
-            analysis,
-            &total_size_header,
-            &instance_count_header,
-            &largest_instance_header,
-            &class_name_header,
-        );
-
-        // render header
-        writeln!(analysis, "|{total_size_header}|{instance_count_header}|{largest_instance_header}|{class_name_header}|").expect("Could not write to analysis");
-
-        // render line after header
-        Self::render_table_vertical_line(
-            analysis,
-            &total_size_header,
-            &instance_count_header,
-            &largest_instance_header,
-            &class_name_header,
-        );
-
-        // render rows
-        for (allocation_size, count, largest_allocation_size, class_name) in rows_formatted {
-            let padding_size_str = Self::column_padding(&allocation_size, total_size_len);
-            let padding_count_str = Self::column_padding(&count.to_string(), instance_len);
-            let padding_largest_size_str =
-                Self::column_padding(&largest_allocation_size, largest_len);
-            let padding_largest_class_name_str = Self::column_padding(class_name, class_name_len);
-
-            writeln!(analysis, "| {padding_size_str}{allocation_size} | {padding_count_str}{count} | {padding_largest_size_str}{largest_allocation_size} | {class_name}{padding_largest_class_name_str} |").expect("Could not write to analysis");
-        }
-
-        // render line after rows
-        Self::render_table_vertical_line(
-            analysis,
-            &total_size_header,
-            &instance_count_header,
-            &largest_instance_header,
-            &class_name_header,
-        );
-    }
-
-    pub fn render_table_vertical_line(
-        analysis: &mut String,
-        total_size_header: &str,
-        instance_count_header: &str,
-        largest_instance_header: &str,
-        class_name_header: &str,
-    ) {
-        analysis.push('+');
-        analysis.push_str(&("-".repeat(total_size_header.chars().count())));
-        analysis.push('+');
-        analysis.push_str(&("-".repeat(instance_count_header.chars().count())));
-        analysis.push('+');
-        analysis.push_str(&("-".repeat(largest_instance_header.chars().count())));
-        analysis.push('+');
-        analysis.push_str(&("-".repeat(class_name_header.chars().count())));
-        analysis.push('+');
-        analysis.push('\n');
-    }
-
-    fn padding_for_header<F>(
-        rows: &[(String, u64, String, &String)],
-        field_selector: F,
-        header_label: &str,
-    ) -> String
-    where
-        F: Fn(&(String, u64, String, &String)) -> String,
-    {
-        let max_elem_size = rows
-            .iter()
-            .map(|d| field_selector(d).chars().count())
-            .max_by(std::cmp::Ord::cmp)
-            .expect("Results can't be empty");
-
-        Self::column_padding(header_label, max_elem_size)
-    }
-
-    fn column_padding(column_name: &str, max_item_length: usize) -> String {
-        let column_label_len = column_name.chars().count();
-        let padding_size = max_item_length.saturating_sub(column_label_len);
-        " ".repeat(padding_size)
+        classes_dump_vec.sort_unstable_by(|a, b| b.class_name.cmp(&a.class_name));
+        classes_dump_vec
     }
 
     pub fn render_summary(&self) -> String {

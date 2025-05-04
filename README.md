@@ -26,6 +26,7 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 - displays largest instance size per class.
 - displays threads stack traces.
 - lists all `Strings` found.
+- output results as JSON possible
 
 ## Usage
 
@@ -40,13 +41,14 @@ Options:
   -t, --top <top>              the top results to display [default: 20]
   -d, --debug                  debug info
   -l, --listStrings            list all Strings found
+      --json                   additional JSON output in file
   -h, --help                   Print help
   -V, --version                Print version
 ```
 
-Example:
+### Example table
 
-```
+```bash
 ./hprof-slurp -i "test-heap-dumps/hprof-64.bin"
 ```
 
@@ -79,6 +81,43 @@ Top 20 allocated classes:
 |    3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]                  |
 |    3.13KiB |        56 | 144.00bytes | java.lang.String[]                           |
 +------------+-----------+-------------+----------------------------------------------+
+```
+
+### Example JSON
+
+```bash
+./hprof-slurp -i "test-heap-dumps/hprof-64.bin" --top 3 --json
+```
+
+```bash
+less hprof-slurp.json | grep jq .
+```
+
+```JSON
+{
+  "top_allocated_classes": [
+    {
+      "class_name": "int[]",
+      "instance_count": 436,
+      "largest_allocation_bytes": 650016,
+      "allocation_size_bytes": 2091112
+    },
+    {
+      "class_name": "char[]",
+      "instance_count": 1991,
+      "largest_allocation_bytes": 16400,
+      "allocation_size_bytes": 201842
+    },
+    {
+      "class_name": "byte[]",
+      "instance_count": 443,
+      "largest_allocation_bytes": 8208,
+      "allocation_size_bytes": 87294
+    }
+  ],
+  "top_largest_instances": [..]
+  ]
+}
 ```
 
 ## Installation

@@ -41,9 +41,15 @@ fn command() -> Command {
                 .short('l')
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("json")
+                .help("additional JSON output in file")
+                .long("json")
+                .action(clap::ArgAction::SetTrue),
+        )
 }
 
-pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
+pub fn get_args() -> Result<Args, HprofSlurpError> {
     let matches = command().get_matches();
 
     let input_file = matches
@@ -63,7 +69,23 @@ pub fn get_args() -> Result<(String, usize, bool, bool), HprofSlurpError> {
 
     let debug = matches.get_flag("debug");
     let list_strings = matches.get_flag("listStrings");
-    Ok((input_file.to_string(), top, debug, list_strings))
+    let json_output = matches.get_flag("json");
+    let args = Args {
+        file_path: input_file.to_string(),
+        top,
+        debug,
+        list_strings,
+        json_output,
+    };
+    Ok(args)
+}
+
+pub struct Args {
+    pub file_path: String,
+    pub top: usize,
+    pub debug: bool,
+    pub list_strings: bool,
+    pub json_output: bool,
 }
 
 #[cfg(test)]

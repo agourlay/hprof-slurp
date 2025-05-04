@@ -13,7 +13,8 @@ use crate::parser::file_header_parser::{parse_file_header, FileHeader};
 use crate::parser::record::Record;
 use crate::parser::record_stream_parser::HprofRecordStreamParser;
 use crate::prefetch_reader::PrefetchReader;
-use crate::result_recorder::{RenderedResult, ResultRecorder};
+use crate::rendered_result::RenderedResult;
+use crate::result_recorder::ResultRecorder;
 use crate::utils::pretty_bytes_size;
 
 // the exact size of the file header (31 bytes)
@@ -24,7 +25,6 @@ pub const READ_BUFFER_SIZE: usize = 64 * 1024 * 1024;
 
 pub fn slurp_file(
     file_path: String,
-    top: usize,
     debug_mode: bool,
     list_strings: bool,
 ) -> Result<RenderedResult, HprofSlurpError> {
@@ -100,7 +100,7 @@ pub fn slurp_file(
     )?;
 
     // Init result recorder
-    let result_recorder = ResultRecorder::new(id_size, list_strings, top);
+    let result_recorder = ResultRecorder::new(id_size, list_strings);
     let recorder_thread = result_recorder.start(receive_records, send_result, send_pooled_vec)?;
 
     // Init progress bar
@@ -167,12 +167,10 @@ mod tests {
     const FILE_PATH_64: &str = "test-heap-dumps/hprof-64.bin";
     const FILE_PATH_RESULT_64: &str = "test-heap-dumps/hprof-64-result.txt";
 
-    fn validate_gold_rendered_result(result: &RenderedResult, gold_path: &str) {
+    fn validate_gold_rendered_result(render_result: RenderedResult, gold_path: &str) {
         let gold = fs::read_to_string(gold_path).expect("gold file not found!");
-        let expected = format!(
-            "{}\n{}\n{}",
-            result.summary, result.thread_info, result.memory_usage
-        );
+        // top 20 hardcoded
+        let expected = render_result.serialize(20);
         let mut expected_lines = expected.lines();
         for (i1, l1) in gold.lines().enumerate() {
             let l2 = expected_lines.next().unwrap();
@@ -190,16 +188,16 @@ mod tests {
     #[test]
     fn unsupported_32_bits() {
         let file_path = FILE_PATH_32.to_string();
-        let result = slurp_file(file_path, 20, false, false);
+        let result = slurp_file(file_path, false, false);
         assert!(result.is_err());
     }
 
     #[test]
     fn supported_64_bits() {
         let file_path = FILE_PATH_64.to_string();
-        let result = slurp_file(file_path, 20, false, false);
+        let result = slurp_file(file_path, false, false);
         assert!(result.is_ok());
-        validate_gold_rendered_result(&result.unwrap(), FILE_PATH_RESULT_64);
+        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_64);
     }
 
     #[test]

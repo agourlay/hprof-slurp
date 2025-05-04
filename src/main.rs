@@ -2,15 +2,19 @@ mod args;
 mod errors;
 mod parser;
 mod prefetch_reader;
+mod rendered_result;
 mod result_recorder;
 mod slurp;
 mod utils;
 
-use crate::args::get_args;
-use crate::errors::HprofSlurpError;
-use crate::result_recorder::RenderedResult;
-use crate::slurp::slurp_file;
 use std::time::Instant;
+
+use rendered_result::JsonResult;
+
+use crate::args::get_args;
+use crate::args::Args;
+use crate::errors::HprofSlurpError;
+use crate::slurp::slurp_file;
 
 fn main() {
     std::process::exit(match main_result() {
@@ -24,27 +28,20 @@ fn main() {
 
 fn main_result() -> Result<(), HprofSlurpError> {
     let now = Instant::now();
-    let (file_path, top, debug_mode, list_strings) = get_args()?;
-    let rendered_result = slurp_file(file_path, top, debug_mode, list_strings)?;
-
-    // Print results
-    let RenderedResult {
-        summary,
-        thread_info,
-        memory_usage,
-        duplicated_strings,
-        captured_strings,
-    } = rendered_result;
-    println!("{summary}");
-    println!("{thread_info}");
-    println!("{memory_usage}");
-    if let Some(duplicated_strings) = duplicated_strings {
-        println!("{duplicated_strings}");
+    let Args {
+        file_path,
+        top,
+        debug,
+        list_strings,
+        json_output,
+    } = get_args()?;
+    let mut rendered_result = slurp_file(file_path, debug, list_strings)?;
+    if json_output {
+        // only memory usage rendered for now
+        let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);
+        json_result.save_as_file()?;
     }
-    if let Some(list_strings) = captured_strings {
-        println!("{list_strings}");
-    }
-
+    print!("{}", rendered_result.serialize(top));
     println!("File successfully processed in {:?}", now.elapsed());
     Ok(())
 }

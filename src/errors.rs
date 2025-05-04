@@ -21,6 +21,8 @@ pub enum HprofSlurpError {
     StdIoError { e: std::io::Error },
     #[error("standard thread error ({e:?})")]
     StdThreadError { e: Box<dyn Any + Send + 'static> },
+    #[error("serialization error ({e})")]
+    SerdeError { e: serde_json::Error },
 }
 
 impl From<std::io::Error> for HprofSlurpError {
@@ -32,5 +34,11 @@ impl From<std::io::Error> for HprofSlurpError {
 impl From<clap::Error> for HprofSlurpError {
     fn from(e: clap::Error) -> Self {
         Self::ClapError { e }
+    }
+}
+
+impl From<serde_json::Error> for HprofSlurpError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::SerdeError { e }
     }
 }
