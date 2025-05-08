@@ -15,7 +15,7 @@ nom = "8.0.0"
 indicatif = "0.17.11"
 clap = { version = "4.5.37", features = ["cargo"] }
 indoc = "2.0.6"
-ahash = "0.8.11"
+ahash = "0.8.12"
 thiserror = "2.0.12"
 crossbeam-channel = "0.5.15"
 serde = { version = "1.0.19", features = ["derive"] }
