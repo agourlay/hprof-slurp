@@ -9,7 +9,7 @@ use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::{
     InvalidHeaderSize, InvalidHprofFile, InvalidIdSize, StdThreadError, UnsupportedIdSize,
 };
-use crate::parser::file_header_parser::{parse_file_header, FileHeader};
+use crate::parser::file_header_parser::{FileHeader, parse_file_header};
 use crate::parser::record::Record;
 use crate::parser::record_stream_parser::HprofRecordStreamParser;
 use crate::prefetch_reader::PrefetchReader;

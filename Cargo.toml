@@ -8,7 +8,7 @@ license = "Apache-2.0"
 readme = "README.md"
 categories = ["command-line-utilities"]
 keywords = ["java", "jvm", "heap-dump", "analyzer", "hprof"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 nom = "8.0.0"

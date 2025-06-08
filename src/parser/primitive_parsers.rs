@@ -1,6 +1,6 @@
-use nom::sequence::terminated;
 use nom::Parser;
-use nom::{bytes, number, IResult};
+use nom::sequence::terminated;
+use nom::{IResult, bytes, number};
 
 pub fn parse_c_string(i: &[u8]) -> IResult<&[u8], &[u8]> {
     terminated(

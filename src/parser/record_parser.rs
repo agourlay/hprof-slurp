@@ -4,8 +4,8 @@ use crate::parser::gc_record::{
     ArrayValue, ClassDumpFields, ConstFieldInfo, FieldInfo, FieldType, FieldValue, GcRecord,
 };
 use crate::parser::primitive_parsers::{
-    parse_f32, parse_f64, parse_i16, parse_i32, parse_i64, parse_i8, parse_u16, parse_u32,
-    parse_u64, parse_u8,
+    parse_f32, parse_f64, parse_i8, parse_i16, parse_i32, parse_i64, parse_u8, parse_u16,
+    parse_u32, parse_u64,
 };
 use crate::parser::record::{
     AllocationSite, CpuSample, LoadClassData, Record, RecordHeader, StackFrameData, StackTraceData,
@@ -19,12 +19,12 @@ use crate::parser::record_parser::Record::{
     AllocationSites, ControlSettings, CpuSamples, EndThread, GcSegment, HeapDumpEnd, HeapDumpStart,
     HeapSummary, LoadClass, StackFrame, StackTrace, StartThread, UnloadClass, Utf8String,
 };
+use nom::Parser;
 use nom::combinator::{flat_map, map};
 use nom::error::{ErrorKind, ParseError};
 use nom::multi::count;
 use nom::sequence::preceded;
-use nom::Parser;
-use nom::{bytes, IResult};
+use nom::{IResult, bytes};
 
 const TAG_STRING: u8 = 0x01;
 const TAG_LOAD_CLASS: u8 = 0x02;

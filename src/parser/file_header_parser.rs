@@ -1,7 +1,7 @@
 use crate::parser::primitive_parsers::{parse_c_string, parse_u32, parse_u64};
-use nom::combinator::map;
 use nom::IResult;
 use nom::Parser;
+use nom::combinator::map;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FileHeader {

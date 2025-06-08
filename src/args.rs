@@ -1,7 +1,7 @@
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::{InputFileNotFound, InvalidTopPositiveInt};
-use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Arg, Command};
+use clap::{crate_authors, crate_description, crate_name, crate_version};
 use std::path::Path;
 
 fn command() -> Command {

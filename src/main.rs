@@ -11,8 +11,8 @@ use std::time::Instant;
 
 use rendered_result::JsonResult;
 
-use crate::args::get_args;
 use crate::args::Args;
+use crate::args::get_args;
 use crate::errors::HprofSlurpError;
 use crate::slurp::slurp_file;
 
