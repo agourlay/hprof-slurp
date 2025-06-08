@@ -78,7 +78,7 @@ impl RenderedResult {
             captured_strings,
         } = self;
         let memory = Self::render_memory_usage(&mut memory_usage, top);
-        let mut result = format!("{}\n{}\n{}", summary, thread_info, memory);
+        let mut result = format!("{summary}\n{thread_info}\n{memory}");
         if let Some(duplicated_strings) = duplicated_strings {
             writeln!(result, "{duplicated_strings}").expect("write should not fail");
         }
