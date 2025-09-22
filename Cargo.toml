@@ -13,7 +13,7 @@ edition = "2024"
 [dependencies]
 nom = "8.0.0"
 indicatif = "0.18.0"
-clap = { version = "4.5.47", features = ["cargo"] }
+clap = { version = "4.5.48", features = ["cargo"] }
 indoc = "2.0.6"
 ahash = "0.8.12"
 thiserror = "2.0.16"
