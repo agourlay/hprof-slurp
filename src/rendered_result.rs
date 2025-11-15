@@ -14,13 +14,13 @@ pub struct ClassAllocationStats {
 }
 
 impl ClassAllocationStats {
-    pub fn new(
+    pub const fn new(
         class_name: String,
         instance_count: u64,
         largest_allocation_bytes: u64,
         allocation_size_bytes: u64,
     ) -> Self {
-        ClassAllocationStats {
+        Self {
             class_name,
             instance_count,
             largest_allocation_bytes,
@@ -36,14 +36,14 @@ pub struct JsonResult {
 }
 
 impl JsonResult {
-    pub fn new(memory_usage: &mut [ClassAllocationStats], top: usize) -> JsonResult {
+    pub fn new(memory_usage: &mut [ClassAllocationStats], top: usize) -> Self {
         // top allocated
         memory_usage.sort_by(|a, b| b.allocation_size_bytes.cmp(&a.allocation_size_bytes));
         let top_allocated_classes = memory_usage.iter().take(top).cloned().collect();
         // Top largest instances
         memory_usage.sort_by(|a, b| b.largest_allocation_bytes.cmp(&a.largest_allocation_bytes));
         let top_largest_instances = memory_usage.iter().take(top).cloned().collect();
-        JsonResult {
+        Self {
             top_allocated_classes,
             top_largest_instances,
         }
@@ -70,7 +70,7 @@ pub struct RenderedResult {
 
 impl RenderedResult {
     pub fn serialize(self, top: usize) -> String {
-        let RenderedResult {
+        let Self {
             summary,
             thread_info,
             mut memory_usage,
@@ -141,7 +141,7 @@ impl RenderedResult {
         let total_size_header = "Total size";
         let total_size_header_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.0.to_string(),
+            |r| r.0.clone(),
             total_size_header,
         );
         let total_size_len =
@@ -159,7 +159,7 @@ impl RenderedResult {
         let largest_instance_header = "Largest";
         let largest_instance_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.2.to_string(),
+            |r| r.2.clone(),
             largest_instance_header,
         );
         let largest_len =
@@ -168,7 +168,7 @@ impl RenderedResult {
         let class_name_header = "Class name";
         let class_name_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.3.to_string(),
+            |r| r.3.clone(),
             class_name_header,
         );
         let class_name_len = class_name_header.chars().count() + class_name_padding.chars().count();

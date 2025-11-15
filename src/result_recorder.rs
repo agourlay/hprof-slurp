@@ -204,113 +204,120 @@ impl ResultRecorder {
     }
 
     fn record_records(&mut self, records: &mut [Record]) {
-        records.iter_mut().for_each(|record| match record {
-            Utf8String { id, str } => {
-                self.utf8_strings_by_id.insert(*id, mem::take(str));
-            }
-            LoadClass(load_class_data) => {
-                let class_object_id = load_class_data.class_object_id;
-                let class_serial_number = load_class_data.serial_number;
-                self.class_data.push(mem::take(load_class_data));
-                let data_index = self.class_data.len() - 1;
-                self.class_data_by_id.insert(class_object_id, data_index);
-                self.class_data_by_serial_number
-                    .insert(class_serial_number, data_index);
-            }
-            UnloadClass { .. } => self.classes_unloaded += 1,
-            StackFrame(stack_frame_data) => {
-                self.stack_frames += 1;
-                self.stack_frame_by_id
-                    .insert(stack_frame_data.stack_frame_id, mem::take(stack_frame_data));
-            }
-            StackTrace(stack_trace_data) => {
-                self.stack_traces += 1;
-                self.stack_trace_by_serial_number
-                    .insert(stack_trace_data.serial_number, mem::take(stack_trace_data));
-            }
-            StartThread { .. } => self.start_threads += 1,
-            EndThread { .. } => self.end_threads += 1,
-            AllocationSites { .. } => self.allocation_sites += 1,
-            HeapSummary { .. } => self.heap_summaries += 1,
-            ControlSettings { .. } => self.control_settings += 1,
-            CpuSamples { .. } => self.cpu_samples += 1,
-            HeapDumpEnd { .. } => (),
-            HeapDumpStart { .. } => self.heap_dumps += 1,
-            GcSegment(gc_record) => {
-                self.heap_dump_segments_all_sub_records += 1;
-                match gc_record {
-                    GcRecord::RootUnknown { .. } => self.heap_dump_segments_gc_root_unknown += 1,
-                    GcRecord::RootThreadObject { .. } => {
-                        self.heap_dump_segments_gc_root_thread_object += 1;
-                    }
-                    GcRecord::RootJniGlobal { .. } => {
-                        self.heap_dump_segments_gc_root_jni_global += 1;
-                    }
-                    GcRecord::RootJniLocal { .. } => self.heap_dump_segments_gc_root_jni_local += 1,
-                    GcRecord::RootJavaFrame { .. } => {
-                        self.heap_dump_segments_gc_root_java_frame += 1;
-                    }
-                    GcRecord::RootNativeStack { .. } => {
-                        self.heap_dump_segments_gc_root_native_stack += 1;
-                    }
-                    GcRecord::RootStickyClass { .. } => {
-                        self.heap_dump_segments_gc_root_sticky_class += 1;
-                    }
-                    GcRecord::RootThreadBlock { .. } => {
-                        self.heap_dump_segments_gc_root_thread_block += 1;
-                    }
-                    GcRecord::RootMonitorUsed { .. } => {
-                        self.heap_dump_segments_gc_root_monitor_used += 1;
-                    }
-                    GcRecord::InstanceDump {
-                        class_object_id, ..
-                    } => {
-                        self.classes_all_instance_total_size_by_id
-                            .entry(*class_object_id)
-                            .or_insert_with(ClassInstanceCounter::empty)
-                            .add_instance();
+        for record in records.iter_mut() {
+            match record {
+                Utf8String { id, str } => {
+                    self.utf8_strings_by_id.insert(*id, mem::take(str));
+                }
+                LoadClass(load_class_data) => {
+                    let class_object_id = load_class_data.class_object_id;
+                    let class_serial_number = load_class_data.serial_number;
+                    self.class_data.push(mem::take(load_class_data));
+                    let data_index = self.class_data.len() - 1;
+                    self.class_data_by_id.insert(class_object_id, data_index);
+                    self.class_data_by_serial_number
+                        .insert(class_serial_number, data_index);
+                }
+                UnloadClass { .. } => self.classes_unloaded += 1,
+                StackFrame(stack_frame_data) => {
+                    self.stack_frames += 1;
+                    self.stack_frame_by_id
+                        .insert(stack_frame_data.stack_frame_id, mem::take(stack_frame_data));
+                }
+                StackTrace(stack_trace_data) => {
+                    self.stack_traces += 1;
+                    self.stack_trace_by_serial_number
+                        .insert(stack_trace_data.serial_number, mem::take(stack_trace_data));
+                }
+                StartThread { .. } => self.start_threads += 1,
+                EndThread { .. } => self.end_threads += 1,
+                AllocationSites { .. } => self.allocation_sites += 1,
+                HeapSummary { .. } => self.heap_summaries += 1,
+                ControlSettings { .. } => self.control_settings += 1,
+                CpuSamples { .. } => self.cpu_samples += 1,
+                HeapDumpEnd { .. } => (),
+                HeapDumpStart { .. } => self.heap_dumps += 1,
+                GcSegment(gc_record) => {
+                    self.heap_dump_segments_all_sub_records += 1;
+                    match gc_record {
+                        GcRecord::RootUnknown { .. } => {
+                            self.heap_dump_segments_gc_root_unknown += 1;
+                        }
+                        GcRecord::RootThreadObject { .. } => {
+                            self.heap_dump_segments_gc_root_thread_object += 1;
+                        }
+                        GcRecord::RootJniGlobal { .. } => {
+                            self.heap_dump_segments_gc_root_jni_global += 1;
+                        }
+                        GcRecord::RootJniLocal { .. } => {
+                            self.heap_dump_segments_gc_root_jni_local += 1;
+                        }
+                        GcRecord::RootJavaFrame { .. } => {
+                            self.heap_dump_segments_gc_root_java_frame += 1;
+                        }
+                        GcRecord::RootNativeStack { .. } => {
+                            self.heap_dump_segments_gc_root_native_stack += 1;
+                        }
+                        GcRecord::RootStickyClass { .. } => {
+                            self.heap_dump_segments_gc_root_sticky_class += 1;
+                        }
+                        GcRecord::RootThreadBlock { .. } => {
+                            self.heap_dump_segments_gc_root_thread_block += 1;
+                        }
+                        GcRecord::RootMonitorUsed { .. } => {
+                            self.heap_dump_segments_gc_root_monitor_used += 1;
+                        }
+                        GcRecord::InstanceDump {
+                            class_object_id, ..
+                        } => {
+                            self.classes_all_instance_total_size_by_id
+                                .entry(*class_object_id)
+                                .or_insert_with(ClassInstanceCounter::empty)
+                                .add_instance();
 
-                        self.heap_dump_segments_gc_instance_dump += 1;
-                    }
-                    GcRecord::ObjectArrayDump {
-                        number_of_elements,
-                        array_class_id,
-                        ..
-                    } => {
-                        self.object_array_counters
-                            .entry(*array_class_id)
-                            .or_insert_with(ArrayCounter::empty)
-                            .add_elements_from_array(*number_of_elements);
+                            self.heap_dump_segments_gc_instance_dump += 1;
+                        }
+                        GcRecord::ObjectArrayDump {
+                            number_of_elements,
+                            array_class_id,
+                            ..
+                        } => {
+                            self.object_array_counters
+                                .entry(*array_class_id)
+                                .or_insert_with(ArrayCounter::empty)
+                                .add_elements_from_array(*number_of_elements);
 
-                        self.heap_dump_segments_gc_object_array_dump += 1;
-                    }
-                    GcRecord::PrimitiveArrayDump {
-                        number_of_elements,
-                        element_type,
-                        ..
-                    } => {
-                        self.primitive_array_counters
-                            .entry(*element_type)
-                            .or_insert_with(ArrayCounter::empty)
-                            .add_elements_from_array(*number_of_elements);
+                            self.heap_dump_segments_gc_object_array_dump += 1;
+                        }
+                        GcRecord::PrimitiveArrayDump {
+                            number_of_elements,
+                            element_type,
+                            ..
+                        } => {
+                            self.primitive_array_counters
+                                .entry(*element_type)
+                                .or_insert_with(ArrayCounter::empty)
+                                .add_elements_from_array(*number_of_elements);
 
-                        self.heap_dump_segments_gc_primitive_array_dump += 1;
-                    }
-                    GcRecord::ClassDump(class_dump_fields) => {
-                        let class_object_id = class_dump_fields.class_object_id;
-                        self.classes_single_instance_size_by_id
-                            .entry(class_object_id)
-                            .or_insert_with(|| {
-                                let instance_size = class_dump_fields.instance_size;
-                                let super_class_object_id = class_dump_fields.super_class_object_id;
-                                ClassInfo::new(super_class_object_id, instance_size)
-                            });
+                            self.heap_dump_segments_gc_primitive_array_dump += 1;
+                        }
+                        GcRecord::ClassDump(class_dump_fields) => {
+                            let class_object_id = class_dump_fields.class_object_id;
+                            self.classes_single_instance_size_by_id
+                                .entry(class_object_id)
+                                .or_insert_with(|| {
+                                    let instance_size = class_dump_fields.instance_size;
+                                    let super_class_object_id =
+                                        class_dump_fields.super_class_object_id;
+                                    ClassInfo::new(super_class_object_id, instance_size)
+                                });
 
-                        self.heap_dump_segments_gc_class_dump += 1;
+                            self.heap_dump_segments_gc_class_dump += 1;
+                        }
                     }
                 }
             }
-        });
+        }
     }
 
     fn render_captured_strings(&self) -> String {
