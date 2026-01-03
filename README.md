@@ -135,7 +135,7 @@ cargo install hprof-slurp
 
 ## Performance
 
-On modern hardware `hprof-slurp` can process heap dump files at around 1GB/s.
+On modern hardware `hprof-slurp` can process heap dump files at around 2GB/s.
 
 To maximize performance make sure to run on a host with at least 4 cores.
 
