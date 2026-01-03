@@ -24,3 +24,4 @@ chrono = "0.4.42"
 
 [profile.release]
 lto = "fat"
+codegen-units = 1
