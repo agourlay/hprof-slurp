@@ -141,7 +141,7 @@ impl RenderedResult {
         let total_size_header = "Total size";
         let total_size_header_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.0.clone(),
+            |r| r.0.chars().count(),
             total_size_header,
         );
         let total_size_len =
@@ -150,7 +150,7 @@ impl RenderedResult {
         let instance_count_header = "Instances";
         let instance_count_header_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.1.to_string(),
+            |r| r.1.to_string().len(),
             instance_count_header,
         );
         let instance_len =
@@ -159,7 +159,7 @@ impl RenderedResult {
         let largest_instance_header = "Largest";
         let largest_instance_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.2.clone(),
+            |r| r.2.chars().count(),
             largest_instance_header,
         );
         let largest_len =
@@ -168,7 +168,7 @@ impl RenderedResult {
         let class_name_header = "Class name";
         let class_name_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.3.clone(),
+            |r| r.3.chars().count(),
             class_name_header,
         );
         let class_name_len = class_name_header.chars().count() + class_name_padding.chars().count();
@@ -244,15 +244,15 @@ impl RenderedResult {
 
     fn padding_for_header<F>(
         rows: &[(String, u64, String, &String)],
-        field_selector: F,
+        field_len: F,
         header_label: &str,
     ) -> String
     where
-        F: Fn(&(String, u64, String, &String)) -> String,
+        F: Fn(&(String, u64, String, &String)) -> usize,
     {
         let max_elem_size = rows
             .iter()
-            .map(|d| field_selector(d).chars().count())
+            .map(field_len)
             .max()
             .expect("Results can't be empty");
 
