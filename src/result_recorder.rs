@@ -503,20 +503,12 @@ impl ResultRecorder {
         // For array of objects we are interested in the total size of the array headers and outgoing elements references
         let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, &ac)| {
             let raw_class_name = self.get_class_name_string(*class_id);
-            let cleaned_class_name: String = if raw_class_name.starts_with("[L") {
-                // remove '[L' prefix and ';' suffix
-                raw_class_name
-                    .chars()
-                    .skip(2)
-                    .take(raw_class_name.chars().count() - 3)
-                    .collect()
-            } else if raw_class_name.starts_with("[[L") {
+            let cleaned_class_name: String = if raw_class_name.starts_with("[[L") {
                 // remove '[[L' prefix and ';' suffix
-                raw_class_name
-                    .chars()
-                    .skip(3)
-                    .take(raw_class_name.chars().count() - 4)
-                    .collect()
+                raw_class_name[3..raw_class_name.len() - 1].to_string()
+            } else if raw_class_name.starts_with("[L") {
+                // remove '[L' prefix and ';' suffix
+                raw_class_name[2..raw_class_name.len() - 1].to_string()
             } else {
                 // TODO: what are those ([[C, [[D, [[B, [[S ...)? boxed primitives are already present
                 raw_class_name
