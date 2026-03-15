@@ -98,14 +98,16 @@ impl HprofRecordParser {
                             })
                             .parse(r1)
                         }
-                        x => panic!("{}", format!("unhandled record tag {x}")),
+                        x => panic!("unhandled record tag {x}"),
                     }
                 })
             } else {
                 // GC record mode
                 parse_gc_record(i).map(|(r1, gc_sub)| {
                     let gc_sub_len = i.len() - r1.len();
-                    self.heap_dump_remaining_len -= gc_sub_len as u32;
+                    self.heap_dump_remaining_len = self
+                        .heap_dump_remaining_len
+                        .saturating_sub(gc_sub_len as u32);
                     (r1, GcSegment(gc_sub))
                 })
             }
@@ -180,7 +182,7 @@ fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
         TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump,
         TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump,
         TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump,
-        x => panic!("{}", format!("unhandled gc record tag {x}")),
+        x => panic!("unhandled gc record tag {x}"),
     })
     .parse(i)
 }

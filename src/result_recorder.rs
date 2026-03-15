@@ -373,7 +373,10 @@ impl ResultRecorder {
 
             //  for each stack frames
             for stack_frame_id in &stack_data.stack_frame_ids {
-                let stack_frame = self.stack_frame_by_id.get(stack_frame_id).unwrap();
+                let stack_frame = self
+                    .stack_frame_by_id
+                    .get(stack_frame_id)
+                    .expect("stack frame id must be present");
                 let class_object_id = self
                     .class_data_by_serial_number
                     .get(&stack_frame.class_serial_number)
@@ -433,7 +436,7 @@ impl ResultRecorder {
                 } = self
                     .classes_single_instance_size_by_id
                     .get(class_id)
-                    .unwrap();
+                    .expect("class id must have a class definition");
                 let mut parent_class_id = *super_class_object_id;
                 size += instance_size;
 
@@ -445,7 +448,7 @@ impl ResultRecorder {
                     } = self
                         .classes_single_instance_size_by_id
                         .get(&parent_class_id)
-                        .unwrap();
+                        .expect("parent class id must have a class definition");
                     size += instance_size;
                     parent_class_id = *super_class_object_id;
                 }
