@@ -52,7 +52,7 @@ pub struct LoadClassData {
 }
 
 #[derive(Debug)]
-#[allow(clippy::box_collection)]
+#[allow(clippy::box_collection)] // Box<Vec> is intentional: keeps Record at 48 bytes instead of 64
 pub enum Record {
     Utf8String {
         id: u64,

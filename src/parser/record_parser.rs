@@ -326,16 +326,17 @@ fn skip_array_value(
     element_type: FieldType,
     number_of_elements: u32,
 ) -> impl Fn(&[u8]) -> IResult<&[u8], &[u8]> {
+    let n = u64::from(number_of_elements);
     move |i| match element_type {
         FieldType::Object => panic!("object type in primitive array"),
-        FieldType::Bool => bytes::streaming::take(number_of_elements)(i),
-        FieldType::Char => bytes::streaming::take(number_of_elements * 2)(i),
-        FieldType::Float => bytes::streaming::take(number_of_elements * 4)(i),
-        FieldType::Double => bytes::streaming::take(number_of_elements * 8)(i),
-        FieldType::Byte => bytes::streaming::take(number_of_elements)(i),
-        FieldType::Short => bytes::streaming::take(number_of_elements * 2)(i),
-        FieldType::Int => bytes::streaming::take(number_of_elements * 4)(i),
-        FieldType::Long => bytes::streaming::take(number_of_elements * 8)(i),
+        FieldType::Bool => bytes::streaming::take(n)(i),
+        FieldType::Char => bytes::streaming::take(n * 2)(i),
+        FieldType::Float => bytes::streaming::take(n * 4)(i),
+        FieldType::Double => bytes::streaming::take(n * 8)(i),
+        FieldType::Byte => bytes::streaming::take(n)(i),
+        FieldType::Short => bytes::streaming::take(n * 2)(i),
+        FieldType::Int => bytes::streaming::take(n * 4)(i),
+        FieldType::Long => bytes::streaming::take(n * 8)(i),
     }
 }
 
@@ -459,7 +460,7 @@ fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
         (parse_id, parse_u32, parse_u32, parse_id),
         |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
             map(
-                bytes::streaming::take(number_of_elements * ID_SIZE),
+                bytes::streaming::take(u64::from(number_of_elements) * u64::from(ID_SIZE)),
                 move |_byte_array_elements| {
                     // Do not parse the array of object references as it is not needed for any analyses so far.
                     // see `count(parse_id, number_of_elements as usize)(byte_array_elements)`
@@ -509,7 +510,7 @@ fn parse_utf8_string(i: &[u8]) -> IResult<&[u8], Record> {
         map(
             (
                 parse_id,
-                bytes::streaming::take(header_record.length - ID_SIZE),
+                bytes::streaming::take(header_record.length.saturating_sub(ID_SIZE)),
             ),
             |(id, b)| {
                 let str = String::from_utf8_lossy(b).into();
@@ -576,7 +577,7 @@ fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
 fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
     flat_map(parse_header_record, |header_record| {
         // (header_record.length - (3 * parse_u32)) / id_size = (header_record.length - 12) / 8
-        let stack_frame_ids_len = (header_record.length - 12) / ID_SIZE;
+        let stack_frame_ids_len = header_record.length.saturating_sub(12) / ID_SIZE;
         map(
             (
                 parse_u32,

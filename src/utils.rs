@@ -4,11 +4,11 @@ const GIGABYTE: f64 = KILOBYTE * MEGABYTE;
 
 pub fn pretty_bytes_size(len: u64) -> String {
     let float_len = len as f64;
-    let (unit, value) = if float_len > GIGABYTE {
+    let (unit, value) = if float_len >= GIGABYTE {
         ("GiB", float_len / GIGABYTE)
-    } else if float_len > MEGABYTE {
+    } else if float_len >= MEGABYTE {
         ("MiB", float_len / MEGABYTE)
-    } else if float_len > KILOBYTE {
+    } else if float_len >= KILOBYTE {
         ("KiB", float_len / KILOBYTE)
     } else {
         ("bytes", float_len)
@@ -36,5 +36,11 @@ mod tests {
     fn pretty_size_kb() {
         let size: u64 = 1_200;
         assert_eq!(pretty_bytes_size(size), "1.17KiB");
+    }
+
+    #[test]
+    fn pretty_size_bytes() {
+        let size: u64 = 512;
+        assert_eq!(pretty_bytes_size(size), "512.00bytes");
     }
 }
