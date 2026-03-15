@@ -454,8 +454,8 @@ impl ResultRecorder {
                 }
                 // add object header
                 size += object_header;
-                // add extra padding if any
-                size += size.rem_euclid(8);
+                // round up to 8-byte alignment
+                size += (8 - size % 8) % 8;
                 let total_size = u64::from(size) * v.number_of_instances;
                 ClassAllocationStats::new(
                     class_name,
@@ -491,8 +491,8 @@ impl ResultRecorder {
                     let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
 
                     let cost_data_largest_array = primitive_size * u64::from(ac.max_size_seen);
-                    let cost_padding_largest_array =
-                        (array_header_size + cost_data_largest_array).rem_euclid(8);
+                    let largest_array_total = array_header_size + cost_data_largest_array;
+                    let cost_padding_largest_array = (8 - largest_array_total % 8) % 8;
                     ClassAllocationStats::new(
                         primitive_array_label,
                         ac.number_of_arrays,

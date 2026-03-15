@@ -150,7 +150,7 @@ impl RenderedResult {
         let instance_count_header = "Instances";
         let instance_count_header_padding = Self::padding_for_header(
             rows_formatted.as_slice(),
-            |r| r.1.to_string().len(),
+            |r| r.1.to_string().chars().count(),
             instance_count_header,
         );
         let instance_len =

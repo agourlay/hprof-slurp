@@ -183,6 +183,10 @@ mod tests {
                 assert_eq!(l1, l2);
             }
         }
+        assert!(
+            expected_lines.next().is_none(),
+            "actual output has more lines than gold file"
+        );
     }
 
     #[test]

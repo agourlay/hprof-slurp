@@ -75,7 +75,7 @@ Top 20 allocated classes:
 |   85.25KiB |       443 |     8.02KiB | byte[]                                       |
 |   47.38KiB |      1516 |  32.00bytes | java.lang.String                             |
 |   45.42KiB |       560 |     8.02KiB | java.lang.Object[]                           |
-|   15.26KiB |       126 | 124.00bytes | java.lang.reflect.Field                      |
+|   15.75KiB |       126 | 128.00bytes | java.lang.reflect.Field                      |
 |   14.77KiB |       378 |  40.00bytes | java.util.LinkedList$Node                    |
 |    9.94KiB |       212 |  48.00bytes | java.util.HashMap$Node                       |
 |    8.91KiB |       190 |  48.00bytes | java.util.LinkedList                         |
@@ -105,16 +105,16 @@ Top 20 largest instances:
 |     2.05KiB |         2 |     2.02KiB | java.lang.invoke.MethodHandle[]               |
 |     2.02KiB |         1 |     2.02KiB | java.lang.Integer[]                           |
 |     3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]                   |
-| 462.00bytes |         1 | 462.00bytes | sun.misc.Launcher$AppClassLoader              |
-| 454.00bytes |         1 | 454.00bytes | sun.misc.Launcher$ExtClassLoader              |
-| 680.00bytes |         2 | 340.00bytes | simple.Producer                               |
-| 680.00bytes |         2 | 340.00bytes | simple.Consumer                               |
+| 456.00bytes |         1 | 456.00bytes | sun.misc.Launcher$AppClassLoader              |
+| 448.00bytes |         1 | 448.00bytes | sun.misc.Launcher$ExtClassLoader              |
+| 688.00bytes |         2 | 344.00bytes | simple.Producer                               |
+| 688.00bytes |         2 | 344.00bytes | simple.Consumer                               |
 |     2.30KiB |         7 | 336.00bytes | java.util.jar.JarFile$JarFileEntry            |
-| 334.00bytes |         1 | 334.00bytes | java.lang.ref.Finalizer$FinalizerThread       |
-| 332.00bytes |         1 | 332.00bytes | java.lang.ref.Reference$ReferenceHandler      |
+| 328.00bytes |         1 | 328.00bytes | java.lang.ref.Reference$ReferenceHandler      |
+| 328.00bytes |         1 | 328.00bytes | java.lang.ref.Finalizer$FinalizerThread       |
 |     1.01KiB |         9 | 312.00bytes | java.lang.reflect.Field[]                     |
 |     1.48KiB |         7 | 272.00bytes | java.util.concurrent.ConcurrentHashMap$Node[] |
-| 236.00bytes |         1 | 236.00bytes | sun.net.www.protocol.file.FileURLConnection   |
-| 440.00bytes |         2 | 220.00bytes | java.io.ExpiringCache$1                       |
+| 240.00bytes |         1 | 240.00bytes | sun.net.www.protocol.file.FileURLConnection   |
+| 448.00bytes |         2 | 224.00bytes | java.io.ExpiringCache$1                       |
 | 432.00bytes |         2 | 216.00bytes | java.lang.NoSuchMethodError                   |
 +-------------+-----------+-------------+-----------------------------------------------+
