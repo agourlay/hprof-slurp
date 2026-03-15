@@ -24,7 +24,7 @@ const FILE_HEADER_LENGTH: usize = 31;
 pub const READ_BUFFER_SIZE: usize = 64 * 1024 * 1024;
 
 pub fn slurp_file(
-    file_path: String,
+    file_path: &str,
     debug_mode: bool,
     list_strings: bool,
 ) -> Result<RenderedResult, HprofSlurpError> {
@@ -187,15 +187,13 @@ mod tests {
 
     #[test]
     fn unsupported_32_bits() {
-        let file_path = FILE_PATH_32.to_string();
-        let result = slurp_file(file_path, false, false);
+        let result = slurp_file(FILE_PATH_32, false, false);
         assert!(result.is_err());
     }
 
     #[test]
     fn supported_64_bits() {
-        let file_path = FILE_PATH_64.to_string();
-        let result = slurp_file(file_path, false, false);
+        let result = slurp_file(FILE_PATH_64, false, false);
         assert!(result.is_ok());
         validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_64);
     }

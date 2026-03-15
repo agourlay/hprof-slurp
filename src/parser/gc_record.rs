@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum FieldType {
     Object = 2,

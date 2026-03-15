@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::parser::gc_record::GcRecord;
 
 #[derive(Debug, PartialEq, Eq)]

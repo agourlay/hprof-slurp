@@ -35,7 +35,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
         list_strings,
         json_output,
     } = get_args()?;
-    let mut rendered_result = slurp_file(file_path, debug, list_strings)?;
+    let mut rendered_result = slurp_file(&file_path, debug, list_strings)?;
     if json_output {
         // only memory usage rendered for now
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);

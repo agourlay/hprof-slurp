@@ -36,11 +36,7 @@ impl PrefetchReader {
             .spawn(move || {
                 while self.processed_len != self.file_len {
                     let remaining = self.file_len - self.processed_len;
-                    let next_size = if remaining > self.read_size {
-                        self.read_size
-                    } else {
-                        remaining
-                    };
+                    let next_size = remaining.min(self.read_size);
                     let mut pooled_buffer = receive_pooled_data
                         .recv()
                         .expect("channel should not be closed");

@@ -223,7 +223,7 @@ impl RenderedResult {
         );
     }
 
-    pub fn render_table_vertical_line(
+    fn render_table_vertical_line(
         analysis: &mut String,
         total_size_header: &str,
         instance_count_header: &str,
@@ -253,7 +253,7 @@ impl RenderedResult {
         let max_elem_size = rows
             .iter()
             .map(|d| field_selector(d).chars().count())
-            .max_by(std::cmp::Ord::cmp)
+            .max()
             .expect("Results can't be empty");
 
         Self::column_padding(header_label, max_elem_size)
