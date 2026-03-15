@@ -15,30 +15,12 @@ pub enum HprofSlurpError {
     InvalidHprofFile { message: String },
     #[error("unsupported pointer size - {message:?}")]
     UnsupportedIdSize { message: String },
-    #[error("CLI argument error ({e})")]
-    ClapError { e: clap::Error },
-    #[error("standard I/O error ({e})")]
-    StdIoError { e: std::io::Error },
+    #[error("CLI argument error ({0})")]
+    ClapError(#[from] clap::Error),
+    #[error("standard I/O error ({0})")]
+    StdIoError(#[from] std::io::Error),
     #[error("standard thread error ({e:?})")]
     StdThreadError { e: Box<dyn Any + Send + 'static> },
-    #[error("serialization error ({e})")]
-    SerdeError { e: serde_json::Error },
-}
-
-impl From<std::io::Error> for HprofSlurpError {
-    fn from(e: std::io::Error) -> Self {
-        Self::StdIoError { e }
-    }
-}
-
-impl From<clap::Error> for HprofSlurpError {
-    fn from(e: clap::Error) -> Self {
-        Self::ClapError { e }
-    }
-}
-
-impl From<serde_json::Error> for HprofSlurpError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::SerdeError { e }
-    }
+    #[error("serialization error ({0})")]
+    SerdeError(#[from] serde_json::Error),
 }
