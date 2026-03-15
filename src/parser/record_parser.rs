@@ -1,5 +1,3 @@
-extern crate nom;
-
 use crate::parser::gc_record::{
     ArrayValue, ClassDumpFields, ConstFieldInfo, FieldInfo, FieldType, FieldValue, GcRecord,
 };
