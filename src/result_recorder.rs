@@ -14,7 +14,7 @@ use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceDat
 use crate::rendered_result::{ClassAllocationStats, RenderedResult};
 
 #[derive(Debug, Copy, Clone)]
-pub struct ClassInfo {
+struct ClassInfo {
     super_class_object_id: u64,
     instance_size: u32,
 }
@@ -29,16 +29,16 @@ impl ClassInfo {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct ClassInstanceCounter {
+struct ClassInstanceCounter {
     number_of_instances: u64,
 }
 
 impl ClassInstanceCounter {
-    pub const fn add_instance(&mut self) {
+    fn add_instance(&mut self) {
         self.number_of_instances += 1;
     }
 
-    pub const fn empty() -> Self {
+    const fn empty() -> Self {
         Self {
             number_of_instances: 0,
         }
@@ -46,14 +46,14 @@ impl ClassInstanceCounter {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct ArrayCounter {
+struct ArrayCounter {
     number_of_arrays: u64,
     max_size_seen: u32,
     total_number_of_elements: u64,
 }
 
 impl ArrayCounter {
-    pub fn add_elements_from_array(&mut self, elements: u32) {
+    fn add_elements_from_array(&mut self, elements: u32) {
         self.number_of_arrays += 1;
         self.total_number_of_elements += u64::from(elements);
         if elements > self.max_size_seen {
@@ -61,7 +61,7 @@ impl ArrayCounter {
         }
     }
 
-    pub const fn empty() -> Self {
+    const fn empty() -> Self {
         Self {
             number_of_arrays: 0,
             total_number_of_elements: 0,

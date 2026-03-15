@@ -13,7 +13,7 @@ pub struct FileHeader {
 impl FileHeader {
     fn from_bytes(format_b: &[u8], size_pointers: u32, timestamp: u64) -> Self {
         Self {
-            format: String::from_utf8_lossy(format_b).to_string(),
+            format: String::from_utf8_lossy(format_b).into_owned(),
             size_pointers,
             timestamp,
         }
