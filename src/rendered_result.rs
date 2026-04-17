@@ -38,10 +38,10 @@ pub struct JsonResult {
 impl JsonResult {
     pub fn new(memory_usage: &mut [ClassAllocationStats], top: usize) -> Self {
         // top allocated
-        memory_usage.sort_by(|a, b| b.allocation_size_bytes.cmp(&a.allocation_size_bytes));
+        memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
         let top_allocated_classes = memory_usage.iter().take(top).cloned().collect();
         // Top largest instances
-        memory_usage.sort_by(|a, b| b.largest_allocation_bytes.cmp(&a.largest_allocation_bytes));
+        memory_usage.sort_by_key(|b| std::cmp::Reverse(b.largest_allocation_bytes));
         let top_largest_instances = memory_usage.iter().take(top).cloned().collect();
         Self {
             top_allocated_classes,
@@ -107,13 +107,13 @@ impl RenderedResult {
         // Top allocated classes analysis
         writeln!(analysis, "\nTop {top} allocated classes:\n")
             .expect("Could not write to analysis");
-        memory_usage.sort_by(|a, b| b.allocation_size_bytes.cmp(&a.allocation_size_bytes));
+        memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
         Self::render_table(top, &mut analysis, memory_usage.as_slice());
 
         // Top largest instances analysis
         writeln!(analysis, "\nTop {top} largest instances:\n")
             .expect("Could not write to analysis");
-        memory_usage.sort_by(|a, b| b.largest_allocation_bytes.cmp(&a.largest_allocation_bytes));
+        memory_usage.sort_by_key(|b| std::cmp::Reverse(b.largest_allocation_bytes));
         Self::render_table(top, &mut analysis, memory_usage.as_slice());
 
         analysis
