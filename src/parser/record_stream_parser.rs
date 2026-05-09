@@ -23,11 +23,12 @@ pub struct HprofRecordStreamParser {
 impl HprofRecordStreamParser {
     pub const fn new(
         debug_mode: bool,
+        id_size: u32,
         file_len: usize,
         processed_len: usize,
         initial_loop_buffer: Vec<u8>,
     ) -> Self {
-        let parser = HprofRecordParser::new(debug_mode);
+        let parser = HprofRecordParser::new(debug_mode, id_size);
         Self {
             parser,
             debug_mode,

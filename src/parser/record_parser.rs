@@ -53,18 +53,17 @@ const TAG_GC_INSTANCE_DUMP: u8 = 0x21;
 const TAG_GC_OBJ_ARRAY_DUMP: u8 = 0x22;
 const TAG_GC_PRIM_ARRAY_DUMP: u8 = 0x23;
 
-// TODO currently defaults to 64 bits - use instead caller's `id_size` to change impl. of parse_id to support 32 bits dump.
-const ID_SIZE: u32 = 8;
-
 pub struct HprofRecordParser {
     debug_mode: bool,
+    id_size: u32,
     heap_dump_remaining_len: u32,
 }
 
 impl HprofRecordParser {
-    pub const fn new(debug_mode: bool) -> Self {
+    pub const fn new(debug_mode: bool, id_size: u32) -> Self {
         Self {
             debug_mode,
+            id_size,
             heap_dump_remaining_len: 0,
         }
     }
@@ -72,20 +71,21 @@ impl HprofRecordParser {
     // TODO use nom combinators (instead of Result's)
     pub fn parse_hprof_record(&mut self) -> impl FnMut(&[u8]) -> IResult<&[u8], Record> + '_ {
         |i| {
+            let id_size = self.id_size;
             if self.heap_dump_remaining_len == 0 {
                 parse_u8(i).and_then(|(r1, tag)| {
                     if self.debug_mode {
                         println!("Found record tag:{} remaining bytes:{}", tag, i.len());
                     }
                     match tag {
-                        TAG_STRING => parse_utf8_string(r1),
-                        TAG_LOAD_CLASS => parse_load_class(r1),
+                        TAG_STRING => parse_utf8_string(r1, id_size),
+                        TAG_LOAD_CLASS => parse_load_class(r1, id_size),
                         TAG_UNLOAD_CLASS => parse_unload_class(r1),
-                        TAG_STACK_FRAME => parse_stack_frame(r1),
-                        TAG_STACK_TRACE => parse_stack_trace(r1),
+                        TAG_STACK_FRAME => parse_stack_frame(r1, id_size),
+                        TAG_STACK_TRACE => parse_stack_trace(r1, id_size),
                         TAG_ALLOC_SITES => parse_allocation_sites(r1),
                         TAG_HEAP_SUMMARY => parse_heap_summary(r1),
-                        TAG_START_THREAD => parse_start_thread(r1),
+                        TAG_START_THREAD => parse_start_thread(r1, id_size),
                         TAG_END_THREAD => parse_end_thread(r1),
                         TAG_CONTROL_SETTING => parse_control_settings(r1),
                         TAG_CPU_SAMPLES => parse_cpu_samples(r1),
@@ -103,7 +103,7 @@ impl HprofRecordParser {
                 })
             } else {
                 // GC record mode
-                parse_gc_record(i).map(|(r1, gc_sub)| {
+                parse_gc_record(i, id_size).map(|(r1, gc_sub)| {
                     let gc_sub_len = i.len() - r1.len();
                     self.heap_dump_remaining_len = self
                         .heap_dump_remaining_len
@@ -123,9 +123,16 @@ impl HprofRecordParser {
     }
 }
 
-// TODO change to u32 depending on id_size in header
-fn parse_id(i: &[u8]) -> IResult<&[u8], u64> {
-    parse_u64(i)
+fn parse_id(i: &[u8], id_size: u32) -> IResult<&[u8], u64> {
+    match id_size {
+        4 => map(parse_u32, u64::from).parse(i),
+        8 => parse_u64(i),
+        x => panic!("unsupported id size {x}"),
+    }
+}
+
+fn id(id_size: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], u64> {
+    move |i| parse_id(i, id_size)
 }
 
 // copy of nom's many1 but
@@ -167,33 +174,33 @@ where
     }
 }
 
-fn parse_gc_record(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    flat_map(parse_u8, |tag| match tag {
-        TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown,
-        TAG_GC_ROOT_JNI_GLOBAL => parse_gc_root_jni_global,
-        TAG_GC_ROOT_JNI_LOCAL => parse_gc_root_jni_local,
-        TAG_GC_ROOT_JAVA_FRAME => parse_gc_root_java_frame,
-        TAG_GC_ROOT_NATIVE_STACK => parse_gc_root_native_stack,
-        TAG_GC_ROOT_STICKY_CLASS => parse_gc_root_sticky_class,
-        TAG_GC_ROOT_THREAD_BLOCK => parse_gc_root_thread_block,
-        TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used,
-        TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object,
-        TAG_GC_CLASS_DUMP => parse_gc_class_dump,
-        TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump,
-        TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump,
-        TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump,
+fn parse_gc_record(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    let (r1, tag) = parse_u8(i)?;
+    match tag {
+        TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(r1, id_size),
+        TAG_GC_ROOT_JNI_GLOBAL => parse_gc_root_jni_global(r1, id_size),
+        TAG_GC_ROOT_JNI_LOCAL => parse_gc_root_jni_local(r1, id_size),
+        TAG_GC_ROOT_JAVA_FRAME => parse_gc_root_java_frame(r1, id_size),
+        TAG_GC_ROOT_NATIVE_STACK => parse_gc_root_native_stack(r1, id_size),
+        TAG_GC_ROOT_STICKY_CLASS => parse_gc_root_sticky_class(r1, id_size),
+        TAG_GC_ROOT_THREAD_BLOCK => parse_gc_root_thread_block(r1, id_size),
+        TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used(r1, id_size),
+        TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object(r1, id_size),
+        TAG_GC_CLASS_DUMP => parse_gc_class_dump(r1, id_size),
+        TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(r1, id_size),
+        TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(r1, id_size),
+        TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(r1, id_size),
         x => panic!("unhandled gc record tag {x}"),
-    })
-    .parse(i)
+    }
 }
 
-fn parse_gc_root_unknown(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| RootUnknown { object_id }).parse(i)
+fn parse_gc_root_unknown(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| RootUnknown { object_id }).parse(i)
 }
 
-fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_root_thread_object(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     map(
-        (parse_id, parse_u32, parse_u32),
+        (id(id_size), parse_u32, parse_u32),
         |(thread_object_id, thread_sequence_number, stack_sequence_number)| RootThreadObject {
             thread_object_id,
             thread_sequence_number,
@@ -203,19 +210,20 @@ fn parse_gc_root_thread_object(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_root_jni_global(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map((parse_id, parse_id), |(object_id, jni_global_ref_id)| {
-        RootJniGlobal {
+fn parse_gc_root_jni_global(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(
+        (id(id_size), id(id_size)),
+        |(object_id, jni_global_ref_id)| RootJniGlobal {
             object_id,
             jni_global_ref_id,
-        }
-    })
+        },
+    )
     .parse(i)
 }
 
-fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_root_jni_local(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     map(
-        (parse_id, parse_u32, parse_u32),
+        (id(id_size), parse_u32, parse_u32),
         |(object_id, thread_serial_number, frame_number_in_stack_trace)| RootJniLocal {
             object_id,
             thread_serial_number,
@@ -225,9 +233,9 @@ fn parse_gc_root_jni_local(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_root_java_frame(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     map(
-        (parse_id, parse_u32, parse_u32),
+        (id(id_size), parse_u32, parse_u32),
         |(object_id, thread_serial_number, frame_number_in_stack_trace)| RootJavaFrame {
             object_id,
             thread_serial_number,
@@ -237,9 +245,9 @@ fn parse_gc_root_java_frame(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_root_native_stack(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     map(
-        (parse_id, parse_u32),
+        (id(id_size), parse_u32),
         |(object_id, thread_serial_number)| RootNativeStack {
             object_id,
             thread_serial_number,
@@ -248,13 +256,13 @@ fn parse_gc_root_native_stack(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_root_sticky_class(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| RootStickyClass { object_id }).parse(i)
+fn parse_gc_root_sticky_class(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| RootStickyClass { object_id }).parse(i)
 }
 
-fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_root_thread_block(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     map(
-        (parse_id, parse_u32),
+        (id(id_size), parse_u32),
         |(object_id, thread_serial_number)| RootThreadBlock {
             object_id,
             thread_serial_number,
@@ -263,13 +271,13 @@ fn parse_gc_root_thread_block(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_root_monitor_used(i: &[u8]) -> IResult<&[u8], GcRecord> {
-    map(parse_id, |object_id| RootMonitorUsed { object_id }).parse(i)
+fn parse_gc_root_monitor_used(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| RootMonitorUsed { object_id }).parse(i)
 }
 
-fn parse_field_value(ty: FieldType) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {
+fn parse_field_value(ty: FieldType, id_size: u32) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {
     move |i| match ty {
-        FieldType::Object => map(parse_id, FieldValue::Object).parse(i),
+        FieldType::Object => map(id(id_size), FieldValue::Object).parse(i),
         FieldType::Bool => map(parse_u8, |bu8| FieldValue::Bool(bu8 != 0)).parse(i),
         FieldType::Char => map(parse_u16, FieldValue::Char).parse(i),
         FieldType::Float => map(parse_f32, FieldValue::Float).parse(i),
@@ -346,11 +354,11 @@ fn parse_field_type(i: &[u8]) -> IResult<&[u8], FieldType> {
     map(parse_i8, FieldType::from_value).parse(i)
 }
 
-fn parse_const_pool_item(i: &[u8]) -> IResult<&[u8], (ConstFieldInfo, FieldValue)> {
+fn parse_const_pool_item(i: &[u8], id_size: u32) -> IResult<&[u8], (ConstFieldInfo, FieldValue)> {
     flat_map(
         (parse_u16, parse_field_type),
-        |(const_pool_idx, const_type)| {
-            map(parse_field_value(const_type), move |fv| {
+        move |(const_pool_idx, const_type)| {
+            map(parse_field_value(const_type, id_size), move |fv| {
                 let const_field_info = ConstFieldInfo {
                     const_pool_idx,
                     const_type,
@@ -362,21 +370,24 @@ fn parse_const_pool_item(i: &[u8]) -> IResult<&[u8], (ConstFieldInfo, FieldValue
     .parse(i)
 }
 
-fn parse_static_field_item(i: &[u8]) -> IResult<&[u8], (FieldInfo, FieldValue)> {
-    flat_map((parse_id, parse_field_type), |(name_id, field_type)| {
-        map(parse_field_value(field_type), move |fv| {
-            let field_info = FieldInfo {
-                name_id,
-                field_type,
-            };
-            (field_info, fv)
-        })
-    })
+fn parse_static_field_item(i: &[u8], id_size: u32) -> IResult<&[u8], (FieldInfo, FieldValue)> {
+    flat_map(
+        (id(id_size), parse_field_type),
+        move |(name_id, field_type)| {
+            map(parse_field_value(field_type, id_size), move |fv| {
+                let field_info = FieldInfo {
+                    name_id,
+                    field_type,
+                };
+                (field_info, fv)
+            })
+        },
+    )
     .parse(i)
 }
 
-fn parse_instance_field_item(i: &[u8]) -> IResult<&[u8], FieldInfo> {
-    map((parse_id, parse_field_type), |(name_id, field_type)| {
+fn parse_instance_field_item(i: &[u8], id_size: u32) -> IResult<&[u8], FieldInfo> {
+    map((id(id_size), parse_field_type), |(name_id, field_type)| {
         FieldInfo {
             name_id,
             field_type,
@@ -386,7 +397,7 @@ fn parse_instance_field_item(i: &[u8]) -> IResult<&[u8], FieldInfo> {
 }
 
 // TODO use nom combinators (instead of Result's)
-fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_class_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     let (
         r1,
         (
@@ -402,43 +413,60 @@ fn parse_gc_class_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
             constant_pool_size,
         ),
     ) = (
-        parse_id, parse_u32, parse_id, parse_id, parse_id, parse_id, parse_id, parse_id, parse_u32,
+        id(id_size),
+        parse_u32,
+        id(id_size),
+        id(id_size),
+        id(id_size),
+        id(id_size),
+        id(id_size),
+        id(id_size),
+        parse_u32,
         parse_u16,
     )
         .parse(i)?;
 
-    count(parse_const_pool_item, constant_pool_size as usize)
-        .parse(r1)
-        .and_then(|(r2, const_fields)| {
-            parse_u16(r2).and_then(|(r3, static_fields_number)| {
-                count(parse_static_field_item, static_fields_number as usize)
-                    .parse(r3)
-                    .and_then(|(r4, static_fields)| {
-                        parse_u16(r4).and_then(|(r5, instance_field_number)| {
-                            count(parse_instance_field_item, instance_field_number as usize)
-                                .parse(r5)
-                                .map(|(r6, instance_fields)| {
-                                    let class_dump_fields = ClassDumpFields::new(
-                                        class_object_id,
-                                        stack_trace_serial_number,
-                                        super_class_object_id,
-                                        instance_size,
-                                        const_fields,
-                                        static_fields,
-                                        instance_fields,
-                                    );
-                                    let gcd = ClassDump(Box::new(class_dump_fields));
-                                    (r6, gcd)
-                                })
-                        })
+    count(
+        move |input| parse_const_pool_item(input, id_size),
+        constant_pool_size as usize,
+    )
+    .parse(r1)
+    .and_then(|(r2, const_fields)| {
+        parse_u16(r2).and_then(|(r3, static_fields_number)| {
+            count(
+                move |input| parse_static_field_item(input, id_size),
+                static_fields_number as usize,
+            )
+            .parse(r3)
+            .and_then(|(r4, static_fields)| {
+                parse_u16(r4).and_then(|(r5, instance_field_number)| {
+                    count(
+                        move |input| parse_instance_field_item(input, id_size),
+                        instance_field_number as usize,
+                    )
+                    .parse(r5)
+                    .map(|(r6, instance_fields)| {
+                        let class_dump_fields = ClassDumpFields::new(
+                            class_object_id,
+                            stack_trace_serial_number,
+                            super_class_object_id,
+                            instance_size,
+                            const_fields,
+                            static_fields,
+                            instance_fields,
+                        );
+                        let gcd = ClassDump(Box::new(class_dump_fields));
+                        (r6, gcd)
                     })
+                })
             })
         })
+    })
 }
 
-fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_instance_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     flat_map(
-        (parse_id, parse_u32, parse_id, parse_u32),
+        (id(id_size), parse_u32, id(id_size), parse_u32),
         |(object_id, stack_trace_serial_number, class_object_id, data_size)| {
             map(bytes::streaming::take(data_size), move |_bytes_segment| {
                 // Important: The actual content of the instance cannot be analyzed at this point because we miss the class information!
@@ -457,15 +485,15 @@ fn parse_gc_instance_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_object_array_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     flat_map(
-        (parse_id, parse_u32, parse_u32, parse_id),
-        |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
+        (id(id_size), parse_u32, parse_u32, id(id_size)),
+        move |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
             map(
-                bytes::streaming::take(u64::from(number_of_elements) * u64::from(ID_SIZE)),
+                bytes::streaming::take(u64::from(number_of_elements) * u64::from(id_size)),
                 move |_byte_array_elements| {
                     // Do not parse the array of object references as it is not needed for any analyses so far.
-                    // see `count(parse_id, number_of_elements as usize)(byte_array_elements)`
+                    // see `count(id(id_size), number_of_elements as usize)(byte_array_elements)`
                     ObjectArrayDump {
                         object_id,
                         stack_trace_serial_number,
@@ -479,9 +507,9 @@ fn parse_gc_object_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_primitive_array_dump(i: &[u8]) -> IResult<&[u8], GcRecord> {
+fn parse_gc_primitive_array_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     flat_map(
-        (parse_id, parse_u32, parse_u32, parse_field_type),
+        (id(id_size), parse_u32, parse_u32, parse_field_type),
         |(object_id, stack_trace_serial_number, number_of_elements, element_type)| {
             // Do not parse the array of primitives as it is not needed for any analyses so far.
             // see `parse_array_value(element_type, number_of_elements)`
@@ -507,12 +535,12 @@ fn parse_header_record(i: &[u8]) -> IResult<&[u8], RecordHeader> {
     .parse(i)
 }
 
-fn parse_utf8_string(i: &[u8]) -> IResult<&[u8], Record> {
-    flat_map(parse_header_record, |header_record| {
+fn parse_utf8_string(i: &[u8], id_size: u32) -> IResult<&[u8], Record> {
+    flat_map(parse_header_record, move |header_record| {
         map(
             (
-                parse_id,
-                bytes::streaming::take(header_record.length.saturating_sub(ID_SIZE)),
+                id(id_size),
+                bytes::streaming::take(header_record.length.saturating_sub(id_size)),
             ),
             |(id, b)| {
                 let str = String::from_utf8_lossy(b).into();
@@ -523,11 +551,11 @@ fn parse_utf8_string(i: &[u8]) -> IResult<&[u8], Record> {
     .parse(i)
 }
 
-fn parse_load_class(i: &[u8]) -> IResult<&[u8], Record> {
+fn parse_load_class(i: &[u8], id_size: u32) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            (parse_u32, parse_id, parse_u32, parse_id),
+            (parse_u32, id(id_size), parse_u32, id(id_size)),
             |(serial_number, class_object_id, stack_trace_serial_number, class_name_id)| {
                 LoadClass(LoadClassData {
                     serial_number,
@@ -549,11 +577,18 @@ fn parse_unload_class(i: &[u8]) -> IResult<&[u8], Record> {
     .parse(i)
 }
 
-fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
+fn parse_stack_frame(i: &[u8], id_size: u32) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            (parse_id, parse_id, parse_id, parse_id, parse_u32, parse_i32),
+            (
+                id(id_size),
+                id(id_size),
+                id(id_size),
+                id(id_size),
+                parse_u32,
+                parse_i32,
+            ),
             |(
                 stack_frame_id,
                 method_name_id,
@@ -576,16 +611,15 @@ fn parse_stack_frame(i: &[u8]) -> IResult<&[u8], Record> {
     .parse(i)
 }
 
-fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
-    flat_map(parse_header_record, |header_record| {
-        // (header_record.length - (3 * parse_u32)) / id_size = (header_record.length - 12) / 8
-        let stack_frame_ids_len = header_record.length.saturating_sub(12) / ID_SIZE;
+fn parse_stack_trace(i: &[u8], id_size: u32) -> IResult<&[u8], Record> {
+    flat_map(parse_header_record, move |header_record| {
+        let stack_frame_ids_len = header_record.length.saturating_sub(12) / id_size;
         map(
             (
                 parse_u32,
                 parse_u32,
                 parse_u32,
-                count(parse_id, stack_frame_ids_len as usize),
+                count(id(id_size), stack_frame_ids_len as usize),
             ),
             |(serial_number, thread_serial_number, number_of_frames, stack_frame_ids)| {
                 StackTrace(StackTraceData {
@@ -600,11 +634,18 @@ fn parse_stack_trace(i: &[u8]) -> IResult<&[u8], Record> {
     .parse(i)
 }
 
-fn parse_start_thread(i: &[u8]) -> IResult<&[u8], Record> {
+fn parse_start_thread(i: &[u8], id_size: u32) -> IResult<&[u8], Record> {
     preceded(
         parse_header_record,
         map(
-            (parse_u32, parse_id, parse_u32, parse_id, parse_id, parse_id),
+            (
+                parse_u32,
+                id(id_size),
+                parse_u32,
+                id(id_size),
+                id(id_size),
+                id(id_size),
+            ),
             |(
                 thread_serial_number,
                 thread_object_id,
@@ -762,4 +803,77 @@ fn parse_cpu_samples(i: &[u8]) -> IResult<&[u8], Record> {
         },
     )
     .parse(i)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::record::Record;
+
+    #[test]
+    fn parse_id_respects_32_bit_header_size() {
+        let input = [0x12, 0x34, 0x56, 0x78, 0xaa];
+
+        let (rest, id) = parse_id(&input, 4).unwrap();
+
+        assert_eq!(id, 0x1234_5678);
+        assert_eq!(rest, &[0xaa]);
+    }
+
+    #[test]
+    fn parse_id_respects_64_bit_header_size() {
+        let input = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xaa];
+
+        let (rest, id) = parse_id(&input, 8).unwrap();
+
+        assert_eq!(id, 0x0123_4567_89ab_cdef);
+        assert_eq!(rest, &[0xaa]);
+    }
+
+    #[test]
+    fn parse_utf8_string_uses_32_bit_id_size_for_payload_length() {
+        let input = [
+            0x00, 0x00, 0x00, 0x00, // timestamp
+            0x00, 0x00, 0x00, 0x07, // length: 4-byte ID + "abc"
+            0x00, 0x00, 0x00, 0x2a, // string ID
+            b'a', b'b', b'c',
+        ];
+
+        let (rest, record) = parse_utf8_string(&input, 4).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            Record::Utf8String { id, str } => {
+                assert_eq!(id, 42);
+                assert_eq!(&*str, "abc");
+            }
+            other => panic!("expected UTF-8 string record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_stack_trace_counts_32_bit_frame_ids_from_record_length() {
+        let input = [
+            0x00, 0x00, 0x00, 0x00, // timestamp
+            0x00, 0x00, 0x00, 0x14, // length: 3 u32 fields + 2 4-byte frame IDs
+            0x00, 0x00, 0x00, 0x01, // stack trace serial number
+            0x00, 0x00, 0x00, 0x02, // thread serial number
+            0x00, 0x00, 0x00, 0x02, // number of frames
+            0x00, 0x00, 0x00, 0x0a, // frame ID 10
+            0x00, 0x00, 0x00, 0x0b, // frame ID 11
+        ];
+
+        let (rest, record) = parse_stack_trace(&input, 4).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            Record::StackTrace(data) => {
+                assert_eq!(data.serial_number, 1);
+                assert_eq!(data.thread_serial_number, 2);
+                assert_eq!(data.number_of_frames, 2);
+                assert_eq!(data.stack_frame_ids, vec![10, 11]);
+            }
+            other => panic!("expected stack trace record, got {other:?}"),
+        }
+    }
 }
