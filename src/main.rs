@@ -11,6 +11,7 @@ mod reference_graph;
 mod referrer;
 mod rendered_result;
 mod result_recorder;
+mod retained;
 mod slurp;
 mod utils;
 
