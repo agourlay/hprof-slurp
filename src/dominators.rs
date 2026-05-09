@@ -73,9 +73,11 @@ pub fn lengauer_tarjan(graph: &ReferenceGraph) -> Vec<u32> {
     for i in (1..vertex.len()).rev() {
         let w = vertex[i];
 
-        // Step 2 — semidominator of w.
-        for vi in 0..preds[w as usize].len() {
-            let v = preds[w as usize][vi];
+        // Step 2 — semidominator of w. Snapshot predecessors so eval's
+        // mutable borrow of `ancestor`/`label` can't conflict with the
+        // immutable borrow of `preds`.
+        let pred_list: Vec<u32> = preds[w as usize].clone();
+        for v in pred_list {
             let u = eval(v, &mut ancestor, &mut label, &semi);
             if semi[u as usize] < semi[w as usize] {
                 semi[w as usize] = semi[u as usize];
