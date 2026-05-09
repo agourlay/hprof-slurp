@@ -51,6 +51,9 @@ pub struct Pass1Index {
     /// can do a hash-set membership check in pass 2 without re-streaming.
     pub static_object_fields_by_class_id: AHashMap<u64, Vec<(u64, u64)>>, // (name_id, target_obj_id)
     pub gc_root_ids: AHashSet<u64>,
+    /// `object_id -> root tag label` (e.g. "RootJniGlobal", "RootJavaFrame").
+    /// Used by `--paths-from-id` to label the chain terminator.
+    pub gc_root_kind_by_id: AHashMap<u64, &'static str>,
     pub id_size: u32,
 }
 
@@ -58,7 +61,7 @@ impl Pass1Index {
     /// Returns the dotted display form (`java.util.LinkedList`). HPROF
     /// stores class names slash-delimited; mirrors the conversion done by
     /// `ResultRecorder::get_class_name_string`.
-    fn class_name(&self, class_id: u64) -> Option<String> {
+    pub(crate) fn class_name(&self, class_id: u64) -> Option<String> {
         let name_id = *self.class_name_id_by_class_id.get(&class_id)?;
         self.utf8_by_id
             .get(&name_id)
@@ -244,7 +247,7 @@ fn resolve_target_ids(
     Ok((target.to_string(), ids))
 }
 
-fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSlurpError> {
+pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSlurpError> {
     let mut idx = Pass1Index::default();
     let id_size = parse_records(path, debug, false, |rec| match rec {
         Record::Utf8String { id, str } => {
@@ -282,20 +285,44 @@ fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSlurpError> {
                         .insert(cd.class_object_id, statics);
                 }
             }
-            GcRecord::RootJniGlobal { object_id, .. }
-            | GcRecord::RootJniLocal { object_id, .. }
-            | GcRecord::RootJavaFrame { object_id, .. }
-            | GcRecord::RootNativeStack { object_id, .. }
-            | GcRecord::RootStickyClass { object_id }
-            | GcRecord::RootThreadBlock { object_id, .. }
-            | GcRecord::RootMonitorUsed { object_id }
-            | GcRecord::RootUnknown { object_id } => {
+            GcRecord::RootJniGlobal { object_id, .. } => {
                 idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootJniGlobal");
+            }
+            GcRecord::RootJniLocal { object_id, .. } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootJniLocal");
+            }
+            GcRecord::RootJavaFrame { object_id, .. } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootJavaFrame");
+            }
+            GcRecord::RootNativeStack { object_id, .. } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootNativeStack");
+            }
+            GcRecord::RootStickyClass { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootStickyClass");
+            }
+            GcRecord::RootThreadBlock { object_id, .. } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootThreadBlock");
+            }
+            GcRecord::RootMonitorUsed { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootMonitorUsed");
+            }
+            GcRecord::RootUnknown { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootUnknown");
             }
             GcRecord::RootThreadObject {
                 thread_object_id, ..
             } => {
                 idx.gc_root_ids.insert(thread_object_id);
+                idx.gc_root_kind_by_id
+                    .insert(thread_object_id, "RootThreadObject");
             }
             _ => {}
         },
@@ -384,7 +411,7 @@ fn scan_holders(
     Ok(())
 }
 
-fn flatten_fields(idx: &Pass1Index, class_id: u64) -> Vec<FieldInfo> {
+pub(crate) fn flatten_fields(idx: &Pass1Index, class_id: u64) -> Vec<FieldInfo> {
     let mut out = Vec::new();
     let mut cur = class_id;
     while cur != 0 {
@@ -404,7 +431,7 @@ fn flatten_fields(idx: &Pass1Index, class_id: u64) -> Vec<FieldInfo> {
     out
 }
 
-const fn field_byte_size(t: FieldType, id_size: usize) -> usize {
+pub(crate) const fn field_byte_size(t: FieldType, id_size: usize) -> usize {
     match t {
         FieldType::Object => id_size,
         FieldType::Bool | FieldType::Byte => 1,
@@ -414,7 +441,7 @@ const fn field_byte_size(t: FieldType, id_size: usize) -> usize {
     }
 }
 
-fn read_id(b: &[u8], id_size: usize) -> u64 {
+pub(crate) fn read_id(b: &[u8], id_size: usize) -> u64 {
     match id_size {
         4 => u32::from_be_bytes(b[..4].try_into().expect("4-byte id")) as u64,
         8 => u64::from_be_bytes(b[..8].try_into().expect("8-byte id")),
