@@ -159,7 +159,7 @@ fn find_first_holder(
                     elements: Some(elems),
                     ..
                 } => {
-                    if elems.iter().any(|&rid| rid == target) {
+                    if elems.contains(&target) {
                         let holder_class = idx
                             .class_name(array_class_id)
                             .unwrap_or_else(|| format!("(class_id={array_class_id})"));
@@ -244,11 +244,11 @@ mod tests {
         // grab the class id of LinkedList$Node
         let mut class_id_of_node: Option<u64> = None;
         for (cid, nid) in &idx.class_name_id_by_class_id {
-            if let Some(n) = idx.utf8_by_id.get(nid) {
-                if n.as_ref().replace('/', ".") == "java.util.LinkedList$Node" {
-                    class_id_of_node = Some(*cid);
-                    break;
-                }
+            if let Some(n) = idx.utf8_by_id.get(nid)
+                && n.as_ref().replace('/', ".") == "java.util.LinkedList$Node"
+            {
+                class_id_of_node = Some(*cid);
+                break;
             }
         }
         let class_id_of_node = class_id_of_node.expect("LinkedList$Node class id");
@@ -264,10 +264,9 @@ mod tests {
                 class_object_id,
                 ..
             }) = rec
+                && class_object_id == class_id_of_node
             {
-                if class_object_id == class_id_of_node {
-                    node_id = Some(object_id);
-                }
+                node_id = Some(object_id);
             }
         })
         .unwrap();

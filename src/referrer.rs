@@ -189,10 +189,10 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
 
 /// Resolve the user's `--find-referrers <target>` value into a concrete
 /// id set. Accepts:
-///   * `id:<u64>`   — a single object id
-///   * `<u64>`      — also a single object id (bare digits)
-///   * `<FQ name>`  — a class; pass 1B streams the file again to collect
-///                    every instance id whose `class_object_id` matches.
+/// * `id:<u64>`   — a single object id
+/// * `<u64>`      — also a single object id (bare digits)
+/// * `<FQ name>`  — a class; pass 1B streams the file again to collect
+///   every instance id whose `class_object_id` matches.
 fn resolve_target_ids(
     path: &str,
     idx: &Pass1Index,
@@ -238,10 +238,9 @@ fn resolve_target_ids(
             class_object_id,
             ..
         }) = rec
+            && class_object_id == target_class_id
         {
-            if class_object_id == target_class_id {
-                ids.insert(object_id);
-            }
+            ids.insert(object_id);
         }
     })?;
     Ok((target.to_string(), ids))
@@ -274,10 +273,10 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
 
                 let mut statics = Vec::new();
                 for (fi, fv) in cd.static_fields {
-                    if let FieldValue::Object(rid) = fv {
-                        if rid != 0 {
-                            statics.push((fi.name_id, rid));
-                        }
+                    if let FieldValue::Object(rid) = fv
+                        && rid != 0
+                    {
+                        statics.push((fi.name_id, rid));
                     }
                 }
                 if !statics.is_empty() {
@@ -379,10 +378,8 @@ fn scan_holders(
                         }
                         input = &input[consume..];
                     }
-                    if hit {
-                        if let Some(out) = instance_holders_out.as_deref_mut() {
-                            out.insert(object_id);
-                        }
+                    if hit && let Some(out) = instance_holders_out.as_deref_mut() {
+                        out.insert(object_id);
                     }
                 }
                 GcRecord::ObjectArrayDump {
@@ -398,10 +395,8 @@ fn scan_holders(
                             hit = true;
                         }
                     }
-                    if hit {
-                        if let Some(out) = array_holders_out.as_deref_mut() {
-                            out.insert(object_id);
-                        }
+                    if hit && let Some(out) = array_holders_out.as_deref_mut() {
+                        out.insert(object_id);
                     }
                 }
                 _ => {}

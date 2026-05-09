@@ -96,8 +96,8 @@ pub fn render_text(entries: &[DiffEntry]) -> String {
     let _ = writeln!(out, "\nClass deltas (sorted, top {} shown):", entries.len());
     let _ = writeln!(
         out,
-        "  {:>12} {:>12} {:>12} {:>12}  {}",
-        "Δcount", "Δbytes", "count(a→b)", "bytes(a→b)", "class"
+        "  {:>12} {:>12} {:>12} {:>12}  class",
+        "Δcount", "Δbytes", "count(a→b)", "bytes(a→b)"
     );
     for e in entries {
         let count_change = format!("{}→{}", e.count_a, e.count_b);
