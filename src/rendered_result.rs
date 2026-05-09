@@ -100,12 +100,12 @@ impl RenderedResult {
         let display_total_size = pretty_bytes_size(total_size);
         writeln!(
             analysis,
-            "Found a total of {display_total_size} of instances allocated on the heap."
+            "Found a total of {display_total_size} of raw shallow heap objects in the dump."
         )
         .expect("Could not write to analysis");
 
         // Top allocated classes analysis
-        writeln!(analysis, "\nTop {top} allocated classes:\n")
+        writeln!(analysis, "\nTop {top} raw shallow heap classes:\n")
             .expect("Could not write to analysis");
         memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
         Self::render_table(top, &mut analysis, memory_usage.as_slice());
@@ -263,5 +263,21 @@ impl RenderedResult {
         let column_label_len = column_name.chars().count();
         let padding_size = max_item_length.saturating_sub(column_label_len);
         " ".repeat(padding_size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_output_describes_raw_shallow_dump_objects() {
+        let mut memory_usage = vec![ClassAllocationStats::new("Thing".to_string(), 1, 16, 16)];
+
+        let output = RenderedResult::render_memory_usage(&mut memory_usage, 1);
+
+        assert!(output.contains("raw shallow heap objects in the dump"));
+        assert!(output.contains("Top 1 raw shallow heap classes:"));
+        assert!(!output.contains("instances allocated on the heap"));
     }
 }
