@@ -157,10 +157,19 @@ pub struct ReferrerEntry {
     pub ref_count: u64,
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub struct MatchedClass {
+    pub class_name: String,
+    pub instance_count: u64,
+}
+
 #[derive(Serialize, Debug)]
 pub struct ReferrerResult {
     pub target_label: String,
     pub target_instance_count: u64,
+    /// Per-class breakdown when targeting via `--target-glob`. Empty for
+    /// exact-match targets.
+    pub matched_classes: Vec<MatchedClass>,
     pub hop1: Vec<ReferrerEntry>,
     pub hop2: Vec<ReferrerEntry>,
     pub hop3: Vec<ReferrerEntry>,
@@ -178,7 +187,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             ..
         } => (
             input_file.as_str(),
-            target.as_str(),
+            target.clone(),
             *hops,
             *top,
             *include_statics,
@@ -192,7 +201,8 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
     };
 
     let idx = pass1_index(input_file, debug)?;
-    let (target_label, target_ids) = resolve_target_ids(input_file, &idx, target, debug)?;
+    let (target_label, target_ids, matched_classes) =
+        resolve_target_ids(input_file, &idx, &target, debug)?;
 
     // ---- pass 2: hop 1 ----
     let mut by_field_hop1: AHashMap<(u64, Option<u64>), u64> = AHashMap::new();
@@ -257,36 +267,117 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
     Ok(ReferrerResult {
         target_label,
         target_instance_count: target_ids.len() as u64,
+        matched_classes,
         hop1: top_n(&idx, by_field_hop1, top),
         hop2: top_n(&idx, by_field_hop2, top),
         hop3: top_n(&idx, by_field_hop3, top),
     })
 }
 
-/// Resolve the user's `--find-referrers <target>` value into a concrete
-/// id set. Accepts:
+/// Resolve the user's target spec into a concrete id set. Returns
+/// `(label, ids, matched_classes)`. `matched_classes` is empty for
+/// `Exact` targets and populated for `Glob` targets.
+fn resolve_target_ids(
+    path: &str,
+    idx: &Pass1Index,
+    target: &crate::args::ReferrersTarget,
+    debug: bool,
+) -> Result<(String, AHashSet<u64>, Vec<MatchedClass>), HprofSlurpError> {
+    match target {
+        crate::args::ReferrersTarget::Exact(s) => resolve_exact(path, idx, s, debug),
+        crate::args::ReferrersTarget::Glob(pattern) => resolve_glob(path, idx, pattern, debug),
+    }
+}
+
+fn resolve_glob(
+    path: &str,
+    idx: &Pass1Index,
+    pattern: &str,
+    debug: bool,
+) -> Result<(String, AHashSet<u64>, Vec<MatchedClass>), HprofSlurpError> {
+    use globset::GlobBuilder;
+    let matcher = GlobBuilder::new(pattern)
+        .literal_separator(true) // `*` doesn't cross `.`; `**` does
+        .build()
+        .map_err(|e| HprofSlurpError::InvalidHprofFile {
+            message: format!("bad glob pattern '{pattern}': {e}"),
+        })?
+        .compile_matcher();
+
+    // Find every class whose dotted FQ-name matches the glob.
+    let mut matched_class_ids: Vec<(u64, String)> = Vec::new();
+    for (class_id, name_id) in &idx.class_name_id_by_class_id {
+        if let Some(raw) = idx.utf8_by_id.get(name_id) {
+            let dotted = raw.as_ref().replace('/', ".");
+            if matcher.is_match(&dotted) {
+                matched_class_ids.push((*class_id, dotted));
+            }
+        }
+    }
+    if matched_class_ids.is_empty() {
+        return Err(TargetClassNotFound {
+            name: format!(
+                "glob '{pattern}' matched no classes; check available classes with: heaptrail -i <file> -t 1000"
+            ),
+        });
+    }
+
+    // Pass 1B: collect instance ids of every matched class.
+    let class_id_set: AHashSet<u64> = matched_class_ids.iter().map(|(c, _)| *c).collect();
+    let mut ids = AHashSet::new();
+    let mut count_by_class: AHashMap<u64, u64> = AHashMap::new();
+    parse_records(path, debug, false, |rec| {
+        if let Record::GcSegment(GcRecord::InstanceDump {
+            object_id,
+            class_object_id,
+            ..
+        }) = rec
+            && class_id_set.contains(&class_object_id)
+        {
+            ids.insert(object_id);
+            *count_by_class.entry(class_object_id).or_default() += 1;
+        }
+    })?;
+
+    let mut matched: Vec<MatchedClass> = matched_class_ids
+        .into_iter()
+        .map(|(cid, name)| MatchedClass {
+            class_name: name,
+            instance_count: count_by_class.get(&cid).copied().unwrap_or(0),
+        })
+        // Suppress glob-matches with zero live instances — they're loaded
+        // classes nobody allocated, which is just noise in the header.
+        // (The class is still counted by the glob; it's just not listed.)
+        .filter(|m| m.instance_count > 0)
+        .collect();
+    matched.sort_by_key(|m| Reverse(m.instance_count));
+
+    Ok((format!("glob:{pattern}"), ids, matched))
+}
+
+/// Exact-match target resolution. Accepts:
 /// * `id:<u64>`   — a single object id
 /// * `<u64>`      — also a single object id (bare digits)
 /// * `<FQ name>`  — a class; pass 1B streams the file again to collect
 ///   every instance id whose `class_object_id` matches.
-fn resolve_target_ids(
+fn resolve_exact(
     path: &str,
     idx: &Pass1Index,
     target: &str,
     debug: bool,
-) -> Result<(String, AHashSet<u64>), HprofSlurpError> {
+) -> Result<(String, AHashSet<u64>, Vec<MatchedClass>), HprofSlurpError> {
     if let Some(rest) = target.strip_prefix("id:") {
         let oid: u64 = rest.parse().map_err(|_| TargetClassNotFound {
             name: target.to_string(),
         })?;
         let mut ids = AHashSet::new();
         ids.insert(oid);
-        return Ok((format!("id:{oid}"), ids));
+        return Ok((format!("id:{oid}"), ids, vec![]));
     }
     if let Ok(oid) = target.parse::<u64>() {
         let mut ids = AHashSet::new();
         ids.insert(oid);
-        return Ok((format!("id:{oid}"), ids));
+        return Ok((format!("id:{oid}"), ids, vec![]));
     }
 
     // Class FQ-name: scan utf8_by_id for a name match (HPROF stores names
@@ -319,7 +410,7 @@ fn resolve_target_ids(
             ids.insert(object_id);
         }
     })?;
-    Ok((target.to_string(), ids))
+    Ok((target.to_string(), ids, vec![]))
 }
 
 pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSlurpError> {
@@ -644,6 +735,30 @@ fn top_n(
 pub fn render_text(r: &ReferrerResult) -> String {
     use std::fmt::Write;
     let mut out = String::new();
+    if !r.matched_classes.is_empty() {
+        let _ = writeln!(
+            out,
+            "\nFound {} classes matching {}:",
+            r.matched_classes.len(),
+            r.target_label
+        );
+        let max_name_len = r
+            .matched_classes
+            .iter()
+            .map(|m| m.class_name.len())
+            .max()
+            .unwrap_or(0)
+            .min(80);
+        for m in &r.matched_classes {
+            let _ = writeln!(
+                out,
+                "  - {:<width$} ({} instances)",
+                m.class_name,
+                m.instance_count,
+                width = max_name_len
+            );
+        }
+    }
     let _ = writeln!(
         out,
         "\nFound {} target instance(s) for {}",
@@ -717,12 +832,43 @@ mod tests {
     fn fixture_args(target: &str, hops: u8) -> Mode {
         Mode::FindReferrers {
             input_file: "test-heap-dumps/hprof-64.bin".to_string(),
-            target: target.to_string(),
+            target: crate::args::ReferrersTarget::Exact(target.to_string()),
             hops,
             top: 10,
             include_statics: true,
             debug: false,
             json: false,
+        }
+    }
+
+    #[test]
+    fn glob_resolution_finds_multiple_matching_classes() {
+        let idx = pass1_index("test-heap-dumps/hprof-64.bin", false).unwrap();
+        let target = crate::args::ReferrersTarget::Glob("java.util.*".to_string());
+        let (label, ids, matched) =
+            resolve_target_ids("test-heap-dumps/hprof-64.bin", &idx, &target, false).unwrap();
+        assert_eq!(label, "glob:java.util.*");
+        assert!(
+            matched.len() >= 5,
+            "expected ≥5 java.util classes matched, got {}",
+            matched.len()
+        );
+        assert!(
+            !ids.is_empty(),
+            "expected non-zero target instance count for java.util.* glob"
+        );
+    }
+
+    #[test]
+    fn glob_with_no_matches_errors() {
+        let idx = pass1_index("test-heap-dumps/hprof-64.bin", false).unwrap();
+        let target = crate::args::ReferrersTarget::Glob("nonexistent.does.not.exist.*".to_string());
+        let res = resolve_target_ids("test-heap-dumps/hprof-64.bin", &idx, &target, false);
+        match res {
+            Err(HprofSlurpError::TargetClassNotFound { name }) => {
+                assert!(name.contains("nonexistent"), "got: {name}");
+            }
+            other => panic!("expected TargetClassNotFound, got {other:?}"),
         }
     }
 
@@ -769,14 +915,18 @@ mod tests {
     #[test]
     fn linkedlist_target_resolves_with_instances() {
         let idx = pass1_index("test-heap-dumps/hprof-64.bin", false).unwrap();
-        let (label, ids) = resolve_target_ids(
+        let (label, ids, matched) = resolve_target_ids(
             "test-heap-dumps/hprof-64.bin",
             &idx,
-            "java.util.LinkedList",
+            &crate::args::ReferrersTarget::Exact("java.util.LinkedList".to_string()),
             false,
         )
         .unwrap();
         assert_eq!(label, "java.util.LinkedList");
+        assert!(
+            matched.is_empty(),
+            "exact match should not populate matched_classes"
+        );
         // gold file shows 190 LinkedList instances
         assert_eq!(ids.len(), 190, "expected 190 LinkedList instances");
     }

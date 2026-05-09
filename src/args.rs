@@ -40,6 +40,17 @@ pub struct Cli {
     #[arg(long = "find-referrers", value_name = "TARGET")]
     pub find_referrers: Option<String>,
 
+    /// Find direct + N-hop referrers of every class matching this glob.
+    /// Mutually exclusive with `--find-referrers`. Glob syntax: `*` matches
+    /// within a package level, `**` crosses package levels, `?` matches one
+    /// character, `[abc]` is a class. See USERGUIDE §F.
+    #[arg(
+        long = "target-glob",
+        value_name = "PATTERN",
+        conflicts_with = "find_referrers"
+    )]
+    pub target_glob: Option<String>,
+
     /// Number of hops for referrer tracing. 1 = direct only, 2 = also through
     /// Object[] arrays, 3 = three-link chain.
     #[arg(long = "hops", default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=5))]
@@ -78,6 +89,14 @@ pub enum DiffSort {
     Bytes,
 }
 
+/// Target source for `Mode::FindReferrers`. Either an exact FQ-name (or
+/// `id:<u64>` / bare numeric id), or a shell-style glob over dotted FQ-names.
+#[derive(Debug, Clone)]
+pub enum ReferrersTarget {
+    Exact(String),
+    Glob(String),
+}
+
 #[derive(Debug)]
 pub enum Mode {
     Summary {
@@ -89,7 +108,7 @@ pub enum Mode {
     },
     FindReferrers {
         input_file: String,
-        target: String,
+        target: ReferrersTarget,
         hops: u8,
         top: usize,
         include_statics: bool,
@@ -121,7 +140,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         return Err(InvalidTopPositiveInt);
     }
 
-    let referrers_set = cli.find_referrers.is_some();
+    let referrers_set = cli.find_referrers.is_some() || cli.target_glob.is_some();
     let paths_set = cli.paths_from_id.is_some();
     let diff_set = cli.diff_from.is_some() || cli.diff_to.is_some();
 
@@ -150,7 +169,13 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     let input_file = cli.input_file.ok_or(MissingInputFile)?;
     check_file(&input_file)?;
 
-    if let Some(target) = cli.find_referrers {
+    let referrers_target = match (cli.find_referrers, cli.target_glob) {
+        (Some(t), None) => Some(ReferrersTarget::Exact(t)),
+        (None, Some(g)) => Some(ReferrersTarget::Glob(g)),
+        (Some(_), Some(_)) => return Err(ConflictingModes),
+        (None, None) => None,
+    };
+    if let Some(target) = referrers_target {
         return Ok(Mode::FindReferrers {
             input_file,
             target,
@@ -206,6 +231,28 @@ mod args_tests {
         assert!(cli.find_referrers.is_none());
         assert!(cli.paths_from_id.is_none());
         assert!(cli.diff_from.is_none());
+    }
+
+    #[test]
+    fn parses_target_glob() {
+        let cli = Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "--target-glob", "com.foo.*"])
+            .unwrap();
+        assert_eq!(cli.target_glob.as_deref(), Some("com.foo.*"));
+        assert!(cli.find_referrers.is_none());
+    }
+
+    #[test]
+    fn target_glob_conflicts_with_find_referrers() {
+        let res = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--find-referrers",
+            "java.util.ArrayList",
+            "--target-glob",
+            "java.util.*",
+        ]);
+        assert!(res.is_err(), "clap should reject both flags together");
     }
 
     #[test]
@@ -302,7 +349,10 @@ mod args_tests {
         .unwrap();
         match resolve(cli).unwrap() {
             Mode::FindReferrers { target, hops, .. } => {
-                assert_eq!(target, "java.util.LinkedList");
+                match target {
+                    ReferrersTarget::Exact(s) => assert_eq!(s, "java.util.LinkedList"),
+                    ReferrersTarget::Glob(_) => panic!("expected Exact target"),
+                }
                 assert_eq!(hops, 1);
             }
             other => panic!("expected FindReferrers, got {other:?}"),
