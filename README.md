@@ -19,6 +19,15 @@ This approach makes it possible to provide an extremely fast overview of dump fi
 
 However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/mat/) and [VisualVM](https://visualvm.github.io/) which provide more advanced features at a different cost.
 
+## Documentation
+
+📖 **[USERGUIDE.md](USERGUIDE.md)** — hands-on guide with worked examples
+from a real 235 MiB Android dump: how to capture an hprof on Android, every
+flag and what it does, and an end-to-end leak-investigation walkthrough.
+
+The sections below are a quick orientation; the user guide has the complete
+reference and worked examples.
+
 ## Features
 
 - displays top `n` raw shallow heap classes found in the dump.
@@ -126,167 +135,80 @@ less hprof-slurp.json | grep jq .
 }
 ```
 
-## Referrer tracing (`--find-referrers`)
+## Beyond the summary
 
-When the summary tells you that `java.lang.String` is using 1.4 GiB of heap,
-the next question is *who's keeping all those Strings alive*. `--find-referrers`
-answers that by walking the reference graph in reverse.
+The summary above is the default mode. Three additional modes drive the
+deeper investigation workflow — see [USERGUIDE.md](USERGUIDE.md) for the
+full reference, flag-by-flag walkthrough, and worked Android-leak example.
 
-```bash
-# Find what holds every instance of a class
-./hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --top 30
-
-# Find what holds a specific object id (e.g. a 54 MiB char[] surfaced
-# in summary's "Largest array instances object ids" section)
-./hprof-slurp -i my.hprof --find-referrers id:66277392
-
-# Trace 2 hops (covers ArrayList$elementData and similar Object[]-mediated holders)
-./hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --hops 2
-
-# 3 hops chains one more link (X holds Y holds Object[] holds target)
-./hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --hops 3
-```
-
-Example output:
-
-```
-Found 378 target instance(s) for java.util.LinkedList$Node
-
-=== Direct referrers (1-hop) ===
-  holder.field (or class[] for arrays)  ref count
-  java.util.LinkedList.last                   190
-  java.util.LinkedList.first                  190
-  java.util.LinkedList$Node.next              188
-  java.util.LinkedList$Node.prev              188
-```
-
-Targets:
-
-| Form | Meaning |
-|------|---------|
-| `<class fq-name>` | Every instance of a class (e.g. `java.util.ArrayList`). |
-| `id:<u64>` | A single object id (e.g. `id:66277392`). |
-| `<u64>` | Bare digits — same as `id:<u64>`. |
-
-Flags:
-
-- `--hops 1\|2\|3` (default `2`) — direct, via Object[], or three-link chain.
-- `--include-statics` (default `true`) — include class statics as candidate holders.
-- `--top N` (default `20`) — top N holders per hop.
-- `--json` — also write `hprof-slurp-referrers-<ts>.json`.
-
-### How it works (and why it does multiple passes)
-
-The streaming summary parser drops instance bodies and array element ids by
-default — that's how it can process dumps larger than RAM at ~2 GB/s. Referrer
-tracing needs those bytes, so it runs in additional passes:
-
-1. **Pass 1A** — index utf8 / class metadata / GC roots (lite parser).
-2. **Pass 1B** — when targeting a class FQ-name, collect matching instance ids
-   (skipped for `id:N` targets).
-3. **Pass 2** — retain-bodies stream; resolve hop-1 holders.
-4. **Pass 3 / 4** (when `--hops >= 2 / 3`) — chain another hop.
-
-Wall-cost is roughly `O(hops × file_size)`. On the bundled 3 MB JVM fixture this
-is single-digit milliseconds; on a 235 MB Android dump expect a few seconds.
-
-## Path-to-root (`--paths-from-id`)
-
-Given an object id (e.g. one surfaced as the largest of its class), walk the
-holder chain upward until a GC root is reached or `--max-depth` is exceeded.
+### `--find-referrers` — who's holding it?
 
 ```bash
-hprof-slurp -i my.hprof --paths-from-id 66277392 --max-depth 16
+hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --hops 2
+hprof-slurp -i my.hprof --find-referrers id:1661812752    # specific object
 ```
 
-Example:
+Direct + multi-hop holders for an FQ class name or specific object id.
+Hop 2 is usually where the real diagnosis lives — it goes through
+`Object[]`-mediated holders like `ArrayList.elementData`. Details in
+[USERGUIDE §4](USERGUIDE.md#4---find-referrers--whos-holding-it).
 
-```
-Path from object_id=66277392 (depth 3 step(s)):
-  start  ── id=66277392
-  hop 1 ── id=66270001  (via java.lang.String.value)
-  hop 2 ── id=66145000  (via android.os.Bundle.mMap)
-  hop 3 ── id=66100000  (via android.os.MessageQueue[])
-  → reached GC root: RootJavaFrame
-```
-
-Wall cost is `O(depth × file_size)` since each hop is one streaming pass.
-
-## Snapshot diff (`--diff-from` / `--diff-to`)
-
-Compare two hprof files captured from the same process. The class with the
-largest delta in instance count is the strongest churn signal a pair of
-static dumps can give.
+### `--paths-from-id` — chain to a GC root
 
 ```bash
-# capture before & after a workload
-hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
-
-# or sort by bytes growth
-hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by bytes
+hprof-slurp -i my.hprof --paths-from-id 1661812752 --max-depth 12
 ```
 
-Example output:
+Walks holders upward one hop at a time until a GC root is reached or
+`--max-depth` is exceeded. Details in
+[USERGUIDE §5](USERGUIDE.md#5---paths-from-id--chain-to-a-gc-root).
 
-```
-Class deltas (sorted, top 20 shown):
-        Δcount       Δbytes  count(a→b)  bytes(a→b)  class
-        +12000       +480000  100→12100   4KiB→480KiB  java.util.HashMap$Node
-         +8400       +268800  500→8900     20KiB→289KiB com.example.MyDto
-          +200       +200000  10→210       2KiB→202KiB  java.lang.String
+### `--diff-from` / `--diff-to` — snapshot diff (churn signal)
+
+```bash
+hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by count
 ```
 
-Classes with zero delta are filtered out. `--by count` is the default; pass
-`--by bytes` to sort by shallow-size delta instead.
+Per-class delta in instance count and shallow bytes between two captures —
+the strongest churn signal a pair of static dumps can give you. Details in
+[USERGUIDE §6](USERGUIDE.md#6---diff-from----diff-to--snapshot-diff).
+
+### `--json` — structured output for scripts
+
+Append `--json` to any mode for a machine-parseable sidecar. Details in
+[USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
 
 ## GC churn analysis caveat
 
-A single hprof shows what is **live at one instant**, not allocation rate. For
-real GC churn analysis use one of:
+A single hprof shows what is **live at one instant**, not allocation rate.
+For real churn analysis either:
 
-- **Two snapshots, then diff them** (`--diff-from a.hprof --diff-to b.hprof`).
-  The class with the largest delta in instance count is the strongest churn signal.
-- **A dump captured with allocation tracking enabled** — Android Studio's
-  "Record memory allocations", `art --allocation-tracking`, or Perfetto produce
-  hprof files containing `AllocationSites` records and a populated `HeapSummary`
-  with cumulative `total_bytes_allocated` since process start. Surfacing those
-  in the summary view is on the roadmap; today they're parsed but unused.
-
-For "what holds the over-allocated thing I just saw in the summary?", use
-`--find-referrers` on the class FQ-name or `--find-referrers id:N` for a
-specific large object whose id was reported in the summary's
-"Largest array instances object ids" section.
-
-## Capturing an Android heap dump
-
-```bash
-# pick the target process
-adb shell ps | grep com.example.myapp
-
-# capture
-adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
-adb pull /data/local/tmp/heap.hprof
-hprof-slurp -i heap.hprof
-hprof-slurp -i heap.hprof --find-referrers <class>  # follow up
-```
-
-Android Studio's profiler ("Memory" → "Capture heap dump") emits a compatible
-hprof. Captures taken under "Record memory allocations" additionally contain
-allocation-site stack traces.
+- capture two snapshots and use `--diff-from`/`--diff-to`, or
+- capture under allocation tracking (Android Studio "Record memory
+  allocations", `art --allocation-tracking`, Perfetto). Allocation-site
+  stack traces are parsed but not yet surfaced in summary output.
 
 ## Installation
 
-### Releases
+### Latest (recommended — includes referrer tracing, paths, diff)
 
-Using the provided binaries in https://github.com/agourlay/hprof-slurp/releases
+```bash
+cargo install --git https://github.com/johnneerdael/hprof-slurp
+```
 
-### Crates.io
-
-Using Cargo via [crates.io](https://crates.io/crates/hprof-slurp).
+### Legacy (crates.io 0.6.3 — summary mode only)
 
 ```bash
 cargo install hprof-slurp
 ```
+
+The published crates.io build does not yet include `--find-referrers`,
+`--paths-from-id`, or `--diff-from`/`--diff-to`.
+
+### Pre-built binaries
+
+[agourlay/hprof-slurp/releases](https://github.com/agourlay/hprof-slurp/releases)
+hosts the legacy binaries.
 
 ## Performance
 
