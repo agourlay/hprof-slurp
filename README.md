@@ -190,13 +190,44 @@ For real churn analysis either:
 
 ## Installation
 
-### Latest (recommended — includes referrer tracing, paths, diff)
+### Prerequisites — Rust toolchain
+
+`cargo install` needs Rust. If you don't have it yet, install via
+[rustup](https://rustup.rs):
+
+```bash
+# macOS / Linux
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+```powershell
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+./rustup-init.exe
+```
+
+`rustup` installs `cargo` and adds `~/.cargo/bin` (or `%USERPROFILE%\.cargo\bin`
+on Windows) to your shell `PATH` automatically for most setups. Open a new
+terminal so the change takes effect, then verify:
+
+```bash
+cargo --version
+```
+
+If `cargo` isn't found, see [Adding cargo bin to PATH](#adding-cargo-bin-to-path) below.
+
+### Latest build (recommended — includes referrer tracing, paths, diff)
 
 ```bash
 cargo install --git https://github.com/johnneerdael/hprof-slurp
 ```
 
-### Legacy (crates.io 0.6.3 — summary mode only)
+This downloads the source, compiles in release mode (~1–2 minutes), and
+installs the binary to `~/.cargo/bin/hprof-slurp` (or
+`%USERPROFILE%\.cargo\bin\hprof-slurp.exe` on Windows). To upgrade later,
+rerun the same command.
+
+### Legacy build (crates.io 0.6.3 — summary mode only)
 
 ```bash
 cargo install hprof-slurp
@@ -205,10 +236,59 @@ cargo install hprof-slurp
 The published crates.io build does not yet include `--find-referrers`,
 `--paths-from-id`, or `--diff-from`/`--diff-to`.
 
+### Verify the install
+
+```bash
+hprof-slurp --version
+hprof-slurp --help
+```
+
+If you see `command not found` (or `'hprof-slurp' is not recognized` on
+Windows), `~/.cargo/bin` is not on your `PATH` — see the next section.
+
+### Adding cargo bin to PATH
+
+`cargo install` writes binaries to `~/.cargo/bin/`. If `rustup` didn't add
+it to your shell automatically, add it manually:
+
+**bash** (`~/.bashrc` or `~/.bash_profile`):
+
+```bash
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**zsh** (macOS default since Catalina; `~/.zshrc`):
+
+```bash
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**fish** (`~/.config/fish/config.fish`):
+
+```bash
+fish_add_path ~/.cargo/bin
+```
+
+**Windows PowerShell** (user-scoped, persists across sessions):
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "PATH",
+  "$env:PATH;$env:USERPROFILE\.cargo\bin",
+  "User"
+)
+```
+
+Open a fresh terminal after making the change so the new `PATH` is picked up.
+
 ### Pre-built binaries
 
 [agourlay/hprof-slurp/releases](https://github.com/agourlay/hprof-slurp/releases)
-hosts the legacy binaries.
+hosts the legacy summary-only binaries (no `cargo` needed). For the new
+modes (`--find-referrers`, `--paths-from-id`, `--diff-from`), use the
+`cargo install --git` recipe above.
 
 ## Performance
 
