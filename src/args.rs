@@ -137,6 +137,7 @@ pub enum Mode {
         include_statics: bool,
         debug: bool,
         json: bool,
+        preview_bytes: u32,
     },
     Paths {
         input_file: String,
@@ -224,6 +225,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             include_statics: cli.include_statics,
             debug: cli.debug,
             json: cli.json,
+            preview_bytes: cli.preview_bytes,
         });
     }
     if let Some(object_id) = cli.paths_from_id {

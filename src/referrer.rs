@@ -173,10 +173,16 @@ pub struct ReferrerResult {
     pub hop1: Vec<ReferrerEntry>,
     pub hop2: Vec<ReferrerEntry>,
     pub hop3: Vec<ReferrerEntry>,
+    /// v0.9.0: preview bodies (when --preview-bytes > 0) keyed by
+    /// object_id. Used by `render_text` to display content above the
+    /// hop tables when the target is a primitive array. Skipped from
+    /// JSON since the truncated blob isn't useful structured.
+    #[serde(skip)]
+    pub array_previews: AHashMap<u64, crate::result_recorder::ArrayPreview>,
 }
 
 pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
-    let (input_file, target, hops, top, include_statics, debug) = match mode {
+    let (input_file, target, hops, top, include_statics, debug, preview_bytes) = match mode {
         Mode::FindReferrers {
             input_file,
             target,
@@ -184,6 +190,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             top,
             include_statics,
             debug,
+            preview_bytes,
             ..
         } => (
             input_file.as_str(),
@@ -192,6 +199,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             *top,
             *include_statics,
             *debug,
+            *preview_bytes,
         ),
         _ => {
             return Err(HprofSlurpError::NotYetImplemented {
@@ -201,6 +209,11 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
     };
 
     let idx = pass1_index(input_file, debug)?;
+    let array_previews: AHashMap<u64, crate::result_recorder::ArrayPreview> = if preview_bytes > 0 {
+        crate::paths::collect_primitive_array_previews(input_file, debug, preview_bytes)?
+    } else {
+        AHashMap::new()
+    };
     let (target_label, target_ids, matched_classes) =
         resolve_target_ids(input_file, &idx, &target, debug)?;
 
@@ -268,6 +281,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         target_label,
         target_instance_count: target_ids.len() as u64,
         matched_classes,
+        array_previews,
         hop1: top_n(&idx, by_field_hop1, top),
         hop2: top_n(&idx, by_field_hop2, top),
         hop3: top_n(&idx, by_field_hop3, top),
@@ -764,6 +778,7 @@ pub fn render_text(r: &ReferrerResult) -> String {
         "\nFound {} target instance(s) for {}",
         r.target_instance_count, r.target_label
     );
+    render_target_preview(&mut out, &r.target_label, &r.array_previews);
     render_section(&mut out, "Direct referrers (1-hop)", &r.hop1);
     if !r.hop2.is_empty() {
         render_section(
@@ -780,6 +795,51 @@ pub fn render_text(r: &ReferrerResult) -> String {
         );
     }
     out
+}
+
+fn render_target_preview(
+    out: &mut String,
+    label: &str,
+    previews: &AHashMap<u64, crate::result_recorder::ArrayPreview>,
+) {
+    use crate::preview::{PreviewKind, render_preview};
+    use std::fmt::Write;
+    // Only id-targeted invocations carry a useful preview here. Class
+    // targets (FQ-name or glob) point at many instances; rendering each
+    // one's preview would clutter the report. We deliberately limit to
+    // the "id:" form.
+    let id_str = match label.strip_prefix("id:") {
+        Some(s) => s,
+        None => return,
+    };
+    let id: u64 = match id_str.parse() {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    if let Some(preview) = previews.get(&id) {
+        let kind = render_preview(
+            &preview.bytes,
+            preview.element_type,
+            preview.total_bytes as usize,
+        );
+        match kind {
+            PreviewKind::Text { snippet, truncated } => {
+                let trimmed: String = snippet.chars().take(140).collect();
+                let suffix = if truncated || snippet.chars().count() > 140 {
+                    "..."
+                } else {
+                    ""
+                };
+                let _ = writeln!(out, "  preview: {trimmed}{suffix}");
+            }
+            PreviewKind::Hex { lines, total_bytes } => {
+                let _ = writeln!(out, "  preview: (binary, {total_bytes} bytes total)");
+                for line in lines.iter().take(2) {
+                    let _ = writeln!(out, "    {line}");
+                }
+            }
+        }
+    }
 }
 
 fn render_section(out: &mut String, title: &str, rows: &[ReferrerEntry]) {
@@ -838,6 +898,7 @@ mod tests {
             include_statics: true,
             debug: false,
             json: false,
+            preview_bytes: 0,
         }
     }
 
