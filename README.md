@@ -290,6 +290,73 @@ hosts the legacy summary-only binaries (no `cargo` needed). For the new
 modes (`--find-referrers`, `--paths-from-id`, `--diff-from`), use the
 `cargo install --git` recipe above.
 
+## Installing the Claude Code plugin
+
+This repo doubles as a [Claude Code](https://claude.com/claude-code) plugin
+marketplace. Installing the plugin gives Claude an `analysing-heap-dumps`
+skill that auto-activates whenever you mention `.hprof` files, memory
+leaks, retained size, `am dumpheap`, etc. — Claude will then run
+`hprof-slurp` for you, install it via `cargo install --git` if missing,
+and walk through the standard triage workflow (summary → find-referrers
+→ paths-from-id → diff).
+
+### One-time: add the marketplace
+
+In Claude Code, run:
+
+```
+/plugin marketplace add johnneerdael/hprof-slurp
+```
+
+(`gh auth` is only needed if the repo is private.)
+
+### Install the plugin
+
+```
+/plugin install analysing-heap-dumps@analysing-heap-dumps
+```
+
+Format is `<plugin-name>@<marketplace-name>` — both happen to be
+`analysing-heap-dumps` here. Confirm with:
+
+```
+/plugin
+```
+
+You should see `analysing-heap-dumps` listed as installed.
+
+### Use it
+
+Just talk about your heap dump:
+
+```
+I have a 235 MB Android hprof at /tmp/heap.hprof. The app is using way more
+memory than expected. What's going on?
+```
+
+Claude will load the skill, verify `hprof-slurp` is on PATH (and install
+it via `cargo install --git https://github.com/johnneerdael/hprof-slurp`
+if not), then walk you through summary, retainer tracing, and path-to-root
+in the right order.
+
+### Updating
+
+```
+/plugin marketplace update johnneerdael/hprof-slurp
+/plugin update analysing-heap-dumps@analysing-heap-dumps
+```
+
+### Uninstalling
+
+```
+/plugin uninstall analysing-heap-dumps@analysing-heap-dumps
+/plugin marketplace remove johnneerdael/hprof-slurp
+```
+
+The skill content lives at
+[`plugins/analysing-heap-dumps/skills/analysing-heap-dumps/SKILL.md`](plugins/analysing-heap-dumps/skills/analysing-heap-dumps/SKILL.md)
+if you want to read or fork it without installing.
+
 ## Performance
 
 On modern hardware `hprof-slurp` can process heap dump files at around 2GB/s.

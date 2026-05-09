@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "analysing-heap-dumps",
+  "version": "0.7.0",
+  "description": "Investigate .hprof files (Android or JVM heap dumps), diagnose memory leaks, find what holds an over-allocated class or specific object id, measure GC churn between two snapshots, or chase OutOfMemoryError. Wraps hprof-slurp with auto-install instructions.",
+  "author": {
+    "name": "John Neerdael",
+    "email": "john@neerdael.nl",
+    "url": "https://github.com/johnneerdael"
+  },
+  "homepage": "https://github.com/johnneerdael/hprof-slurp",
+  "repository": "https://github.com/johnneerdael/hprof-slurp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "heap-dump",
+    "hprof",
+    "android",
+    "jvm",
+    "memory-leak",
+    "gc-churn",
+    "retainer-tracing",
+    "hprof-slurp"
+  ]
+}

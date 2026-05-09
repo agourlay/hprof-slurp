@@ -16,5 +16,10 @@
 perf.data
 perf.data.old
 
-# Result files
-*.json
+# Result files (hprof-slurp's --json output sidecars; do NOT ignore plugin
+# manifests under .claude-plugin/ or plugins/)
+/hprof-slurp.json
+/hprof-slurp-*.json
+
+# Heap dump fixtures (large; never commit captured dumps)
+*.hprof

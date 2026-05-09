@@ -1,6 +1,6 @@
 ---
-name: analyzing-heap-dumps
-description: Use when investigating .hprof files (Android or JVM heap dumps), diagnosing memory leaks, asking "what holds class X / object id Y", measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, "memory leak", "retained size", "heap is huge", "find what's holding this object". hprof-slurp is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
+name: analysing-heap-dumps
+description: Use when investigating .hprof files (Android or JVM heap dumps), diagnosing memory leaks, asking 'what holds class X / object id Y', measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, 'memory leak', 'retained size', 'heap is huge', 'find what is holding this object'. hprof-slurp is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
 ---
 
 # Analyzing heap dumps with hprof-slurp
