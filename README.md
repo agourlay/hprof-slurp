@@ -21,16 +21,23 @@ The design of the underlying streaming parser is described in detail in
 
 The parser is streaming and single-pass — no on-disk index, no full object graph in memory — so the same tool runs comfortably on a laptop against multi-gigabyte dumps that wouldn't open in a desktop UI.
 
-### When to still reach for MAT or VisualVM
+### When to use `heaptrail`
 
-[Eclipse MAT](https://www.eclipse.org/mat/) and [VisualVM](https://visualvm.github.io/) remain the right tool when you need:
+- **Agentic / LLM-driven investigation.** Structured terminal output (with `--json` for machine consumers) lets an agent run heaptrail, read the result, and decide on the next probe. A GUI tool can't sit inside that loop.
+- **Headless / CI workflows.** Single static binary, no JVM dependency, deterministic output that diffs cleanly between runs. Fits scheduled jobs, regression-detection pipelines, post-incident automation.
+- **Dumps larger than host RAM.** Streaming and single-pass; no on-disk index, no full object graph in memory. Multi-gigabyte captures run on a laptop.
+- **Content-aware diagnosis.** Inline previews of large primitive arrays in summary, paths, and referrer output identify the *kind* of bug — a `SharedPreferences` XML blob or an inflated Gson string — which MAT's narrative output doesn't surface (you can click into a String in MAT, but Leak Suspects doesn't preview content).
+- **Narrow, repeatable questions.** "Who holds class X?", "What changed between these two dumps?", "What are the top allocation sites?" — single-command answers in seconds, no load-and-explore session.
+
+### When to use [Eclipse MAT](https://www.eclipse.org/mat/) or [VisualVM](https://visualvm.github.io/)
 
 - **Retained heap / dominator analysis.** heaptrail v0.9.0 reports shallow sizes only; full Lengauer–Tarjan dominators with retained-size accounting are scheduled for v1.0.0.
-- **Interactive graph exploration.** Clicking through inbound/outbound references is a UI capability and stays in MAT's column.
+- **Interactive graph exploration.** Clicking through inbound/outbound references and pivoting on the fly is a UI capability and stays in MAT's column.
 - **OQL** for ad-hoc querying — heaptrail is a fixed-flag CLI by design.
-- **MAT's Leak Suspects** clustered narrative report.
+- **MAT's Leak Suspects** clustered narrative report (until heaptrail's equivalent lands post-v1.0.0).
+- **HTML reports for non-engineering audiences.** MAT's report exporter is well-suited for sharing with people who won't open a CLI.
 
-For everything else — large dumps, small hosts, headless workflows, single-command answers with content previews — `heaptrail` is the cheaper option, and the gap closes further once v1.0.0 lands.
+The two tools complement each other: `heaptrail` is the cheaper, scriptable, agent-friendly first pass; MAT remains the right tool when the question demands an interactive graph session.
 
 ## Documentation
 
