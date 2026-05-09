@@ -9,7 +9,6 @@
 //!
 //! Wall cost: O(depth × file_size).
 
-use ahash::AHashSet;
 use serde::Serialize;
 
 use crate::args::Mode;

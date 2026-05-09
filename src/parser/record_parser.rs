@@ -66,15 +66,6 @@ pub struct HprofRecordParser {
 }
 
 impl HprofRecordParser {
-    pub const fn new(debug_mode: bool, id_size: u32) -> Self {
-        Self {
-            debug_mode,
-            id_size,
-            heap_dump_remaining_len: 0,
-            retain_bodies: false,
-        }
-    }
-
     pub const fn with_retain_bodies(debug_mode: bool, id_size: u32, retain_bodies: bool) -> Self {
         Self {
             debug_mode,
