@@ -7,6 +7,16 @@ pub enum HprofSlurpError {
     InputFileNotFound { name: String },
     #[error("invalid argument `top` - the value should be strictly positive")]
     InvalidTopPositiveInt,
+    #[error("missing required `--inputFile <path>` for the selected mode")]
+    MissingInputFile,
+    #[error(
+        "conflicting modes: pick exactly one of `--find-referrers`, `--paths-from-id`, or `--diff-from`/`--diff-to`"
+    )]
+    ConflictingModes,
+    #[error("target class not found in dump: `{name}`")]
+    TargetClassNotFound { name: String },
+    #[error("not yet implemented: {what}")]
+    NotYetImplemented { what: &'static str },
     #[error("invalid pointer size - the value should be either `4` or `8`")]
     InvalidIdSize,
     #[error("invalid content after header")]
