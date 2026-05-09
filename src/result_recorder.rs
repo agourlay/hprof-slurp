@@ -92,9 +92,6 @@ pub struct ResultRecorder {
     /// v0.9.0 — non-zero enables primitive-array preview capture.
     preview_bytes: u32,
     /// v0.9.0 — threshold for the `-l` standalone-array section.
-    /// Wired into the recorder constructor now; consumed in PR 6 by the
-    /// extended `render_captured_strings` (`-l --preview-bytes`).
-    #[allow(dead_code)]
     list_arrays_min_bytes: u32,
     // Tag counters
     classes_unloaded: u32,
@@ -142,6 +139,11 @@ pub struct ResultRecorder {
     /// each element type. Only populated when `preview_bytes > 0`. Drained
     /// into `RenderedResult.array_previews`.
     array_previews: AHashMap<u64, ArrayPreview>,
+    /// Standalone large primitive arrays for the -l + --preview-bytes
+    /// extension. Captured only when `list_strings && preview_bytes > 0`
+    /// and `total_bytes >= list_arrays_min_bytes`. Only Byte/Char element
+    /// types are eligible (text-like primitives).
+    standalone_large_arrays: Vec<(u64, ArrayPreview)>,
 }
 
 impl ResultRecorder {
@@ -195,6 +197,7 @@ impl ResultRecorder {
             stack_trace_by_serial_number: AHashMap::default(),
             stack_frame_by_id: AHashMap::default(),
             array_previews: AHashMap::new(),
+            standalone_large_arrays: Vec::new(),
         }
     }
 
@@ -401,6 +404,25 @@ impl ResultRecorder {
                                 }
                             }
 
+                            // v0.9.0 (feature B, -l extension): capture
+                            // every char[]/byte[] above the size threshold
+                            // for the standalone-large-arrays listing.
+                            if self.list_strings
+                                && self.preview_bytes > 0
+                                && size_bytes >= u64::from(self.list_arrays_min_bytes)
+                                && let Some(b) = body
+                                && matches!(*element_type, FieldType::Byte | FieldType::Char)
+                            {
+                                self.standalone_large_arrays.push((
+                                    *object_id,
+                                    ArrayPreview {
+                                        element_type: *element_type,
+                                        bytes: b.clone(),
+                                        total_bytes: size_bytes,
+                                    },
+                                ));
+                            }
+
                             self.heap_dump_segments_gc_primitive_array_dump += 1;
                         }
                         GcRecord::ClassDump(class_dump_fields) => {
@@ -459,6 +481,47 @@ impl ResultRecorder {
             result.push_str(s);
             result.push('\n');
         }
+
+        // v0.9.0 (feature B, -l extension): standalone large arrays.
+        if !self.standalone_large_arrays.is_empty() {
+            use crate::preview::{PreviewKind, render_preview};
+            use crate::utils::pretty_bytes_size;
+
+            let mut sorted: Vec<&(u64, ArrayPreview)> =
+                self.standalone_large_arrays.iter().collect();
+            sorted.sort_by_key(|x| std::cmp::Reverse(x.1.total_bytes));
+
+            let _ = writeln!(
+                result,
+                "\nStandalone large arrays (>= {} bytes, sorted by size):",
+                self.list_arrays_min_bytes
+            );
+            for (oid, preview) in sorted.iter().take(50) {
+                let size = pretty_bytes_size(preview.total_bytes);
+                let kind_label = match preview.element_type {
+                    FieldType::Byte => "byte[]",
+                    FieldType::Char => "char[]",
+                    _ => "primitive[]",
+                };
+                let kind = render_preview(
+                    &preview.bytes,
+                    preview.element_type,
+                    preview.total_bytes as usize,
+                );
+                let preview_text = match kind {
+                    PreviewKind::Text { snippet, .. } => {
+                        let trimmed: String = snippet.chars().take(80).collect();
+                        format!("  {trimmed}")
+                    }
+                    PreviewKind::Hex { .. } => "  (binary)".to_string(),
+                };
+                let _ = writeln!(
+                    result,
+                    "  {size:>10}  object_id={oid:<14}  {kind_label:<8} {preview_text}"
+                );
+            }
+        }
+
         result
     }
 
