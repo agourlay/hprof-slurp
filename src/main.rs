@@ -6,6 +6,7 @@ mod parser;
 mod paths;
 mod prefetch_reader;
 mod preview;
+mod reference_graph;
 mod referrer;
 mod rendered_result;
 mod result_recorder;
