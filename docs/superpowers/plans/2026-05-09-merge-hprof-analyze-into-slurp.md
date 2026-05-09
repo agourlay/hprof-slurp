@@ -15,7 +15,7 @@
 ## Decisions made at execution start (2026-05-09)
 
 - **CLI shape: flag-based (per `docs/feature-retainer-tracing.md`), not subcommand-based.** Every operating mode is a flag on the existing single command. Replaces Task 2's subcommand design with `--find-referrers <target>`, `--hops`, `--paths-from-id <u64>`, `--max-depth`, `--diff-from <path>`, `--diff-to <path>`, `--diff-by count|bytes`. Mutually exclusive modes are validated at resolve-time.
-- **Branch: off `main`** (not the in-progress `32-bit-hprof-support` branch). Any uncommitted changes on that branch (Cargo.toml authorship/version edit) are preserved on it and not pulled into this work.
+- **Branch: rebased onto `fork/master`** (the user's GitHub fork at johnneerdael/hprof-slurp), not `origin/master` (agourlay's). The fork already has 32-bit hprof identifier support merged via PR #1+#2, plus the `largest_object_id` retainer-tracing prep and the `feature-retainer-tracing.md` spec — all of which this work builds on. Initial branch was off `origin/master`; rebased onto `fork/master` after the user clarified their fork is the upstream-of-record. Conflict resolution merged the parser's `id_size` threading with the new `retain_bodies` flag.
 - **Tasks 11 & 12 deferred:** HeapSummary cumulative-bytes surfacing and AllocationSites top-N rendering require an hprof captured with allocation tracking. None of the existing fixtures qualify. Skip until such a fixture is available.
 
 **Source of truth for merged-in logic:** `~/Scripts/hprof-analyze-rust/src/main.rs` (444 lines). Its bugs/limitations (broken `--hops` wiring at line 18, primitive-array class collapse at line 81, four full file scans, missing CLI parser, empty README) are explicitly fixed during the merge.
