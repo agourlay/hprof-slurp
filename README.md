@@ -27,6 +27,8 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 - displays threads stack traces.
 - lists all `Strings` found.
 - output results as JSON possible
+- **referrer tracing** (`--find-referrers`) — find what holds an over-allocated
+  class or specific object id, with multi-hop chain support.
 
 ## Usage
 
@@ -118,6 +120,105 @@ less hprof-slurp.json | grep jq .
   "top_largest_instances": [..]
 }
 ```
+
+## Referrer tracing (`--find-referrers`)
+
+When the summary tells you that `java.lang.String` is using 1.4 GiB of heap,
+the next question is *who's keeping all those Strings alive*. `--find-referrers`
+answers that by walking the reference graph in reverse.
+
+```bash
+# Find what holds every instance of a class
+./hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --top 30
+
+# Find what holds a specific object id (e.g. a 54 MiB char[] surfaced
+# in summary's "Largest array instances object ids" section)
+./hprof-slurp -i my.hprof --find-referrers id:66277392
+
+# Trace 2 hops (covers ArrayList$elementData and similar Object[]-mediated holders)
+./hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --hops 2
+
+# 3 hops chains one more link (X holds Y holds Object[] holds target)
+./hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --hops 3
+```
+
+Example output:
+
+```
+Found 378 target instance(s) for java.util.LinkedList$Node
+
+=== Direct referrers (1-hop) ===
+  holder.field (or class[] for arrays)  ref count
+  java.util.LinkedList.last                   190
+  java.util.LinkedList.first                  190
+  java.util.LinkedList$Node.next              188
+  java.util.LinkedList$Node.prev              188
+```
+
+Targets:
+
+| Form | Meaning |
+|------|---------|
+| `<class fq-name>` | Every instance of a class (e.g. `java.util.ArrayList`). |
+| `id:<u64>` | A single object id (e.g. `id:66277392`). |
+| `<u64>` | Bare digits — same as `id:<u64>`. |
+
+Flags:
+
+- `--hops 1\|2\|3` (default `2`) — direct, via Object[], or three-link chain.
+- `--include-statics` (default `true`) — include class statics as candidate holders.
+- `--top N` (default `20`) — top N holders per hop.
+- `--json` — also write `hprof-slurp-referrers-<ts>.json`.
+
+### How it works (and why it does multiple passes)
+
+The streaming summary parser drops instance bodies and array element ids by
+default — that's how it can process dumps larger than RAM at ~2 GB/s. Referrer
+tracing needs those bytes, so it runs in additional passes:
+
+1. **Pass 1A** — index utf8 / class metadata / GC roots (lite parser).
+2. **Pass 1B** — when targeting a class FQ-name, collect matching instance ids
+   (skipped for `id:N` targets).
+3. **Pass 2** — retain-bodies stream; resolve hop-1 holders.
+4. **Pass 3 / 4** (when `--hops >= 2 / 3`) — chain another hop.
+
+Wall-cost is roughly `O(hops × file_size)`. On the bundled 3 MB JVM fixture this
+is single-digit milliseconds; on a 235 MB Android dump expect a few seconds.
+
+## GC churn analysis caveat
+
+A single hprof shows what is **live at one instant**, not allocation rate. For
+real GC churn analysis use one of:
+
+- **Two snapshots, then diff them** (`--diff-from a.hprof --diff-to b.hprof`).
+  The class with the largest delta in instance count is the strongest churn signal.
+- **A dump captured with allocation tracking enabled** — Android Studio's
+  "Record memory allocations", `art --allocation-tracking`, or Perfetto produce
+  hprof files containing `AllocationSites` records and a populated `HeapSummary`
+  with cumulative `total_bytes_allocated` since process start. Surfacing those
+  in the summary view is on the roadmap; today they're parsed but unused.
+
+For "what holds the over-allocated thing I just saw in the summary?", use
+`--find-referrers` on the class FQ-name or `--find-referrers id:N` for a
+specific large object whose id was reported in the summary's
+"Largest array instances object ids" section.
+
+## Capturing an Android heap dump
+
+```bash
+# pick the target process
+adb shell ps | grep com.example.myapp
+
+# capture
+adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
+adb pull /data/local/tmp/heap.hprof
+hprof-slurp -i heap.hprof
+hprof-slurp -i heap.hprof --find-referrers <class>  # follow up
+```
+
+Android Studio's profiler ("Memory" → "Capture heap dump") emits a compatible
+hprof. Captures taken under "Record memory allocations" additionally contain
+allocation-site stack traces.
 
 ## Installation
 
