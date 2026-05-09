@@ -325,10 +325,22 @@ Open a fresh terminal after making the change so the new `PATH` is picked up.
 
 ### Pre-built binaries
 
+Each tagged release attaches binaries for six targets, no `cargo` needed:
+
+- Linux: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+- macOS: `x86_64-apple-darwin`, `aarch64-apple-darwin`
+- Windows: `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc`
+
+Download from
+[johnneerdael/heaptrail/releases](https://github.com/johnneerdael/heaptrail/releases),
+extract, and place on your `PATH`. The latest release is
+[heaptrail v0.8.0](https://github.com/johnneerdael/heaptrail/releases/latest).
+
+(The legacy summary-only binaries from
 [agourlay/hprof-slurp/releases](https://github.com/agourlay/hprof-slurp/releases)
-hosts the legacy summary-only binaries (no `cargo` needed). For the new
-modes (`--find-referrers`, `--paths-from-id`, `--diff-from`), use the
-`cargo install --git` recipe above.
+predate the rename to `heaptrail` and lack `--find-referrers`,
+`--paths-from-id`, `--diff-from`, `--target-glob`, and
+`--allocation-sites`. Use the heaptrail releases above instead.)
 
 ## Installing the Claude Code plugin
 
@@ -403,10 +415,31 @@ On modern hardware `heaptrail` can process heap dump files at around 2GB/s.
 
 To maximize performance make sure to run on a host with at least 4 cores.
 
-## Limitations
+## Format support
 
-- Tested only with `JAVA PROFILE 1.0.2` & `JAVA PROFILE 1.0.1` formats.
-- Supports heap dumps with 4-byte and 8-byte HPROF identifiers.
+- `JAVA PROFILE 1.0.1` (legacy JVM)
+- `JAVA PROFILE 1.0.2` (current JVM — `jmap` default)
+- `JAVA PROFILE 1.0.3` (modern Android — `am dumpheap` default; includes
+  the Android extension tags `RootInternedString` / `RootVmInternal` /
+  `RootJniMonitor` / `RootDebugger` / `RootFinalizing` /
+  `RootReferenceCleanup` / `Unreachable` / `PrimitiveArrayNoDataDump` /
+  `HeapDumpInfo`, all parsed and surfaced)
+- 4-byte (Android) and 8-byte (JVM) HPROF identifier sizes
+
+CI validates against bundled JVM 64-bit and JVM 32-bit fixtures. Both
+canonical real-world dumps (`JAVA_PROFILE_1.0.2.hprof` and
+`JAVA_PROFILE_1.0.3.hprof`) are smoke-tested before every release per
+the project's `CLAUDE.md`.
+
+## Known limitations
+
+- No allocation-tracked-dump fixture in CI yet (the
+  `--allocation-sites` mode is unit-tested against synthetic records and
+  smoke-tested manually; integration coverage will land when a small
+  alloc-tracked fixture is captured).
+- `--paths-from-id` walks one streaming pass per hop, so deep chains
+  (e.g. `--max-depth 12` on a multi-GiB dump) take seconds. Truly deep
+  chains rarely add diagnostic value past the first few hops anyway.
 
 ## Generate a heap dump
 
