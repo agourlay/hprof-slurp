@@ -118,3 +118,16 @@ Top 20 largest instances:
 | 152.00bytes |         1 | 152.00bytes | sun.misc.Launcher$ExtClassLoader              |
 |     3.13KiB |        56 | 144.00bytes | java.lang.String[]                            |
 +-------------+-----------+-------------+-----------------------------------------------+
+
+Largest array instances object ids (for retainer tracing):
+   634.78KiB object_id=3607227400 int[]
+    16.02KiB object_id=3606712464 char[]
+     8.02KiB object_id=3606691640 byte[]
+     8.02KiB object_id=3606636656 java.lang.Object[]
+     2.02KiB object_id=3606990376 java.util.HashMap$Node[]
+     2.02KiB object_id=3606868104 java.lang.invoke.MethodHandle[]
+     2.02KiB object_id=3606766552 java.lang.Integer[]
+  776.00bytes object_id=3606673208 java.util.Hashtable$Entry[]
+  312.00bytes object_id=3606793568 java.lang.reflect.Field[]
+  272.00bytes object_id=3606802224 java.util.concurrent.ConcurrentHashMap$Node[]
+  144.00bytes object_id=3606627528 java.lang.String[]

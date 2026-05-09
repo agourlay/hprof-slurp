@@ -140,8 +140,11 @@ impl RenderedResult {
             .filter(|s| s.largest_object_id != 0)
             .collect();
         if !largest_with_ids.is_empty() {
-            writeln!(analysis, "\nLargest array instances object ids (for retainer tracing):")
-                .expect("Could not write to analysis");
+            writeln!(
+                analysis,
+                "\nLargest array instances object ids (for retainer tracing):"
+            )
+            .expect("Could not write to analysis");
             for s in &largest_with_ids {
                 let display_size = pretty_bytes_size(s.largest_allocation_bytes);
                 writeln!(
