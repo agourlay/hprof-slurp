@@ -74,20 +74,14 @@ where
                     // EOF and parser made no progress — leftover trailing bytes;
                     // surface as a parse error rather than infinite-loop.
                     return Err(InvalidHprofFile {
-                        message: format!(
-                            "trailing bytes at EOF: {} unparsed bytes",
-                            buf.len()
-                        ),
+                        message: format!("trailing bytes at EOF: {} unparsed bytes", buf.len()),
                     });
                 }
             }
             Err(nom::Err::Incomplete(_)) => {
                 if n == 0 {
                     return Err(InvalidHprofFile {
-                        message: format!(
-                            "unexpected EOF mid-record: {} unparsed bytes",
-                            buf.len()
-                        ),
+                        message: format!("unexpected EOF mid-record: {} unparsed bytes", buf.len()),
                     });
                 }
                 // need more data; loop and read more

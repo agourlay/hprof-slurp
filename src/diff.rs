@@ -109,11 +109,7 @@ pub fn render_text(entries: &[DiffEntry]) -> String {
         let _ = writeln!(
             out,
             "  {:>+12} {:>+12} {:>12} {:>12}  {}",
-            e.delta_count,
-            e.delta_bytes,
-            count_change,
-            bytes_change,
-            e.class_name
+            e.delta_count, e.delta_bytes, count_change, bytes_change, e.class_name
         );
     }
     out

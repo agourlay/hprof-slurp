@@ -15,9 +15,7 @@ use crate::args::Mode;
 use crate::errors::HprofSlurpError;
 use crate::parser::gc_record::{FieldType, GcRecord};
 use crate::parser::record::Record;
-use crate::referrer::{
-    Pass1Index, field_byte_size, flatten_fields, pass1_index, read_id,
-};
+use crate::referrer::{Pass1Index, field_byte_size, flatten_fields, pass1_index, read_id};
 use crate::slurp::parse_records;
 
 #[derive(Serialize, Debug, Clone)]
@@ -138,9 +136,7 @@ fn find_first_holder(
                             if rid == target {
                                 let holder_class = idx
                                     .class_name(class_object_id)
-                                    .unwrap_or_else(|| {
-                                        format!("(class_id={class_object_id})")
-                                    });
+                                    .unwrap_or_else(|| format!("(class_id={class_object_id})"));
                                 let via_field = idx
                                     .utf8_by_id
                                     .get(&fi.name_id)
@@ -190,11 +186,7 @@ pub fn render_text(r: &PathResult) -> String {
         "\nPath from object_id={} (depth {} step(s)):",
         r.start_object_id, r.depth
     );
-    let _ = writeln!(
-        out,
-        "  start  ── id={}",
-        r.start_object_id
-    );
+    let _ = writeln!(out, "  start  ── id={}", r.start_object_id);
     for (i, s) in r.steps.iter().enumerate() {
         let arrow = match &s.via_field {
             Some(f) => format!("via {}.{}", s.holder_class, f),

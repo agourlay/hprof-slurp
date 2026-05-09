@@ -226,9 +226,8 @@ mod args_tests {
 
     #[test]
     fn parses_paths_from_id() {
-        let cli =
-            Cli::try_parse_from(["hprof-slurp", "-i", "x.hprof", "--paths-from-id", "12345"])
-                .unwrap();
+        let cli = Cli::try_parse_from(["hprof-slurp", "-i", "x.hprof", "--paths-from-id", "12345"])
+            .unwrap();
         assert_eq!(cli.paths_from_id, Some(12345));
     }
 
