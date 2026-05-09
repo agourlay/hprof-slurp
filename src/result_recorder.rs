@@ -416,12 +416,11 @@ impl ResultRecorder {
     }
 
     fn aggregate_memory_usage(&self) -> Vec<ClassAllocationStats> {
-        // https://www.baeldung.com/java-memory-layout
         // total_size = object_header + data
-        // on a 64-bit arch.
-        // object_header = mark(ref_size) + klass(4) + padding_gap(4) = 16 bytes
-        // data = instance_size + padding_next(??)
-        let object_header = self.id_size + 4 + 4;
+        // 32-bit object_header = mark(4) + klass(4) = 8 bytes
+        // 64-bit object_header = mark(8) + klass(4) + padding_gap(4) = 16 bytes
+        // data = instance_size + padding_next
+        let object_header = object_header_size(self.id_size);
 
         let mut classes_dump_vec: Vec<_> = self
             .classes_all_instance_total_size_by_id
@@ -466,15 +465,13 @@ impl ResultRecorder {
             })
             .collect();
 
-        // https://www.baeldung.com/java-memory-layout
         // the array's `elements` size is already accounted for via `GcInstanceDump` for objects
         // unlike primitives which are packed in the array itself
-        // array headers already aligned for 64-bit arch - no need for padding
-        // array_header = mark(ref_size) + klass(4) + array_length(4) = 16 bytes
-        // data_primitive = primitive_size * length + padding(??)
-        // data_object = ref_size * length (no padding because the ref size is already aligned!)
+        // array_header = mark(ref_size) + klass(4) + array_length(4)
+        // data_primitive = primitive_size * length + padding
+        // data_object = ref_size * length
         let ref_size = u64::from(self.id_size);
-        let array_header_size = ref_size + 4 + 4;
+        let array_header_size = array_header_size(self.id_size);
 
         let array_primitives_dump_vec =
             self.primitive_array_counters
@@ -608,5 +605,38 @@ fn primitive_byte_size(field_type: FieldType) -> u64 {
         FieldType::Float | FieldType::Int => 4,
         FieldType::Double | FieldType::Long => 8,
         FieldType::Object => panic!("object type in primitive array"),
+    }
+}
+
+fn object_header_size(id_size: u32) -> u32 {
+    match id_size {
+        4 => 8,
+        8 => 16,
+        x => panic!("unsupported id size {x}"),
+    }
+}
+
+fn array_header_size(id_size: u32) -> u64 {
+    match id_size {
+        4 => 12,
+        8 => 16,
+        x => panic!("unsupported id size {x}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn object_header_size_matches_identifier_width() {
+        assert_eq!(object_header_size(4), 8);
+        assert_eq!(object_header_size(8), 16);
+    }
+
+    #[test]
+    fn array_header_size_matches_identifier_width() {
+        assert_eq!(array_header_size(4), 12);
+        assert_eq!(array_header_size(8), 16);
     }
 }

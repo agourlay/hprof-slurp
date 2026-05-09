@@ -7,7 +7,7 @@ use crossbeam_channel::{Receiver, Sender};
 
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::{
-    InvalidHeaderSize, InvalidHprofFile, InvalidIdSize, StdThreadError, UnsupportedIdSize,
+    InvalidHeaderSize, InvalidHprofFile, InvalidIdSize, StdThreadError,
 };
 use crate::parser::file_header_parser::{FileHeader, parse_file_header};
 use crate::parser::record::Record;
@@ -85,6 +85,7 @@ pub fn slurp_file(
     let initial_loop_buffer = Vec::with_capacity(READ_BUFFER_SIZE); // will be added to the data pool after the first chunk
     let stream_parser = HprofRecordStreamParser::new(
         debug_mode,
+        id_size,
         file_len,
         FILE_HEADER_LENGTH,
         initial_loop_buffer,
@@ -146,11 +147,6 @@ pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlu
     if id_size != 4 && id_size != 8 {
         return Err(InvalidIdSize);
     }
-    if id_size == 4 {
-        return Err(UnsupportedIdSize {
-            message: "32 bits heap dumps are not supported yet".to_string(),
-        });
-    }
     if !rest.is_empty() {
         return Err(InvalidHeaderSize);
     }
@@ -190,9 +186,13 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_32_bits() {
+    fn supported_32_bits() {
         let result = slurp_file(FILE_PATH_32, false, false);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+
+        let rendered_result = result.unwrap();
+        assert!(rendered_result.summary.contains("UTF-8 Strings:"));
+        assert!(!rendered_result.memory_usage.is_empty());
     }
 
     #[test]
@@ -207,8 +207,12 @@ mod tests {
         let file_path = FILE_PATH_32.to_string();
         let file = File::open(file_path).unwrap();
         let mut reader = BufReader::new(file);
-        let result = slurp_header(&mut reader);
-        assert!(result.is_err());
+        let file_header = slurp_header(&mut reader).unwrap();
+        assert_eq!(file_header.size_pointers, 4);
+        assert!(matches!(
+            file_header.format.as_str(),
+            "JAVA PROFILE 1.0.1" | "JAVA PROFILE 1.0.2"
+        ));
     }
 
     #[test]

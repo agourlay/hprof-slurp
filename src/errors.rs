@@ -13,8 +13,6 @@ pub enum HprofSlurpError {
     InvalidHeaderSize,
     #[error("invalid Hprof file - {message:?}")]
     InvalidHprofFile { message: String },
-    #[error("unsupported pointer size - {message:?}")]
-    UnsupportedIdSize { message: String },
     #[error("CLI argument error ({0})")]
     ClapError(#[from] clap::Error),
     #[error("standard I/O error ({0})")]
