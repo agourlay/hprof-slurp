@@ -472,6 +472,59 @@ dumps (orders of magnitude fewer arrays) the cost is negligible.
   after the `List of Strings` block — useful when the leak is in raw
   `byte[]` / `char[]` allocations, not `java.lang.String` instances.
 
+### Worked example — duplicate-content + cache-blob detection
+
+First production triage with `--preview-bytes` on an Android dump
+(`heap-iter-fix.hprof`, 135 MiB) revealed two leak patterns in one
+command that the holder chain alone couldn't disambiguate:
+
+```bash
+heaptrail -i heap-iter-fix.hprof -l --preview-bytes 65536
+```
+
+Trimmed output of the "Standalone large arrays" section:
+
+```
+   234.01KiB  object_id=…  char[]   {"schemaVersion":5,…"traktGroups":[…]}
+   205.00KiB  object_id=…  char[]   {"airsDays":["monday"],"aliases":[…
+   205.00KiB  object_id=…  char[]   {"airsDays":["monday"],"aliases":[…
+   205.00KiB  object_id=…  char[]   {"airsDays":["monday"],"aliases":[…
+   114.00KiB  object_id=…  char[]   {"personalLists":[{"isPersonal":…
+    64.00KiB  object_id=…  char[]   <string name="alias::en::policy:1::tv:tvdb:…
+    53.00KiB  object_id=…  char[]   {"catalogRow":{"addonBaseUrl":"https://…
+    32.00KiB  object_id=…  byte[]   <string name="alias::en::policy:1::tv:tvdb:…
+```
+
+What each preview line answered (without leaving heaptrail):
+
+- **Three identical 205 KiB `char[]`s of the same `{"airsDays":...}` JSON** —
+  600 KiB of redundant in-memory copies. A subsequent
+  `--find-referrers id:<one of the three>` walk pinned the holders to
+  `StringReader.str` mid-`gson.fromJson(String, …)` — i.e. concurrent
+  parses materializing the whole cache string at once. Read-side
+  equivalent of a streaming-write rule; the fix is
+  `gson.fromJson(JsonReader, type)` off a `BufferedReader`, which would
+  never allocate the 205 KiB `char[]`.
+- **234 KiB `char[]` of `{"schemaVersion":5,…"traktGroups":[…]}`** held
+  by `SharedPreferencesImpl.mMap` (the `trakt_discovery_snapshot`
+  entry) — 47 KB on disk inflated to 234 KB resident as a `String`
+  during XML deserialization. Without the preview, the chain stopped
+  at `SharedPreferencesImpl.mMap` and the actual blob's identity was
+  invisible.
+- **64 KiB `char[]` + 32 KiB `byte[]` of `<string name="alias::…">`** —
+  the `hydrated_home_overlay_v1.xml` SharedPreferences file
+  materialized in the heap. The exact file the design spec described.
+- **53 KiB `{"catalogRow":{"addonBaseUrl":"https://…"}` and 114 KiB
+  `{"personalLists":…}`** — Trakt list cache and catalog disk cache,
+  identifiable from the JSON root-key alone.
+
+Without `--preview-bytes`, all of these were anonymous "large `char[]`
+held by `SharedPreferencesImpl.mMap` / `StringReader.str`" entries.
+With it, root-cause and remediation strategy fell out in one pass:
+both classes of finding (duplicate concurrent parses + SharedPreferences
+XML inflation) point to the same fix — replace
+`gson.fromJson(String, type)` with streaming reads.
+
 ---
 
 ## F — `--target-glob` — pattern targeting
