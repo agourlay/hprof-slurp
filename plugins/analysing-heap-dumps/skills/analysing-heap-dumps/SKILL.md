@@ -193,7 +193,7 @@ static dumps can give: classes whose instance count grew most are
 allocation hot-paths. Sort by `count` (default) for short-lived
 allocations or `bytes` for size growth. Zero-delta classes are filtered.
 
-### 5. `--allocation-sites` — per-class allocation stack traces (v0.8.0, feature C)
+### 5. `--allocation-sites` — per-class allocation stack traces (v0.8.0)
 
 ```bash
 heaptrail -i heap.hprof --allocation-sites --top 20
@@ -226,7 +226,7 @@ First thing to reach for after `summary` when alloc-tracking is on.
 slurp pass; the resolution overhead is dominated by class+frame map
 lookups, not parsing).
 
-### 6. `--preview-bytes N` — content preview (v0.9.0, feature B)
+### 6. `--preview-bytes N` — content preview (v0.9.0)
 
 Global flag (not its own mode — applies to summary, `--paths-from-id`,
 `--find-referrers id:N`, and `-l`). When set, primitive arrays

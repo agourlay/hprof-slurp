@@ -397,7 +397,7 @@ cache after the first read.)
 
 ---
 
-## B — `--preview-bytes` — content preview
+## `--preview-bytes` — content preview
 
 ### Why this exists
 
@@ -527,7 +527,7 @@ XML inflation) point to the same fix — replace
 
 ---
 
-## F — `--target-glob` — pattern targeting
+## `--target-glob` — pattern targeting
 
 ### Why this exists
 
@@ -581,7 +581,7 @@ crate with `literal_separator=true`.
 
 ---
 
-## C — `--allocation-sites` — per-class stack traces
+## `--allocation-sites` — per-class stack traces
 
 ### Why this exists
 
@@ -642,7 +642,7 @@ hint as an error, so scripts can detect the case and fall back.
 
 ---
 
-## D — Object[] indices in `--paths-from-id`
+## Object[] indices in `--paths-from-id`
 
 ### Why this exists
 
@@ -668,11 +668,11 @@ collection (e.g., a paged result's 13th entry).
 
 ---
 
-## A — Thread name + top frame on thread-owned roots
+## Thread name + top frame on thread-owned roots
 
 ### Why this exists
 
-Same real session that motivated feature C: `--paths-from-id` ended at
+Same real session that motivated `--allocation-sites`: `--paths-from-id` ended at
 `→ reached GC root: RootJavaFrame`. We had the chain *up to* a Java
 frame but not *which thread* or *what method* was running on it.
 Source-grepping `gson.toJson|moshi.*toJson` would have ended faster if

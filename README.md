@@ -204,7 +204,7 @@ Glob-match against dotted FQ class names (`*` within a package level,
 `**` across levels, `?` single char, `[abc]` class). Mutually exclusive
 with `--find-referrers`. Output prepends a list of matched classes with
 live instance counts. Details in
-[USERGUIDE §F](USERGUIDE.md#f---target-glob--pattern-targeting).
+[USERGUIDE — `--target-glob`](USERGUIDE.md#--target-glob--pattern-targeting).
 
 ### `--allocation-sites` — per-class stack traces
 
@@ -216,7 +216,7 @@ Requires the dump to have been captured under allocation tracking
 (Android: `am profile start <pid>` before `am dumpheap`). Prints the
 top-N allocation sites with resolved Java stack traces. Summary always
 reports whether the dump has alloc-tracking data. Details in
-[USERGUIDE §C](USERGUIDE.md#c---allocation-sites--per-class-stack-traces).
+[USERGUIDE — `--allocation-sites`](USERGUIDE.md#--allocation-sites--per-class-stack-traces).
 
 ### `--preview-bytes` — content preview (v0.9.0)
 
@@ -238,7 +238,7 @@ contained — investigation needed `adb shell` for file size + source-grep
 for serialization candidates. With `--preview-bytes 200`, the inline
 `<?xml version="1.0"...home_catalog_snapshot...` would have identified
 it as the SharedPreferences XML blob in one command. Details in
-[USERGUIDE §B](USERGUIDE.md#b---preview-bytes--content-preview).
+[USERGUIDE — `--preview-bytes`](USERGUIDE.md#--preview-bytes--content-preview).
 
 ### `--json` — structured output for scripts
 
