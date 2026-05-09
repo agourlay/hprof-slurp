@@ -54,7 +54,7 @@ fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpErro
     let result = referrer::run(&mode)?;
     if json {
         let path = format!(
-            "hprof-slurp-referrers-{}.json",
+            "heaptrail-referrers-{}.json",
             chrono::Utc::now().timestamp_millis()
         );
         let f = std::fs::File::create(&path)?;
@@ -74,7 +74,7 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     let entries = diff::run(&mode)?;
     if json {
         let path = format!(
-            "hprof-slurp-diff-{}.json",
+            "heaptrail-diff-{}.json",
             chrono::Utc::now().timestamp_millis()
         );
         let f = std::fs::File::create(&path)?;
@@ -94,7 +94,7 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     let result = paths::run(&mode)?;
     if json {
         let path = format!(
-            "hprof-slurp-paths-{}.json",
+            "heaptrail-paths-{}.json",
             chrono::Utc::now().timestamp_millis()
         );
         let f = std::fs::File::create(&path)?;

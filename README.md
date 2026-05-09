@@ -1,19 +1,25 @@
-# hprof-slurp
+# heaptrail
 
-[![Build status](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/hprof-slurp.svg)](https://crates.io/crates/hprof-slurp)
+[![Build status](https://github.com/johnneerdael/heaptrail/actions/workflows/ci.yml/badge.svg)](https://github.com/johnneerdael/heaptrail/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/heaptrail.svg)](https://crates.io/crates/heaptrail)
 
-`hprof-slurp` is a specialized JVM heap dump analyzer.
+`heaptrail` is a JVM/Android heap dump analyzer with referrer tracing,
+path-to-root walking, and snapshot diff. Forked from
+[agourlay/hprof-slurp](https://github.com/agourlay/hprof-slurp), which
+contributes the streaming parser foundation; this fork adds the
+investigation modes documented below.
 
-It is named after the `hprof` format which is used by the [JDK](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62) to encode heap dumps.
+The hprof format itself is the one used by the [JDK](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62)
+to encode heap dumps.
 
-The design of this tool is described in details in the [following blog articles series](https://agourlay.github.io/tags/hprof-slurp/).
+The design of the underlying streaming parser is described in detail in
+[Arnaud Gourlay's blog series](https://agourlay.github.io/tags/hprof-slurp/).
 
 ## Motivation
 
 The underlying motivation is to enable the analysis of **huge** heap dumps which are much larger than the amount of RAM available on the host system.
 
-`hprof-slurp` processes dump files in a **streaming fashion in a single pass** without storing intermediary results on the host.
+`heaptrail` processes dump files in a **streaming fashion in a single pass** without storing intermediary results on the host.
 
 This approach makes it possible to provide an extremely fast overview of dump files without the need to spin up expensive beefy instance.
 
@@ -47,10 +53,10 @@ reference and worked examples.
 ## Usage
 
 ```
-./hprof-slurp --help
+./heaptrail --help
 JVM heap dump hprof file analyzer
 
-Usage: hprof-slurp [OPTIONS] --inputFile <inputFile>
+Usage: heaptrail [OPTIONS] --inputFile <inputFile>
 
 Options:
   -i, --inputFile <inputFile>  binary hprof input file
@@ -65,7 +71,7 @@ Options:
 ### Example table
 
 ```bash
-./hprof-slurp -i "test-heap-dumps/hprof-64.bin"
+./heaptrail -i "test-heap-dumps/hprof-64.bin"
 ```
 
 ```
@@ -102,11 +108,11 @@ Top 20 raw shallow heap classes:
 ### Example JSON
 
 ```bash
-./hprof-slurp -i "test-heap-dumps/hprof-64.bin" --top 3 --json
+./heaptrail -i "test-heap-dumps/hprof-64.bin" --top 3 --json
 ```
 
 ```bash
-less hprof-slurp.json | grep jq .
+less heaptrail.json | grep jq .
 ```
 
 ```JSON
@@ -144,8 +150,8 @@ full reference, flag-by-flag walkthrough, and worked Android-leak example.
 ### `--find-referrers` — who's holding it?
 
 ```bash
-hprof-slurp -i my.hprof --find-referrers java.util.ArrayList --hops 2
-hprof-slurp -i my.hprof --find-referrers id:1661812752    # specific object
+heaptrail -i my.hprof --find-referrers java.util.ArrayList --hops 2
+heaptrail -i my.hprof --find-referrers id:1661812752    # specific object
 ```
 
 Direct + multi-hop holders for an FQ class name or specific object id.
@@ -156,7 +162,7 @@ Hop 2 is usually where the real diagnosis lives — it goes through
 ### `--paths-from-id` — chain to a GC root
 
 ```bash
-hprof-slurp -i my.hprof --paths-from-id 1661812752 --max-depth 12
+heaptrail -i my.hprof --paths-from-id 1661812752 --max-depth 12
 ```
 
 Walks holders upward one hop at a time until a GC root is reached or
@@ -166,7 +172,7 @@ Walks holders upward one hop at a time until a GC root is reached or
 ### `--diff-from` / `--diff-to` — snapshot diff (churn signal)
 
 ```bash
-hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by count
+heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count
 ```
 
 Per-class delta in instance count and shallow bytes between two captures —
@@ -219,18 +225,18 @@ If `cargo` isn't found, see [Adding cargo bin to PATH](#adding-cargo-bin-to-path
 ### Latest build (recommended — includes referrer tracing, paths, diff)
 
 ```bash
-cargo install --git https://github.com/johnneerdael/hprof-slurp
+cargo install --git https://github.com/johnneerdael/heaptrail
 ```
 
 This downloads the source, compiles in release mode (~1–2 minutes), and
-installs the binary to `~/.cargo/bin/hprof-slurp` (or
-`%USERPROFILE%\.cargo\bin\hprof-slurp.exe` on Windows). To upgrade later,
+installs the binary to `~/.cargo/bin/heaptrail` (or
+`%USERPROFILE%\.cargo\bin\heaptrail.exe` on Windows). To upgrade later,
 rerun the same command.
 
 ### Legacy build (crates.io 0.6.3 — summary mode only)
 
 ```bash
-cargo install hprof-slurp
+cargo install heaptrail
 ```
 
 The published crates.io build does not yet include `--find-referrers`,
@@ -239,11 +245,11 @@ The published crates.io build does not yet include `--find-referrers`,
 ### Verify the install
 
 ```bash
-hprof-slurp --version
-hprof-slurp --help
+heaptrail --version
+heaptrail --help
 ```
 
-If you see `command not found` (or `'hprof-slurp' is not recognized` on
+If you see `command not found` (or `'heaptrail' is not recognized` on
 Windows), `~/.cargo/bin` is not on your `PATH` — see the next section.
 
 ### Adding cargo bin to PATH
@@ -296,7 +302,7 @@ This repo doubles as a [Claude Code](https://claude.com/claude-code) plugin
 marketplace. Installing the plugin gives Claude an `analysing-heap-dumps`
 skill that auto-activates whenever you mention `.hprof` files, memory
 leaks, retained size, `am dumpheap`, etc. — Claude will then run
-`hprof-slurp` for you, install it via `cargo install --git` if missing,
+`heaptrail` for you, install it via `cargo install --git` if missing,
 and walk through the standard triage workflow (summary → find-referrers
 → paths-from-id → diff).
 
@@ -305,7 +311,7 @@ and walk through the standard triage workflow (summary → find-referrers
 In Claude Code, run:
 
 ```
-/plugin marketplace add johnneerdael/hprof-slurp
+/plugin marketplace add johnneerdael/heaptrail
 ```
 
 (`gh auth` is only needed if the repo is private.)
@@ -334,15 +340,15 @@ I have a 235 MB Android hprof at /tmp/heap.hprof. The app is using way more
 memory than expected. What's going on?
 ```
 
-Claude will load the skill, verify `hprof-slurp` is on PATH (and install
-it via `cargo install --git https://github.com/johnneerdael/hprof-slurp`
+Claude will load the skill, verify `heaptrail` is on PATH (and install
+it via `cargo install --git https://github.com/johnneerdael/heaptrail`
 if not), then walk you through summary, retainer tracing, and path-to-root
 in the right order.
 
 ### Updating
 
 ```
-/plugin marketplace update johnneerdael/hprof-slurp
+/plugin marketplace update johnneerdael/heaptrail
 /plugin update analysing-heap-dumps@analysing-heap-dumps
 ```
 
@@ -350,7 +356,7 @@ in the right order.
 
 ```
 /plugin uninstall analysing-heap-dumps@analysing-heap-dumps
-/plugin marketplace remove johnneerdael/hprof-slurp
+/plugin marketplace remove johnneerdael/heaptrail
 ```
 
 The skill content lives at
@@ -359,7 +365,7 @@ if you want to read or fork it without installing.
 
 ## Performance
 
-On modern hardware `hprof-slurp` can process heap dump files at around 2GB/s.
+On modern hardware `heaptrail` can process heap dump files at around 2GB/s.
 
 To maximize performance make sure to run on a host with at least 4 cores.
 

@@ -7,7 +7,7 @@ use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "hprof-slurp",
+    name = "heaptrail",
     version,
     about = "JVM/Android heap dump (hprof) analyzer"
 )]
@@ -200,7 +200,7 @@ mod args_tests {
 
     #[test]
     fn parses_legacy_summary_invocation() {
-        let cli = Cli::try_parse_from(["hprof-slurp", "-i", "x.hprof", "-t", "5"]).unwrap();
+        let cli = Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "-t", "5"]).unwrap();
         assert_eq!(cli.input_file.as_deref(), Some("x.hprof"));
         assert_eq!(cli.top, 5);
         assert!(cli.find_referrers.is_none());
@@ -211,7 +211,7 @@ mod args_tests {
     #[test]
     fn parses_find_referrers_with_hops() {
         let cli = Cli::try_parse_from([
-            "hprof-slurp",
+            "heaptrail",
             "-i",
             "x.hprof",
             "--find-referrers",
@@ -226,7 +226,7 @@ mod args_tests {
 
     #[test]
     fn parses_paths_from_id() {
-        let cli = Cli::try_parse_from(["hprof-slurp", "-i", "x.hprof", "--paths-from-id", "12345"])
+        let cli = Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "--paths-from-id", "12345"])
             .unwrap();
         assert_eq!(cli.paths_from_id, Some(12345));
     }
@@ -234,7 +234,7 @@ mod args_tests {
     #[test]
     fn parses_diff_with_by_bytes() {
         let cli = Cli::try_parse_from([
-            "hprof-slurp",
+            "heaptrail",
             "--diff-from",
             "a.hprof",
             "--diff-to",
@@ -251,7 +251,7 @@ mod args_tests {
     #[test]
     fn resolve_rejects_conflicting_modes() {
         let cli = Cli::try_parse_from([
-            "hprof-slurp",
+            "heaptrail",
             "-i",
             "x.hprof",
             "--find-referrers",
@@ -269,7 +269,7 @@ mod args_tests {
 
     #[test]
     fn resolve_rejects_missing_input_file_in_summary() {
-        let cli = Cli::try_parse_from(["hprof-slurp"]).unwrap();
+        let cli = Cli::try_parse_from(["heaptrail"]).unwrap();
         let err = resolve(cli).unwrap_err();
         match err {
             HprofSlurpError::MissingInputFile => {}
@@ -280,7 +280,7 @@ mod args_tests {
     #[test]
     fn resolve_picks_summary_for_existing_file() {
         let cli =
-            Cli::try_parse_from(["hprof-slurp", "-i", "test-heap-dumps/hprof-64.bin"]).unwrap();
+            Cli::try_parse_from(["heaptrail", "-i", "test-heap-dumps/hprof-64.bin"]).unwrap();
         match resolve(cli).unwrap() {
             Mode::Summary { input_file, .. } => {
                 assert_eq!(input_file, "test-heap-dumps/hprof-64.bin");
@@ -292,7 +292,7 @@ mod args_tests {
     #[test]
     fn resolve_picks_find_referrers() {
         let cli = Cli::try_parse_from([
-            "hprof-slurp",
+            "heaptrail",
             "-i",
             "test-heap-dumps/hprof-64.bin",
             "--find-referrers",

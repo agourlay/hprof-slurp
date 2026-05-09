@@ -1,16 +1,17 @@
 [package]
-name = "hprof-slurp"
+name = "heaptrail"
 version = "0.7.0"
 authors = [
     "John Neerdael <john@neerdael.nl>",
     "Arnaud Gourlay <arnaud.gourlay@gmail.com>",
 ]
-description = "JVM/Android heap dump (hprof) analyzer with referrer tracing, path-to-root walk, and snapshot diff"
-repository = "https://github.com/johnneerdael/hprof-slurp"
+description = "JVM/Android heap dump (hprof) analyzer with referrer tracing, path-to-root walk, and snapshot diff. Forked from hprof-slurp with significantly expanded triage features."
+repository = "https://github.com/johnneerdael/heaptrail"
+homepage = "https://github.com/johnneerdael/heaptrail"
 license = "Apache-2.0"
 readme = "README.md"
 categories = ["command-line-utilities"]
-keywords = ["java", "jvm", "heap-dump", "analyzer", "hprof"]
+keywords = ["heap-dump", "hprof", "android", "jvm", "memory-leak"]
 edition = "2024"
 
 [dependencies]

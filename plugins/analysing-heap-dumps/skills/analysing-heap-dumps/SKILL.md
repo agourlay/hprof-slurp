@@ -1,19 +1,19 @@
 ---
 name: analysing-heap-dumps
-description: Use when investigating .hprof files (Android or JVM heap dumps), diagnosing memory leaks, asking 'what holds class X / object id Y', measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, 'memory leak', 'retained size', 'heap is huge', 'find what is holding this object'. hprof-slurp is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
+description: Use when investigating .hprof files (Android or JVM heap dumps), diagnosing memory leaks, asking 'what holds class X / object id Y', measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, 'memory leak', 'retained size', 'heap is huge', 'find what is holding this object'. heaptrail is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
 ---
 
-# Analyzing heap dumps with hprof-slurp
+# Analyzing heap dumps with heaptrail
 
 ## Overview
 
-`hprof-slurp` is a streaming CLI for triaging Java/Android `.hprof` heap
+`heaptrail` is a streaming CLI for triaging Java/Android `.hprof` heap
 dumps. It is the right first reach for: **histogram, retainer chains,
 path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/hprof-slurp (master, version 0.7.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 0.7.0+).
 
 ## When to use
 
@@ -26,21 +26,21 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 
 **Do NOT default to Eclipse MAT.** MAT is a GUI tool that requires loading
 the entire dump into RAM and is slow on multi-hundred-MB dumps.
-`hprof-slurp` answers ~95% of triage questions in seconds at the CLI.
+`heaptrail` answers ~95% of triage questions in seconds at the CLI.
 Reach for MAT only when you need a full dominator tree or retained-size
-calculation, after `hprof-slurp` has narrowed the question.
+calculation, after `heaptrail` has narrowed the question.
 
 **Do NOT run `hprof-conv`** on modern Android hprof files. Modern Android
-dumps from `am dumpheap` are already the standard format `hprof-slurp`
+dumps from `am dumpheap` are already the standard format `heaptrail`
 expects — `hprof-conv` is only needed for legacy Dalvik dumps from
 pre-ART devices.
 
-## Step 0: Ensure hprof-slurp is installed
+## Step 0: Ensure heaptrail is installed
 
-Before running any hprof-slurp command, check it's on PATH:
+Before running any heaptrail command, check it's on PATH:
 
 ```bash
-command -v hprof-slurp >/dev/null 2>&1 && hprof-slurp --version
+command -v heaptrail >/dev/null 2>&1 && heaptrail --version
 ```
 
 If missing, install (requires Rust toolchain):
@@ -53,15 +53,15 @@ command -v cargo >/dev/null 2>&1 || {
 }
 
 # Install latest from johnneerdael's fork (has --find-referrers, --paths-from-id, --diff-from)
-cargo install --git https://github.com/johnneerdael/hprof-slurp
+cargo install --git https://github.com/johnneerdael/heaptrail
 
 # Verify
-hprof-slurp --version    # should report 0.7.0 or newer
+heaptrail --version    # should report 0.7.0 or newer
 ```
 
-If `hprof-slurp` is found but version is `0.6.3` or older, **upgrade**:
+If `heaptrail` is found but version is `0.6.3` or older, **upgrade**:
 ```bash
-cargo install --git https://github.com/johnneerdael/hprof-slurp --force
+cargo install --git https://github.com/johnneerdael/heaptrail --force
 ```
 The 0.6.3 build (from crates.io) is summary-only and lacks the referrer
 tracing and diff modes you need for retainer queries.
@@ -72,14 +72,14 @@ it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
 
 ## The four operating modes
 
-`hprof-slurp` has one default mode (summary) and three opt-in modes
+`heaptrail` has one default mode (summary) and three opt-in modes
 selected by mutually-exclusive flags. Pick exactly one of:
 `--find-referrers`, `--paths-from-id`, or `--diff-from`/`--diff-to`.
 
 ### 1. `summary` (default) — what's in the heap?
 
 ```bash
-hprof-slurp -i heap.hprof -t 20
+heaptrail -i heap.hprof -t 20
 ```
 
 **What it tells you:** Top-N classes by total shallow size, instance count
@@ -96,10 +96,10 @@ allocation worth chasing.
 
 ```bash
 # Targeting a class FQ-name (every instance of that class)
-hprof-slurp -i heap.hprof --find-referrers java.util.ArrayList --hops 2 --top 30
+heaptrail -i heap.hprof --find-referrers java.util.ArrayList --hops 2 --top 30
 
 # Targeting a specific object id (for one giant instance)
-hprof-slurp -i heap.hprof --find-referrers id:1661812752 --hops 1
+heaptrail -i heap.hprof --find-referrers id:1661812752 --hops 1
 ```
 
 **What it tells you:** Direct + multi-hop holders (instance fields, array
@@ -122,7 +122,7 @@ Object ids are passed as `id:<u64>` or bare `<u64>`.
 ### 3. `--paths-from-id <u64>` — chain to a GC root
 
 ```bash
-hprof-slurp -i heap.hprof --paths-from-id 1661812752 --max-depth 12
+heaptrail -i heap.hprof --paths-from-id 1661812752 --max-depth 12
 ```
 
 **What it tells you:** A single chain of holders walking from `<id>` up
@@ -141,8 +141,8 @@ or array elements reference the current id. Terminates with one of:
 ### 4. `--diff-from <a> --diff-to <b>` — snapshot diff (churn signal)
 
 ```bash
-hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
-hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by bytes
+heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
+heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by bytes
 ```
 
 **What it tells you:** Per-class delta in instance count and shallow
@@ -153,7 +153,7 @@ allocations or `bytes` for size growth. Zero-delta classes are filtered.
 
 ### `--json` for any mode
 
-Append `--json` to any of the above. Writes `hprof-slurp-<mode>-<ts>.json`
+Append `--json` to any of the above. Writes `heaptrail-<mode>-<ts>.json`
 alongside the text output. Use this when piping to `jq`, dashboards, or
 CI gates.
 
@@ -194,7 +194,7 @@ adb shell am dumpheap <pid> /data/local/tmp/before.hprof
 adb shell am dumpheap <pid> /data/local/tmp/after.hprof
 adb pull /data/local/tmp/before.hprof
 adb pull /data/local/tmp/after.hprof
-hprof-slurp --diff-from before.hprof --diff-to after.hprof
+heaptrail --diff-from before.hprof --diff-to after.hprof
 ```
 
 For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
@@ -203,26 +203,26 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 
 | Goal | Command |
 |------|---------|
-| Top-N classes | `hprof-slurp -i heap.hprof -t 20` |
-| Direct holders of a class | `hprof-slurp -i heap.hprof --find-referrers <class> --hops 1` |
-| Holders through Object[] | `hprof-slurp -i heap.hprof --find-referrers <class> --hops 2` |
-| Holders of one specific object | `hprof-slurp -i heap.hprof --find-referrers id:<u64>` |
-| Chain to a GC root | `hprof-slurp -i heap.hprof --paths-from-id <u64>` |
-| Compare two snapshots | `hprof-slurp --diff-from a.hprof --diff-to b.hprof` |
+| Top-N classes | `heaptrail -i heap.hprof -t 20` |
+| Direct holders of a class | `heaptrail -i heap.hprof --find-referrers <class> --hops 1` |
+| Holders through Object[] | `heaptrail -i heap.hprof --find-referrers <class> --hops 2` |
+| Holders of one specific object | `heaptrail -i heap.hprof --find-referrers id:<u64>` |
+| Chain to a GC root | `heaptrail -i heap.hprof --paths-from-id <u64>` |
+| Compare two snapshots | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
 | JSON sidecar | append `--json` to any of the above |
-| List all UTF-8 strings | `hprof-slurp -i heap.hprof -l` |
+| List all UTF-8 strings | `heaptrail -i heap.hprof -l` |
 
 ## Common mistakes
 
 | Mistake | Reality |
 |---------|---------|
-| Reaching for Eclipse MAT first | MAT loads the dump into RAM and is slow on multi-hundred-MB dumps. Use `hprof-slurp` for triage, MAT only if you need a full dominator tree. |
+| Reaching for Eclipse MAT first | MAT loads the dump into RAM and is slow on multi-hundred-MB dumps. Use `heaptrail` for triage, MAT only if you need a full dominator tree. |
 | Running `hprof-conv` | Modern Android hprof from `am dumpheap` is already the standard format. `hprof-conv` is only for legacy pre-ART Dalvik dumps. |
 | Stopping at `--hops 1` | Hop 1 reports `Object[][]` for any class held in a collection — uninformative. **Always run with `--hops 2`** for class targets. |
-| Trying to install via `cargo install hprof-slurp` | The crates.io build is 0.6.3 — summary-only, no referrer tracing. Use `cargo install --git https://github.com/johnneerdael/hprof-slurp`. |
+| Trying to install via `cargo install heaptrail` | The crates.io build is 0.6.3 — summary-only, no referrer tracing. Use `cargo install --git https://github.com/johnneerdael/heaptrail`. |
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
-| Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `hprof-slurp` accepts and displays dotted. Inner classes: `Outer$Inner`. |
+| Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `heaptrail` accepts and displays dotted. Inner classes: `Outer$Inner`. |
 
 ## Performance reference
 
@@ -241,7 +241,7 @@ Wall cost scales linearly with file size and number of streaming passes.
 `--paths-from-id` is the only mode where wall time grows with depth
 (`O(depth × file_size)`); cap with `--max-depth` if needed.
 
-## What hprof-slurp doesn't do (yet)
+## What heaptrail doesn't do (yet)
 
 - **Allocation-site stack traces** from "Record memory allocations"
   captures are parsed but not surfaced. Fall back to Android Studio's
@@ -255,7 +255,7 @@ Wall cost scales linearly with file size and number of streaming passes.
 ## Further reading
 
 - `USERGUIDE.md` in the repo: hands-on guide with worked Android-dump
-  examples (https://github.com/johnneerdael/hprof-slurp/blob/master/USERGUIDE.md).
+  examples (https://github.com/johnneerdael/heaptrail/blob/master/USERGUIDE.md).
 - `README.md` for cheat-sheet and install instructions.
 - `docs/feature-retainer-tracing.md` for the design rationale of the
   multi-pass referrer engine.

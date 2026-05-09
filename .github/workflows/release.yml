@@ -30,7 +30,7 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
-          bin: hprof-slurp
+          bin: heaptrail
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -64,7 +64,7 @@ impl JsonResult {
     }
 
     pub fn save_as_file(&self) -> Result<(), HprofSlurpError> {
-        let file_path = format!("hprof-slurp-{}.json", Utc::now().timestamp_millis());
+        let file_path = format!("heaptrail-{}.json", Utc::now().timestamp_millis());
         let file = File::create(&file_path)?;
         let writer = BufWriter::new(file);
         // Serialize the struct directly to the file via the writer

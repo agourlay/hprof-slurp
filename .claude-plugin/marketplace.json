@@ -11,7 +11,7 @@
     {
       "name": "analysing-heap-dumps",
       "source": "./plugins/analysing-heap-dumps",
-      "description": "Investigate .hprof files (Android or JVM heap dumps), diagnose memory leaks, find what holds an over-allocated class or specific object id, measure GC churn between two snapshots, or chase OutOfMemoryError. Wraps hprof-slurp with auto-install instructions.",
+      "description": "Investigate .hprof files (Android or JVM heap dumps), diagnose memory leaks, find what holds an over-allocated class or specific object id, measure GC churn between two snapshots, or chase OutOfMemoryError. Wraps heaptrail with auto-install instructions.",
       "version": "0.7.0"
     }
   ]

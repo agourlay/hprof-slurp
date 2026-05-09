@@ -1,6 +1,6 @@
-# hprof-slurp User Guide
+# heaptrail User Guide
 
-A practical guide to triaging Android (and JVM) heap dumps with `hprof-slurp`.
+A practical guide to triaging Android (and JVM) heap dumps with `heaptrail`.
 Every example below uses real output from a 235 MiB Android dump
 (`heap-phase4-jvm.hprof`, captured from a Modern Home / nexio.tv build) — not
 synthetic data.
@@ -22,7 +22,7 @@ adb pull /data/local/tmp/heap.hprof
 ```
 
 `am dumpheap` gives you the live heap of a running process. The captured file
-uses 32-bit identifiers (Android default) — `hprof-slurp` handles both 32-bit
+uses 32-bit identifiers (Android default) — `heaptrail` handles both 32-bit
 and 64-bit identifier formats automatically.
 
 ### Option B — Android Studio Profiler
@@ -40,7 +40,7 @@ file is still consumable.
 
 Perfetto's "Java heap dump" data source produces a compatible hprof. Use the
 [Memory recipe](https://perfetto.dev/docs/data-sources/java-heap-dumps) on the
-Perfetto site. Drop the resulting file straight into `hprof-slurp`.
+Perfetto site. Drop the resulting file straight into `heaptrail`.
 
 ### Option D — JVM (`jmap`)
 
@@ -59,11 +59,11 @@ a JVM dump captured this way.
 
 | Goal | Command |
 |------|---------|
-| Top-N classes by retained size | `hprof-slurp -i heap.hprof` |
-| What holds an over-allocated class? | `hprof-slurp -i heap.hprof --find-referrers <class>` |
-| What holds a specific giant object? | `hprof-slurp -i heap.hprof --find-referrers id:<u64>` |
-| Walk an object up to a GC root | `hprof-slurp -i heap.hprof --paths-from-id <u64>` |
-| Compare two snapshots (churn) | `hprof-slurp --diff-from a.hprof --diff-to b.hprof` |
+| Top-N classes by retained size | `heaptrail -i heap.hprof` |
+| What holds an over-allocated class? | `heaptrail -i heap.hprof --find-referrers <class>` |
+| What holds a specific giant object? | `heaptrail -i heap.hprof --find-referrers id:<u64>` |
+| Walk an object up to a GC root | `heaptrail -i heap.hprof --paths-from-id <u64>` |
+| Compare two snapshots (churn) | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
 | Pipe to `jq` / dashboards | append `--json` to any of the above |
 
 Common flags:
@@ -88,7 +88,7 @@ The default mode. Streams the file once at ~1.5 GB/s, no second pass, no
 graph walking.
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof -t 10
+heaptrail -i heap-phase4-jvm.hprof -t 10
 ```
 
 Output (real, 158 ms on the 235 MiB Android dump):
@@ -155,7 +155,7 @@ specific object id, find the fields, arrays, and statics that point at it.
 > "Why are there 573,552 `MetaPreview` instances? What's keeping them alive?"
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --find-referrers com.nexio.tv.domain.model.MetaPreview \
   --top 10 --hops 1
 ```
@@ -195,7 +195,7 @@ A 1-hop result dominated by `Object[][]` is uninformative — you want to know
 *which collections* those arrays back. Add `--hops 2`:
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --find-referrers com.nexio.tv.domain.model.MetaPreview \
   --top 10 --hops 2
 ```
@@ -227,7 +227,7 @@ When a single instance dominates (the 5.64 MiB char[] from the summary), go
 straight at it:
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --find-referrers id:1661812752 --hops 1
 ```
 
@@ -278,7 +278,7 @@ When you have a single object id and want the holder chain all the way up,
 current id, then continues from there.
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --paths-from-id 1661812752 --max-depth 10
 ```
 
@@ -350,7 +350,7 @@ adb pull /data/local/tmp/before.hprof
 adb pull /data/local/tmp/after.hprof
 
 # Compare
-hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
+heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
 ```
 
 Output shape:
@@ -384,7 +384,7 @@ Class deltas (sorted, top 20 shown):
 Diffing a file against itself should produce zero entries:
 
 ```bash
-hprof-slurp --diff-from heap-phase4-jvm.hprof --diff-to heap-phase4-jvm.hprof
+heaptrail --diff-from heap-phase4-jvm.hprof --diff-to heap-phase4-jvm.hprof
 # → No per-class deltas — the two snapshots match.
 ```
 
@@ -399,7 +399,7 @@ Append `--json` to any mode and you get a sidecar file with the same
 information, machine-parseable. The text table still prints to stdout.
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --find-referrers java.util.ArrayList --hops 1 --top 3 --json
 ```
 
@@ -407,10 +407,10 @@ Stdout (abridged):
 
 ```
 File successfully processed in 527.84 ms
-Output JSON result file hprof-slurp-referrers-1715299876543.json
+Output JSON result file heaptrail-referrers-1715299876543.json
 ```
 
-`hprof-slurp-referrers-<ts>.json`:
+`heaptrail-referrers-<ts>.json`:
 
 ```json
 {
@@ -441,18 +441,18 @@ Output JSON result file hprof-slurp-referrers-1715299876543.json
 This is also the way to feed the data into `jq`, dashboards, or CI gates:
 
 ```bash
-hprof-slurp -i heap.hprof --json -t 5
-jq '.top_allocated_classes[0]' hprof-slurp.json
+heaptrail -i heap.hprof --json -t 5
+jq '.top_allocated_classes[0]' heaptrail.json
 ```
 
 JSON file naming:
 
 | Mode | Filename |
 |------|----------|
-| summary | `hprof-slurp.json` (overwritten each run) |
-| `--find-referrers` | `hprof-slurp-referrers-<ts>.json` (timestamped) |
-| `--paths-from-id` | `hprof-slurp-paths-<ts>.json` |
-| `--diff-from`/`--diff-to` | `hprof-slurp-diff-<ts>.json` |
+| summary | `heaptrail.json` (overwritten each run) |
+| `--find-referrers` | `heaptrail-referrers-<ts>.json` (timestamped) |
+| `--paths-from-id` | `heaptrail-paths-<ts>.json` |
+| `--diff-from`/`--diff-to` | `heaptrail-diff-<ts>.json` |
 
 ---
 
@@ -464,7 +464,7 @@ Modern Home build is sitting at ~225 MiB of live heap.
 ### Step 1 — summary
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof -t 10
+heaptrail -i heap-phase4-jvm.hprof -t 10
 ```
 
 Top finding: `com.nexio.tv.domain.model.MetaPreview` is 56.89 MiB across
@@ -477,7 +477,7 @@ biggest individual allocation.
 ### Step 2 — what holds the 573k MetaPreviews?
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --find-referrers com.nexio.tv.domain.model.MetaPreview --hops 2
 ```
 
@@ -491,7 +491,7 @@ references via Compose `SlotTable.slots` (the recomposition cache).
 ### Step 3 — which ArrayList field?
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof \
+heaptrail -i heap-phase4-jvm.hprof \
   --find-referrers java.util.ArrayList --hops 1 --top 3 --json
 ```
 
@@ -526,7 +526,7 @@ Two real questions for the team:
 ### Step 4 — what's the 5.64 MiB char[]?
 
 ```bash
-hprof-slurp -i heap-phase4-jvm.hprof --paths-from-id 1661812752 --max-depth 10
+heaptrail -i heap-phase4-jvm.hprof --paths-from-id 1661812752 --max-depth 10
 ```
 
 The 9-hop chain ends at:
@@ -543,7 +543,7 @@ investigation.
 
 ### Throughput
 
-`hprof-slurp` streams the file with a 64 MiB pre-fetcher, a separate parser
+`heaptrail` streams the file with a 64 MiB pre-fetcher, a separate parser
 thread, and a separate recorder thread, communicating via crossbeam channels.
 It can process dumps significantly larger than RAM in a single pass.
 
@@ -599,9 +599,9 @@ summary's class column first.
 
 ### "32 bits heap dumps are not supported yet"
 
-You're on an old build. `hprof-slurp >= 0.6.4` supports both 32-bit and
+You're on an old build. `heaptrail >= 0.6.4` supports both 32-bit and
 64-bit identifier sizes. `cargo install --git
-https://github.com/johnneerdael/hprof-slurp` for the current build.
+https://github.com/johnneerdael/heaptrail` for the current build.
 
 ### `--paths-from-id` reports "orphan"
 
@@ -633,13 +633,13 @@ in flight. The prefetcher's backpressure keeps total in-flight bounded.
 
 | Tool | When to reach for it |
 |------|---------------------|
-| **`hprof-slurp`** | Triage workflow on huge dumps. Top-N, retainer chains, snapshot diff. CLI + JSON. |
+| **`heaptrail`** | Triage workflow on huge dumps. Top-N, retainer chains, snapshot diff. CLI + JSON. |
 | **Eclipse MAT** | Deep retained-size / dominator-tree analysis. Slower to load, GUI-driven, very thorough. |
 | **Android Studio profiler** | Live captures, allocation tracking with stack traces, GUI exploration. |
 | **Perfetto** | Time-correlated heap dumps + system trace. |
 | **`hprof-analyze-rust`** | (Archived) — superseded by `--find-referrers`. |
 
-`hprof-slurp` deliberately does less than MAT but on dumps that don't fit
+`heaptrail` deliberately does less than MAT but on dumps that don't fit
 in MAT's memory budget. It is the tool for the first ten minutes of a heap
 investigation; MAT or Studio is the tool for the second hour.
 
@@ -647,8 +647,8 @@ investigation; MAT or Studio is the tool for the second hour.
 
 ## 12. Reading recommendations
 
-- The original blog series on the streaming parser design: [agourlay's
-  hprof-slurp posts](https://agourlay.github.io/tags/hprof-slurp/).
+- The original blog series on the streaming parser design (pre-fork):
+  [agourlay's hprof-slurp posts](https://agourlay.github.io/tags/hprof-slurp/).
 - HPROF format reference: [OpenJDK heap dumper source](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62).
 - The retainer-tracing design note in this repo: `docs/feature-retainer-tracing.md`.
 - The implementation plan that produced the merged tool:
