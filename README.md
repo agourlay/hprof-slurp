@@ -45,10 +45,16 @@ reference and worked examples.
 - **referrer tracing** (`--find-referrers`) — find what holds an over-allocated
   class or specific object id, with multi-hop chain support.
 - **path-to-root** (`--paths-from-id`) — walk holder chain from one object id
-  toward a GC root.
+  toward a GC root, with thread name + top frame at thread-owned terminators
+  and Object[] element indices on array hops.
 - **snapshot diff** (`--diff-from` / `--diff-to`) — per-class delta in instance
   count and shallow bytes between two captures (the strongest churn signal a
   pair of static dumps can give you).
+- **glob targeting** (`--target-glob`) — find referrers of every class
+  matching a shell-style pattern in one pass.
+- **allocation sites** (`--allocation-sites`) — when the dump was captured
+  under allocation tracking, print the top-N call sites with resolved Java
+  stack traces.
 
 ## Usage
 
@@ -166,7 +172,11 @@ heaptrail -i my.hprof --paths-from-id 1661812752 --max-depth 12
 ```
 
 Walks holders upward one hop at a time until a GC root is reached or
-`--max-depth` is exceeded. Details in
+`--max-depth` is exceeded. When the chain terminates at a thread-owned
+root (`RootJavaFrame` / `RootThreadObject` / `RootJniLocal` /
+`RootJniMonitor`), the output includes the thread name and (for Java
+frames) the top frame's method/file/line. Object[] hops include the
+matched element index (e.g. `via java.lang.Object[][12]`). Details in
 [USERGUIDE §5](USERGUIDE.md#5---paths-from-id--chain-to-a-gc-root).
 
 ### `--diff-from` / `--diff-to` — snapshot diff (churn signal)
@@ -178,6 +188,30 @@ heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count
 Per-class delta in instance count and shallow bytes between two captures —
 the strongest churn signal a pair of static dumps can give you. Details in
 [USERGUIDE §6](USERGUIDE.md#6---diff-from----diff-to--snapshot-diff).
+
+### `--target-glob` — pattern targeting
+
+```bash
+heaptrail -i my.hprof --target-glob 'com.example.**' --hops 2
+```
+
+Glob-match against dotted FQ class names (`*` within a package level,
+`**` across levels, `?` single char, `[abc]` class). Mutually exclusive
+with `--find-referrers`. Output prepends a list of matched classes with
+live instance counts. Details in
+[USERGUIDE §F](USERGUIDE.md#f---target-glob--pattern-targeting).
+
+### `--allocation-sites` — per-class stack traces
+
+```bash
+heaptrail -i my.hprof --allocation-sites --top 20
+```
+
+Requires the dump to have been captured under allocation tracking
+(Android: `am profile start <pid>` before `am dumpheap`). Prints the
+top-N allocation sites with resolved Java stack traces. Summary always
+reports whether the dump has alloc-tracking data. Details in
+[USERGUIDE §C](USERGUIDE.md#c---allocation-sites--per-class-stack-traces).
 
 ### `--json` — structured output for scripts
 

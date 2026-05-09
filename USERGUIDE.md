@@ -393,6 +393,190 @@ cache after the first read.)
 
 ---
 
+## F — `--target-glob` — pattern targeting
+
+### Why this exists
+
+You see 35K instances spread across `*$Itr`, `*$KeyIterator`, `*$EntryIterator`
+in summary and want to know "what's producing all these iterators?" — that's
+six exact-match runs of `--find-referrers`. Or you want to chase every
+`com.nexio.tv.domain.model.*` class in one shot to confirm a domain layer
+isn't leaking into a UI layer. Per-class targeting forces you into a query
+loop; a glob does it in one pass.
+
+### How to use it
+
+`--find-referrers` accepts an exact FQ class name. When you want to
+target a *family* of classes — every model class in a package, every
+inner iterator class — use `--target-glob` instead.
+
+```bash
+# All MetaPreview-related model classes
+heaptrail -i heap.hprof --target-glob 'com.nexio.tv.domain.model.*' --hops 2
+
+# Every Iterator inner class anywhere
+heaptrail -i heap.hprof --target-glob '**$Itr'
+
+# Match a single character
+heaptrail -i heap.hprof --target-glob 'com.example.User?'
+```
+
+Glob syntax matches dotted FQ class names:
+
+| Pattern | Meaning |
+|---------|---------|
+| `*`     | one package level (no `.`) |
+| `**`    | zero or more levels (crosses `.`) |
+| `?`     | exactly one character |
+| `[abc]` | one of the listed characters |
+
+Output prepends a "matched classes" header listing each class with its
+live instance count, sorted by count desc:
+
+```
+Found 70 classes matching glob:com.nexio.tv.domain.model.*:
+  - com.nexio.tv.domain.model.MetaPreview                 (123382 instances)
+  - com.nexio.tv.domain.model.ProviderIds                 (18084 instances)
+  - com.nexio.tv.domain.model.CatalogRow                  (6185 instances)
+  ...
+```
+
+Mutually exclusive with `--find-referrers <name>`; passing both is a
+CLI error. Implementation uses the [`globset`](https://crates.io/crates/globset)
+crate with `literal_separator=true`.
+
+---
+
+## C — `--allocation-sites` — per-class stack traces
+
+### Why this exists
+
+Real session: `summary` shows a 72 MiB `char[]`. `--paths-from-id` walks
+to a `StringBuilder.value` rooted at a `RootJavaFrame`. heaptrail told us
+*who held it* but not *which method allocated it*. The fix was a 20-minute
+source-grep through `gson.toJson` / `moshi.*toJson` candidates to guess
+the call site.
+
+If the dump had been captured under allocation tracking, every allocation
+site would already be in the hprof — but heaptrail used to parse those
+records and discard them. `--allocation-sites` turns that data into a
+ranked list of "this class was allocated 4.8M times totalling 1.21 GiB,
+here's the exact stack trace at the call site." Skips the source-grep
+entirely; works as the first thing you reach for after `summary`.
+
+The summary always reports presence/absence so you know whether re-capturing
+under tracking would help **before** trying to switch tools.
+
+### Capturing an alloc-tracked dump
+
+```bash
+adb shell am profile start <pid>          # turn on alloc tracking
+# (run the suspect interaction)
+adb shell am dumpheap <pid> /sdcard/heap.hprof
+adb shell am profile stop <pid>            # turn off
+adb pull /sdcard/heap.hprof
+```
+
+### Running the report
+
+```bash
+heaptrail -i heap.hprof --allocation-sites --top 20
+```
+
+Output:
+
+```
+Top 20 allocation sites by bytes_allocated (of 12,453 total):
+
+  ─ 1.21 GiB  /  4,812,000 instances  com.nexio.tv.domain.model.MetaPreview#<init>
+        at com.squareup.moshi.adapters.ClassJsonAdapter.fromJson(ClassJsonAdapter.java:128)
+        at com.squareup.moshi.JsonAdapter$1.fromJson(JsonAdapter.java:194)
+        at com.nexio.tv.network.HomeRepository.fetchCatalog(HomeRepository.kt:87)
+        ...
+```
+
+### When the dump has no alloc data
+
+`heaptrail summary` reports it explicitly:
+
+```
+AllocationSites: not present (capture with `am profile start <pid>`)
+```
+
+Running `--allocation-sites` on a non-tracked dump exits with the same
+hint as an error, so scripts can detect the case and fall back.
+
+---
+
+## D — Object[] indices in `--paths-from-id`
+
+### Why this exists
+
+A path through `ArrayList.elementData` used to render as a generic
+`via java.lang.Object[][]` — you could see *that* an array held it, but
+not *where in the array*. With paged results (e.g. row 13 of a catalogue)
+or sparse caches, the slot index is a load-bearing piece of information
+for reproducing the path in code. Surfacing it costs essentially nothing
+because the walker already iterated to find the matching element.
+
+### What it looks like
+
+When a path hop passes through an `Object[]`, the output now includes
+the matched element index:
+
+```
+  hop 5  ── id=518041528  (via java.lang.Object[][12])
+```
+
+Useful when an `ArrayList.elementData` sits between you and the
+target — you can correlate index 12 back to a known position in the
+collection (e.g., a paged result's 13th entry).
+
+---
+
+## A — Thread name + top frame on thread-owned roots
+
+### Why this exists
+
+Same real session that motivated feature C: `--paths-from-id` ended at
+`→ reached GC root: RootJavaFrame`. We had the chain *up to* a Java
+frame but not *which thread* or *what method* was running on it.
+Source-grepping `gson.toJson|moshi.*toJson` would have ended faster if
+heaptrail had said `thread "pool-7-thread-2"` (instantly identifying the
+SharedPreferences flusher) — the HPROF spec includes the thread serial
+and frame index on `RootJavaFrame`, the data was there, the renderer
+just wasn't using it.
+
+Thread name + top frame is now standard output for any `--paths-from-id`
+walk that terminates at a thread-owned root.
+
+### What it looks like
+
+When `--paths-from-id` terminates at one of:
+
+- `RootJavaFrame` — a Java stack frame holds the object
+- `RootThreadObject` — the chain reached the `Thread` itself
+- `RootJniLocal` / `RootJniMonitor` — JNI references
+
+heaptrail prints the thread name and (for `RootJavaFrame`) the top
+frame's method/file/line:
+
+```
+  → reached GC root: RootJavaFrame
+        thread "pool-7-thread-2"
+        at android.app.SharedPreferencesImpl$EditorImpl.commitToMemory(SharedPreferencesImpl.java:478)
+```
+
+When the dump's `StartThread` / `StackTrace` records are missing, the
+gap is reported explicitly:
+
+```
+  → reached GC root: RootJavaFrame
+        (thread metadata not in dump)
+```
+
+---
+
 ## 7. `--json` — structured output for scripts
 
 Append `--json` to any mode and you get a sidecar file with the same

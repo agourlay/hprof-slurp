@@ -13,7 +13,7 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 0.7.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 0.8.0+).
 
 ## When to use
 
@@ -70,7 +70,7 @@ If `~/.cargo/bin` is not on PATH after install, instruct the user to add
 it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
 `~/.zshrc`; fish: `fish_add_path ~/.cargo/bin`).
 
-## The four operating modes
+## The five operating modes
 
 `heaptrail` has one default mode (summary) and three opt-in modes
 selected by mutually-exclusive flags. Pick exactly one of:
@@ -105,6 +105,24 @@ heaptrail -i heap.hprof --find-referrers id:1661812752 --hops 1
 **What it tells you:** Direct + multi-hop holders (instance fields, array
 slots, class statics) that point at any of the target instances.
 
+**Feature F (v0.8.0 — glob targeting):** add `--target-glob '<pattern>'`
+to find referrers of every class matching a shell-style glob in one
+pass:
+
+```bash
+heaptrail -i heap.hprof --target-glob 'com.example.**' --hops 2
+heaptrail -i heap.hprof --target-glob '**$Itr'           # all iterator inner classes
+```
+
+`*` stays within a package level; `**` crosses levels. Mutually
+exclusive with `--find-referrers`. Output prepends a list of matched
+classes with live instance counts.
+
+*Engineering use case:* you see 35K instances spread across `*$Itr` /
+`*$KeyIterator` / `*$EntryIterator` and want to chase "what's
+producing all these iterators?" — that's six exact-match
+`--find-referrers` runs vs one `--target-glob '**$Itr'`.
+
 **Hops:**
 - `--hops 1` — direct holders only.
 - `--hops 2` (default) — also chain through `Object[]` arrays. **This is
@@ -136,6 +154,30 @@ or array elements reference the current id. Terminates with one of:
 - `→ stopped at --max-depth (chain may continue)` — bump `--max-depth`.
 - `→ orphan: no holder found in dump` — chain exhausted.
 
+**Feature A (v0.8.0 — thread/frame surfacing):** when the chain
+terminates at a thread-owned root (`RootJavaFrame`, `RootThreadObject`,
+`RootJniLocal`, `RootJniMonitor`), the output now includes the thread
+name and (for `RootJavaFrame`) the top frame's method/file/line:
+
+```
+  → reached GC root: RootJavaFrame
+        thread "pool-7-thread-2"
+        at android.app.SharedPreferencesImpl$EditorImpl.commitToMemory(SharedPreferencesImpl.java:478)
+```
+
+*Engineering use case (the bug that motivated this):* a 72 MiB `char[]`
+held by a `StringBuilder.value` rooted at `RootJavaFrame` — the chain
+told us the holder but not which thread or method was running. Without
+this, the next step was source-grepping `gson.toJson|moshi.*toJson` for
+candidates. With it, the line "thread pool-7-thread-2" pinpoints the
+SharedPreferences flusher immediately.
+
+**Feature D (v0.8.0 — Object[] element index):** array hops now show
+the matched slot (e.g. `via java.lang.Object[][12]` instead of the
+generic `via java.lang.Object[][]`). Lets you correlate the slot back
+to a known position in a paged result, sparse cache, or backing
+`ArrayList.elementData`.
+
 **Wall time:** ~325 ms per hop (each hop is one streaming pass).
 
 ### 4. `--diff-from <a> --diff-to <b>` — snapshot diff (churn signal)
@@ -151,6 +193,39 @@ static dumps can give: classes whose instance count grew most are
 allocation hot-paths. Sort by `count` (default) for short-lived
 allocations or `bytes` for size growth. Zero-delta classes are filtered.
 
+### 5. `--allocation-sites` — per-class allocation stack traces (v0.8.0, feature C)
+
+```bash
+heaptrail -i heap.hprof --allocation-sites --top 20
+```
+
+**What it tells you:** For dumps captured with allocation tracking
+(`am profile start <pid>` before `am dumpheap`), prints the top-N
+allocation sites with their resolved Java stack traces — the most
+direct path from "this class is huge" to "this is the line that
+allocated it."
+
+**Summary always reports presence/absence** so you know whether
+re-capturing under tracking is worth it:
+
+```
+AllocationSites: 12,453 sites across 287 records (run with --allocation-sites for stack traces)
+AllocationSites: not present (capture with `am profile start <pid>`)
+```
+
+When the dump has no alloc-tracking data, `--allocation-sites` exits
+with the same hint as an error.
+
+*Engineering use case:* a 72 MiB `char[]` whose holder chain
+terminated at a Gson serializer. `--allocation-sites` would have shown
+the exact `Moshi.fromJson` / `JsonAdapter` frame that allocated it,
+skipping the source-grep through `gson.toJson|moshi.*toJson` candidates.
+First thing to reach for after `summary` when alloc-tracking is on.
+
+**Wall time:** ~150 ms on a 235 MiB dump (data is loaded by the same
+slurp pass; the resolution overhead is dominated by class+frame map
+lookups, not parsing).
+
 ### `--json` for any mode
 
 Append `--json` to any of the above. Writes `heaptrail-<mode>-<ts>.json`
@@ -162,19 +237,29 @@ CI gates.
 Given a fresh heap dump and a vague "memory looks bad" report:
 
 1. **`summary`** → identify the dominant class. Note any large
-   `largest_object_id` entries.
+   `largest_object_id` entries. Also note the `AllocationSites:` hint
+   line — if the dump *was* captured under allocation tracking, jump to
+   step 6 first; it short-circuits the rest.
 2. **`--find-referrers <dominant-class> --hops 2`** → find the
    collection / field that retains it. Hop 2 usually pinpoints the actual
-   holder (e.g. `ArrayList.elementData` in 28k ArrayLists).
+   holder (e.g. `ArrayList.elementData` in 28k ArrayLists). For families
+   of related classes (`*$Itr`, `com.example.model.*`), use
+   `--target-glob` instead — one pass instead of one per class.
 3. **`--find-referrers <holder-class> --hops 1 --json`** → pivot to
    identify which field of the holder owns the over-allocation. JSON
    output makes this easy to script.
 4. **`--paths-from-id <largest-object-id>`** → for any single giant
    allocation, walk to its GC root to confirm whether it's leaked or
-   bounded.
+   bounded. The terminator includes thread name + top frame for
+   thread-owned roots; array hops show the matched element index.
 5. (Optional) **`--diff-from before --diff-to after`** between two
    captures of the same process to confirm whether the class is actively
    growing under load.
+6. (When alloc-tracking was on) **`--allocation-sites --top 20`** →
+   jump straight from "this class is huge" to "this is the exact line
+   that allocated it." Most direct shortcut available; skips the
+   source-grep step entirely. Use as a *replacement* for steps 2–4
+   when the data is present.
 
 ## Capturing an Android heap dump
 
@@ -209,6 +294,8 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Holders of one specific object | `heaptrail -i heap.hprof --find-referrers id:<u64>` |
 | Chain to a GC root | `heaptrail -i heap.hprof --paths-from-id <u64>` |
 | Compare two snapshots | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
+| Glob targeting (family of classes) | `heaptrail -i heap.hprof --target-glob 'com.foo.**'` |
+| Allocation sites (when alloc-tracked) | `heaptrail -i heap.hprof --allocation-sites --top 20` |
 | JSON sidecar | append `--json` to any of the above |
 | List all UTF-8 strings | `heaptrail -i heap.hprof -l` |
 
