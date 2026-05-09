@@ -21,7 +21,7 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 
 ## Features
 
-- displays top `n` allocated classes.
+- displays top `n` raw shallow heap classes found in the dump.
 - displays number of instances per class.
 - displays largest instance size per class.
 - displays threads stack traces.
@@ -53,34 +53,34 @@ Options:
 ```
 
 ```
-Found a total of 2.53MiB of instances allocated on the heap.
+Found a total of 2.51MiB of raw shallow heap objects in the dump.
 
-Top 20 allocated classes:
+Top 20 raw shallow heap classes:
 
-+------------+-----------+-------------+----------------------------------------------+
-| Total size | Instances |     Largest | Class name                                   |
-+------------+-----------+-------------+----------------------------------------------+
-|    1.99MiB |       436 |   634.78KiB | int[]                                        |
-|  197.11KiB |      1991 |    16.02KiB | char[]                                       |
-|   85.25KiB |       443 |     8.02KiB | byte[]                                       |
-|   47.38KiB |      1516 |  32.00bytes | java.lang.String                             |
-|   45.42KiB |       560 |     8.02KiB | java.lang.Object[]                           |
-|   15.26KiB |       126 | 124.00bytes | java.lang.reflect.Field                      |
-|   14.77KiB |       378 |  40.00bytes | java.util.LinkedList$Node                    |
-|    9.94KiB |       212 |  48.00bytes | java.util.HashMap$Node                       |
-|    8.91KiB |       190 |  48.00bytes | java.util.LinkedList                         |
-|    8.42KiB |        98 |  88.00bytes | java.lang.ref.SoftReference                  |
-|    6.05KiB |       258 |  24.00bytes | java.lang.Integer                            |
-|    5.91KiB |        18 |     2.02KiB | java.util.HashMap$Node[]                     |
-|    5.86KiB |       150 |  40.00bytes | java.lang.StringBuilder                      |
-|    5.44KiB |       116 |  48.00bytes | java.util.Hashtable$Entry                    |
-|    5.05KiB |        38 | 136.00bytes | sun.util.locale.LocaleObjectCache$CacheEntry |
-|    5.00KiB |        40 | 128.00bytes | java.lang.ref.Finalizer                      |
-|    3.50KiB |        32 | 112.00bytes | java.net.URL                                 |
-|    3.42KiB |        73 |  48.00bytes | java.io.File                                 |
-|    3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]                  |
-|    3.13KiB |        56 | 144.00bytes | java.lang.String[]                           |
-+------------+-----------+-------------+----------------------------------------------+
++------------+-----------+-------------+---------------------------------------------+
+| Total size | Instances |     Largest | Class name                                  |
++------------+-----------+-------------+---------------------------------------------+
+|    1.99MiB |       436 |   634.78KiB | int[]                                       |
+|  194.89KiB |      1991 |    16.02KiB | char[]                                      |
+|   85.23KiB |       443 |     8.02KiB | byte[]                                      |
+|   47.38KiB |      1516 |  32.00bytes | java.lang.String                            |
+|   45.42KiB |       560 |     8.02KiB | java.lang.Object[]                          |
+|   14.77KiB |       378 |  40.00bytes | java.util.LinkedList$Node                   |
+|   14.77KiB |       126 | 120.00bytes | java.lang.reflect.Field                     |
+|    9.94KiB |       212 |  48.00bytes | java.util.HashMap$Node                      |
+|    8.91KiB |       190 |  48.00bytes | java.util.LinkedList                        |
+|    6.05KiB |       258 |  24.00bytes | java.lang.Integer                           |
+|    5.91KiB |        18 |     2.02KiB | java.util.HashMap$Node[]                    |
+|    5.44KiB |       116 |  48.00bytes | java.util.Hashtable$Entry                   |
+|    5.36KiB |        98 |  56.00bytes | java.lang.ref.SoftReference                 |
+|    4.69KiB |       150 |  32.00bytes | java.lang.StringBuilder                     |
+|    3.50KiB |        32 | 112.00bytes | java.net.URL                                |
+|    3.42KiB |        73 |  48.00bytes | java.io.File                                |
+|    3.17KiB |        12 | 776.00bytes | java.util.Hashtable$Entry[]                 |
+|    3.13KiB |        56 | 144.00bytes | java.lang.String[]                          |
+|    2.95KiB |        63 |  48.00bytes | java.util.concurrent.ConcurrentHashMap$Node |
+|    2.50KiB |        40 |  64.00bytes | java.lang.ref.Finalizer                     |
++------------+-----------+-------------+---------------------------------------------+
 ```
 
 ### Example JSON
@@ -100,19 +100,19 @@ less hprof-slurp.json | grep jq .
       "class_name": "int[]",
       "instance_count": 436,
       "largest_allocation_bytes": 650016,
-      "allocation_size_bytes": 2091112
+      "allocation_size_bytes": 2089368
     },
     {
       "class_name": "char[]",
       "instance_count": 1991,
       "largest_allocation_bytes": 16400,
-      "allocation_size_bytes": 201842
+      "allocation_size_bytes": 199568
     },
     {
       "class_name": "byte[]",
       "instance_count": 443,
       "largest_allocation_bytes": 8208,
-      "allocation_size_bytes": 87294
+      "allocation_size_bytes": 87272
     }
   ],
   "top_largest_instances": [..]
@@ -142,7 +142,7 @@ To maximize performance make sure to run on a host with at least 4 cores.
 ## Limitations
 
 - Tested only with `JAVA PROFILE 1.0.2` & `JAVA PROFILE 1.0.1` formats.
-- Does not support dumps generated by 32 bits JVM.
+- Supports heap dumps with 4-byte and 8-byte HPROF identifiers.
 
 ## Generate a heap dump
 
