@@ -1,6 +1,7 @@
 mod allocation_sites;
 mod args;
 mod diff;
+mod dominators;
 mod errors;
 mod parser;
 mod paths;
