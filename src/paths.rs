@@ -158,18 +158,16 @@ fn find_first_holder(
                     array_class_id,
                     elements: Some(elems),
                     ..
-                } => {
-                    if elems.contains(&target) {
-                        let holder_class = idx
-                            .class_name(array_class_id)
-                            .unwrap_or_else(|| format!("(class_id={array_class_id})"));
-                        *found.borrow_mut() = Some(PathStep {
-                            holder_object_id: object_id,
-                            holder_class,
-                            via_field: None,
-                            held_object_id: target,
-                        });
-                    }
+                } if elems.contains(&target) => {
+                    let holder_class = idx
+                        .class_name(array_class_id)
+                        .unwrap_or_else(|| format!("(class_id={array_class_id})"));
+                    *found.borrow_mut() = Some(PathStep {
+                        holder_object_id: object_id,
+                        holder_class,
+                        via_field: None,
+                        held_object_id: target,
+                    });
                 }
                 _ => {}
             }
