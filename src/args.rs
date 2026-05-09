@@ -81,6 +81,13 @@ pub struct Cli {
     /// Diff sort key (count = delta instances, bytes = delta shallow size).
     #[arg(long = "diff-by", default_value = "count")]
     pub diff_by: DiffSort,
+
+    // -- allocation-sites mode --
+    /// Show per-class allocation sites with stack traces. Requires the
+    /// dump to have been captured under allocation tracking
+    /// (Android: `am profile start <pid>` before `am dumpheap`).
+    #[arg(long = "allocation-sites", default_value_t = false)]
+    pub allocation_sites: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,6 +136,12 @@ pub enum Mode {
         top: usize,
         json: bool,
     },
+    AllocationSites {
+        input_file: String,
+        top: usize,
+        debug: bool,
+        json: bool,
+    },
 }
 
 /// Resolve the parsed CLI into a single concrete `Mode`. Enforces:
@@ -143,8 +156,9 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     let referrers_set = cli.find_referrers.is_some() || cli.target_glob.is_some();
     let paths_set = cli.paths_from_id.is_some();
     let diff_set = cli.diff_from.is_some() || cli.diff_to.is_some();
+    let alloc_sites_set = cli.allocation_sites;
 
-    let mode_count = [referrers_set, paths_set, diff_set]
+    let mode_count = [referrers_set, paths_set, diff_set, alloc_sites_set]
         .iter()
         .filter(|b| **b)
         .count();
@@ -168,6 +182,15 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
 
     let input_file = cli.input_file.ok_or(MissingInputFile)?;
     check_file(&input_file)?;
+
+    if cli.allocation_sites {
+        return Ok(Mode::AllocationSites {
+            input_file,
+            top: cli.top,
+            debug: cli.debug,
+            json: cli.json,
+        });
+    }
 
     let referrers_target = match (cli.find_referrers, cli.target_glob) {
         (Some(t), None) => Some(ReferrersTarget::Exact(t)),

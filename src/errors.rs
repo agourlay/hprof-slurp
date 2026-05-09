@@ -17,6 +17,8 @@ pub enum HprofSlurpError {
     TargetClassNotFound { name: String },
     #[error("not yet implemented: {what}")]
     NotYetImplemented { what: &'static str },
+    #[error("no AllocationSites records in this dump (capture with `am profile start <pid>`)")]
+    NoAllocationSites,
     #[error("invalid pointer size - the value should be either `4` or `8`")]
     InvalidIdSize,
     #[error("invalid content after header")]

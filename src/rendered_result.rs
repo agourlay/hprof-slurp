@@ -80,6 +80,15 @@ pub struct RenderedResult {
     pub memory_usage: Vec<ClassAllocationStats>,
     pub duplicated_strings: Option<String>,
     pub captured_strings: Option<String>,
+    /// Captured `AllocationSite` records (v0.8.0 feature C). Empty when the
+    /// dump was not captured under allocation tracking. Consumed by the
+    /// `--allocation-sites` mode renderer.
+    pub allocation_sites: Vec<crate::parser::record::AllocationSite>,
+    /// Number of `AllocationSites` records seen in the stream (each can
+    /// carry many sites). Surfaced in the summary hint; not yet consumed
+    /// programmatically — kept public for downstream JSON consumers.
+    #[allow(dead_code)]
+    pub allocation_sites_record_count: u32,
 }
 
 impl RenderedResult {
@@ -90,6 +99,8 @@ impl RenderedResult {
             mut memory_usage,
             duplicated_strings,
             captured_strings,
+            allocation_sites: _,
+            allocation_sites_record_count: _,
         } = self;
         let memory = Self::render_memory_usage(&mut memory_usage, top);
         let mut result = format!("{summary}\n{thread_info}\n{memory}");

@@ -1,3 +1,4 @@
+mod allocation_sites;
 mod args;
 mod diff;
 mod errors;
@@ -43,7 +44,28 @@ fn main_result() -> Result<(), HprofSlurpError> {
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
         mode @ Mode::Paths { .. } => run_paths(mode, now),
         mode @ Mode::Diff { .. } => run_diff(mode, now),
+        mode @ Mode::AllocationSites { .. } => run_allocation_sites(mode, now),
     }
+}
+
+fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
+    let json = match &mode {
+        Mode::AllocationSites { json, .. } => *json,
+        _ => unreachable!(),
+    };
+    let result = allocation_sites::run(&mode)?;
+    if json {
+        let path = format!(
+            "heaptrail-allocation-sites-{}.json",
+            chrono::Utc::now().timestamp_millis()
+        );
+        let f = std::fs::File::create(&path)?;
+        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
+        println!("Output JSON result file {path}");
+    }
+    print!("{}", allocation_sites::render_text(&result));
+    println!("\nFile successfully processed in {:?}", started.elapsed());
+    Ok(())
 }
 
 fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {

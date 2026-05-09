@@ -88,6 +88,10 @@ pub struct ResultRecorder {
     heap_summaries: u32,
     heap_dumps: u32,
     allocation_sites: u32,
+    /// Captured AllocationSite records, retained from `Record::AllocationSites`.
+    /// Empty when the dump was not captured under allocation tracking.
+    /// (v0.8.0 feature C — drained into `RenderedResult.allocation_sites`.)
+    captured_allocation_sites: Vec<crate::parser::record::AllocationSite>,
     control_settings: u32,
     cpu_samples: u32,
     // GC tag counters
@@ -132,6 +136,7 @@ impl ResultRecorder {
             heap_summaries: 0,
             heap_dumps: 0,
             allocation_sites: 0,
+            captured_allocation_sites: Vec::new(),
             control_settings: 0,
             cpu_samples: 0,
             heap_dump_segments_all_sub_records: 0,
@@ -198,6 +203,8 @@ impl ResultRecorder {
                             } else {
                                 None
                             },
+                            allocation_sites: mem::take(&mut self.captured_allocation_sites),
+                            allocation_sites_record_count: self.allocation_sites,
                         };
                         send_result
                             .send(rendered_result)
@@ -236,7 +243,16 @@ impl ResultRecorder {
                 }
                 StartThread { .. } => self.start_threads += 1,
                 EndThread { .. } => self.end_threads += 1,
-                AllocationSites { .. } => self.allocation_sites += 1,
+                AllocationSites {
+                    allocation_sites, ..
+                } => {
+                    self.allocation_sites += 1;
+                    // Drain the boxed vec into our retained list. The
+                    // record is owned by us at this point so we can
+                    // mem::take its contents without cloning.
+                    self.captured_allocation_sites
+                        .extend(mem::take(allocation_sites.as_mut()));
+                }
                 HeapSummary { .. } => self.heap_summaries += 1,
                 ControlSettings { .. } => self.control_settings += 1,
                 CpuSamples { .. } => self.cpu_samples += 1,
@@ -610,7 +626,18 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_instance_dump,
         );
 
-        format!("{top_summary}\n{heap_summary}")
+        // Feature C (v0.8.0): always-on allocation-sites presence hint.
+        let alloc_sites_hint = if self.captured_allocation_sites.is_empty() {
+            "AllocationSites: not present (capture with `am profile start <pid>`)".to_string()
+        } else {
+            format!(
+                "AllocationSites: {} sites across {} records (run with --allocation-sites for stack traces)",
+                self.captured_allocation_sites.len(),
+                self.allocation_sites
+            )
+        };
+
+        format!("{top_summary}\n{heap_summary}\n{alloc_sites_hint}")
     }
 }
 

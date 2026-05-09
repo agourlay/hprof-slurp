@@ -26,6 +26,7 @@ Heap summaries: 0
 ..GC object array dump: 748
 ..GC class dump: 474
 ..GC instance dump: 4149
+AllocationSites: not present (capture with `am profile start <pid>`)
 
 Found 7 threads with stacktraces:
 
