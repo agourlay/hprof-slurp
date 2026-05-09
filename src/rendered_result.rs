@@ -10,7 +10,15 @@ pub struct ClassAllocationStats {
     pub class_name: String,
     pub instance_count: u64,
     pub largest_allocation_bytes: u64,
+    /// Object id of the largest single instance (arrays only). 0 = unset / not an
+    /// array class. Useful for retainer tracing (`--target-object-id N`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub largest_object_id: u64,
     pub allocation_size_bytes: u64,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 impl ClassAllocationStats {
@@ -24,8 +32,14 @@ impl ClassAllocationStats {
             class_name,
             instance_count,
             largest_allocation_bytes,
+            largest_object_id: 0,
             allocation_size_bytes,
         }
+    }
+
+    pub const fn with_largest_object_id(mut self, id: u64) -> Self {
+        self.largest_object_id = id;
+        self
     }
 }
 
@@ -115,6 +129,29 @@ impl RenderedResult {
             .expect("Could not write to analysis");
         memory_usage.sort_by_key(|b| std::cmp::Reverse(b.largest_allocation_bytes));
         Self::render_table(top, &mut analysis, memory_usage.as_slice());
+
+        // Object ids of the largest array instances per class. Useful for retainer
+        // tracing in a follow-up tool: "what holds the 54 MiB char[]?". Only
+        // populated for array classes (primitive + object); zero/unset entries are
+        // suppressed.
+        let largest_with_ids: Vec<&ClassAllocationStats> = memory_usage
+            .iter()
+            .take(top)
+            .filter(|s| s.largest_object_id != 0)
+            .collect();
+        if !largest_with_ids.is_empty() {
+            writeln!(analysis, "\nLargest array instances object ids (for retainer tracing):")
+                .expect("Could not write to analysis");
+            for s in &largest_with_ids {
+                let display_size = pretty_bytes_size(s.largest_allocation_bytes);
+                writeln!(
+                    analysis,
+                    "  {:>10} object_id={} {}",
+                    display_size, s.largest_object_id, s.class_name
+                )
+                .expect("Could not write to analysis");
+            }
+        }
 
         analysis
     }

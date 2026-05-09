@@ -49,14 +49,18 @@ impl ClassInstanceCounter {
 struct ArrayCounter {
     number_of_arrays: u64,
     max_size_bytes_seen: u64,
+    /// `object_id` of the array instance that produced [`max_size_bytes_seen`].
+    /// `0` is treated as "unset" (HPROF object ids are non-zero in practice).
+    max_size_object_id: u64,
     total_size_bytes: u64,
 }
 
 impl ArrayCounter {
-    fn add_array(&mut self, size_bytes: u64) {
+    fn add_array(&mut self, size_bytes: u64, object_id: u64) {
         self.number_of_arrays += 1;
         if size_bytes > self.max_size_bytes_seen {
             self.max_size_bytes_seen = size_bytes;
+            self.max_size_object_id = object_id;
         }
         self.total_size_bytes += size_bytes;
     }
@@ -65,6 +69,7 @@ impl ArrayCounter {
         Self {
             number_of_arrays: 0,
             max_size_bytes_seen: 0,
+            max_size_object_id: 0,
             total_size_bytes: 0,
         }
     }
@@ -278,6 +283,7 @@ impl ResultRecorder {
                             self.heap_dump_segments_gc_instance_dump += 1;
                         }
                         GcRecord::ObjectArrayDump {
+                            object_id,
                             number_of_elements,
                             array_class_id,
                             ..
@@ -286,11 +292,12 @@ impl ResultRecorder {
                             self.object_array_counters
                                 .entry(*array_class_id)
                                 .or_insert_with(ArrayCounter::empty)
-                                .add_array(size_bytes);
+                                .add_array(size_bytes, *object_id);
 
                             self.heap_dump_segments_gc_object_array_dump += 1;
                         }
                         GcRecord::PrimitiveArrayDump {
+                            object_id,
                             number_of_elements,
                             element_type,
                             ..
@@ -303,7 +310,7 @@ impl ResultRecorder {
                             self.primitive_array_counters
                                 .entry(*element_type)
                                 .or_insert_with(ArrayCounter::empty)
-                                .add_array(size_bytes);
+                                .add_array(size_bytes, *object_id);
 
                             self.heap_dump_segments_gc_primitive_array_dump += 1;
                         }
@@ -483,6 +490,7 @@ impl ResultRecorder {
                         ac.max_size_bytes_seen,
                         ac.total_size_bytes,
                     )
+                    .with_largest_object_id(ac.max_size_object_id)
                 });
 
         // For array of objects we are interested in the total size of the array headers and outgoing elements references
@@ -507,6 +515,7 @@ impl ResultRecorder {
                 ac.max_size_bytes_seen,
                 ac.total_size_bytes,
             )
+            .with_largest_object_id(ac.max_size_object_id)
         });
 
         // Merge results
