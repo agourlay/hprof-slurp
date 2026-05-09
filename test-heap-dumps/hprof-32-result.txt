@@ -1291,58 +1291,58 @@ Thread 214
 Thread 215
   at Hello.main (Hello.java:3)
 
-Found a total of 141.59KiB of instances allocated on the heap.
+Found a total of 137.98KiB of raw shallow heap objects in the dump.
 
-Top 20 allocated classes:
+Top 20 raw shallow heap classes:
 
 +-------------+-----------+-------------+------------------------------------------------------+
 |  Total size | Instances |     Largest | Class name                                           |
 +-------------+-----------+-------------+------------------------------------------------------+
-|    65.24KiB |       833 |    16.02KiB | char[]                                               |
+|    64.33KiB |       833 |    16.02KiB | char[]                                               |
 |    24.39KiB |         9 |     8.02KiB | byte[]                                               |
 |    17.93KiB |       765 |  24.00bytes | java.lang.String                                     |
-|    10.20KiB |       305 |     3.98KiB | java.lang.Object[][]                                 |
-|     1.63KiB |        52 | 120.00bytes | java.lang.String[][]                                 |
+|    11.08KiB |       305 |     3.98KiB | java.lang.Object[][]                                 |
+|     1.76KiB |        52 | 120.00bytes | java.lang.String[][]                                 |
 |     1.36KiB |        58 |  24.00bytes | java.util.Hashtable$Entry                            |
 |     1.14KiB |         4 |     1.02KiB | int[]                                                |
 |     1.12KiB |        11 | 104.00bytes | java.lang.Thread                                     |
-|     1.00KiB |        16 |  64.00bytes | java.util.concurrent.locks.ReentrantLock$NonfairSync |
 | 880.00bytes |        10 |  88.00bytes | java.lang.Class                                      |
 | 728.00bytes |        13 |  56.00bytes | java.net.URL                                         |
-| 696.00bytes |        29 |  24.00bytes | java.lang.StringBuilder                              |
-| 672.00bytes |        14 |  48.00bytes | java.util.LinkedHashMap$Entry                        |
-| 672.00bytes |        14 |  48.00bytes | java.util.HashMap                                    |
-| 652.00bytes |        17 |  76.00bytes | java.util.HashMap$Entry[][]                          |
-| 640.00bytes |        16 |  40.00bytes | java.util.concurrent.ConcurrentHashMap$Segment       |
+| 704.00bytes |        17 |  80.00bytes | java.util.HashMap$Entry[][]                          |
 | 608.00bytes |        19 |  32.00bytes | java.util.Locale                                     |
+| 560.00bytes |        14 |  40.00bytes | java.util.HashMap                                    |
 | 544.00bytes |         2 | 528.00bytes | short[]                                              |
-| 516.00bytes |         7 | 380.00bytes | java.util.Hashtable$Entry[][]                        |
+| 536.00bytes |         7 | 384.00bytes | java.util.Hashtable$Entry[][]                        |
+| 512.00bytes |        16 |  32.00bytes | java.util.concurrent.ConcurrentHashMap$Segment       |
+| 464.00bytes |        29 |  16.00bytes | java.lang.StringBuilder                              |
 | 456.00bytes |        19 |  24.00bytes | java.util.concurrent.ConcurrentHashMap$HashEntry     |
+| 448.00bytes |        14 |  32.00bytes | java.util.LinkedHashMap$Entry                        |
+| 384.00bytes |        16 |  24.00bytes | java.util.concurrent.locks.ReentrantLock$NonfairSync |
 +-------------+-----------+-------------+------------------------------------------------------+
 
 Top 20 largest instances:
 
-+-------------+-----------+-------------+---------------------------------------------+
-|  Total size | Instances |     Largest | Class name                                  |
-+-------------+-----------+-------------+---------------------------------------------+
-|    65.24KiB |       833 |    16.02KiB | char[]                                      |
-|    24.39KiB |         9 |     8.02KiB | byte[]                                      |
-|    10.20KiB |       305 |     3.98KiB | java.lang.Object[][]                        |
-|     1.14KiB |         4 |     1.02KiB | int[]                                       |
-| 544.00bytes |         2 | 528.00bytes | short[]                                     |
-| 516.00bytes |         7 | 380.00bytes | java.util.Hashtable$Entry[][]               |
-| 216.00bytes |         1 | 216.00bytes | sun.misc.Launcher$ExtClassLoader            |
-| 208.00bytes |         1 | 208.00bytes | sun.misc.Launcher$AppClassLoader            |
-| 200.00bytes |         1 | 200.00bytes | java.lang.ref.Reference$ReferenceHandler    |
-| 200.00bytes |         1 | 200.00bytes | java.lang.ref.Finalizer$FinalizerThread     |
-| 168.00bytes |         1 | 168.00bytes | sun.net.www.protocol.file.FileURLConnection |
-| 304.00bytes |         2 | 152.00bytes | sun.nio.cs.MS1252$Encoder                   |
-| 256.00bytes |         2 | 128.00bytes | java.io.ExpiringCache$1                     |
-|     1.63KiB |        52 | 120.00bytes | java.lang.String[][]                        |
-|     1.12KiB |        11 | 104.00bytes | java.lang.Thread                            |
-| 312.00bytes |         3 | 104.00bytes | sun.nio.cs.MS1252$Decoder                   |
-| 312.00bytes |         3 | 104.00bytes | java.nio.HeapByteBuffer                     |
-| 104.00bytes |         1 | 104.00bytes | java.nio.HeapCharBuffer                     |
-| 880.00bytes |        10 |  88.00bytes | java.lang.Class                             |
-|  88.00bytes |         1 |  88.00bytes | java.util.LinkedHashMap                     |
-+-------------+-----------+-------------+---------------------------------------------+
++-------------+-----------+-------------+------------------------------------------------------+
+|  Total size | Instances |     Largest | Class name                                           |
++-------------+-----------+-------------+------------------------------------------------------+
+|    64.33KiB |       833 |    16.02KiB | char[]                                               |
+|    24.39KiB |         9 |     8.02KiB | byte[]                                               |
+|    11.08KiB |       305 |     3.98KiB | java.lang.Object[][]                                 |
+|     1.14KiB |         4 |     1.02KiB | int[]                                                |
+| 544.00bytes |         2 | 528.00bytes | short[]                                              |
+| 536.00bytes |         7 | 384.00bytes | java.util.Hashtable$Entry[][]                        |
+|     1.76KiB |        52 | 120.00bytes | java.lang.String[][]                                 |
+|     1.12KiB |        11 | 104.00bytes | java.lang.Thread                                     |
+| 104.00bytes |         1 | 104.00bytes | java.lang.ref.Reference$ReferenceHandler             |
+| 104.00bytes |         1 | 104.00bytes | java.lang.ref.Finalizer$FinalizerThread              |
+|  96.00bytes |         1 |  96.00bytes | sun.net.www.protocol.file.FileURLConnection          |
+| 880.00bytes |        10 |  88.00bytes | java.lang.Class                                      |
+| 704.00bytes |        17 |  80.00bytes | java.util.HashMap$Entry[][]                          |
+| 384.00bytes |        16 |  80.00bytes | java.util.concurrent.ConcurrentHashMap$HashEntry[][] |
+|  80.00bytes |         1 |  80.00bytes | java.util.concurrent.ConcurrentHashMap$Segment[][]   |
+|  72.00bytes |         1 |  72.00bytes | sun.misc.Launcher$ExtClassLoader                     |
+|  72.00bytes |         1 |  72.00bytes | sun.misc.Launcher$AppClassLoader                     |
+| 128.00bytes |         2 |  64.00bytes | sun.nio.cs.MS1252$Encoder                            |
+| 728.00bytes |        13 |  56.00bytes | java.net.URL                                         |
+| 112.00bytes |         2 |  56.00bytes | java.io.ExpiringCache$1                              |
++-------------+-----------+-------------+------------------------------------------------------+
