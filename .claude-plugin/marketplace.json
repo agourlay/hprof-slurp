@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "analysing-heap-dumps",
+  "description": "Claude Code plugin marketplace for Analysing Heap Dumps by John Neerdael",
+  "owner": {
+    "name": "John Neerdael (john@neerdael.nl)"
+  },
+  "plugins": [
+    {
+      "name": "analysing-heap-dumps",
+      "source": "./plugins/analysing-heap-dumps",
+      "description": "Use when investigating .hprof files (Android or JVM heap dumps), diagnosing memory leaks, asking "what holds class X / object id Y", measuring GC churn between two snapshots, or chasing OutOfMemoryError.",
+      "version": "0.7.0"
+    }
+  ]
+}
