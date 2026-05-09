@@ -331,6 +331,31 @@ impl ResultRecorder {
 
                             self.heap_dump_segments_gc_class_dump += 1;
                         }
+                        // Android HPROF 1.0.3 extension records. We parse them
+                        // for stream-alignment and root tracking, but the
+                        // summary path doesn't surface counts per extension
+                        // type yet. PrimitiveArrayNoDataDump is treated as a
+                        // zero-size primitive array (the body was suppressed
+                        // by the dumper, e.g. zygote-shared arrays).
+                        GcRecord::RootInternedString { .. }
+                        | GcRecord::RootFinalizing { .. }
+                        | GcRecord::RootDebugger { .. }
+                        | GcRecord::RootReferenceCleanup { .. }
+                        | GcRecord::RootVmInternal { .. }
+                        | GcRecord::RootJniMonitor { .. }
+                        | GcRecord::Unreachable { .. }
+                        | GcRecord::HeapDumpInfo { .. } => {}
+                        GcRecord::PrimitiveArrayNoDataDump {
+                            object_id,
+                            element_type,
+                            ..
+                        } => {
+                            self.primitive_array_counters
+                                .entry(*element_type)
+                                .or_insert_with(ArrayCounter::empty)
+                                .add_array(0, *object_id);
+                            self.heap_dump_segments_gc_primitive_array_dump += 1;
+                        }
                     }
                 }
             }

@@ -323,6 +323,33 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
                 idx.gc_root_kind_by_id
                     .insert(thread_object_id, "RootThreadObject");
             }
+            // Android HPROF 1.0.3 extension roots
+            GcRecord::RootInternedString { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id
+                    .insert(object_id, "RootInternedString");
+            }
+            GcRecord::RootFinalizing { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootFinalizing");
+            }
+            GcRecord::RootDebugger { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootDebugger");
+            }
+            GcRecord::RootReferenceCleanup { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id
+                    .insert(object_id, "RootReferenceCleanup");
+            }
+            GcRecord::RootVmInternal { object_id } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootVmInternal");
+            }
+            GcRecord::RootJniMonitor { object_id, .. } => {
+                idx.gc_root_ids.insert(object_id);
+                idx.gc_root_kind_by_id.insert(object_id, "RootJniMonitor");
+            }
             _ => {}
         },
         _ => {}
