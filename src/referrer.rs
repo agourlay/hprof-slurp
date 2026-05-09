@@ -30,8 +30,34 @@ use crate::args::Mode;
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::TargetClassNotFound;
 use crate::parser::gc_record::{FieldInfo, FieldType, FieldValue, GcRecord};
-use crate::parser::record::{LoadClassData, Record};
+use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
 use crate::slurp::parse_records;
+
+/// A stack frame whose utf8 references have already been chased to readable
+/// strings. Built lazily — we only resolve frames the renderer actually
+/// asks for, so a dump with 50K frames doesn't pay for resolving any of
+/// them unless `--paths-from-id` chases one.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedFrame {
+    pub method: String,
+    pub class: Option<String>,
+    pub file: Option<String>,
+    /// HPROF spec: positive = real line, negative sentinel values for
+    /// "unknown", "compiled", "native". Surfaced verbatim; renderer
+    /// translates sentinels.
+    pub line: i32,
+}
+
+/// Pointer recorded when the indexer sees a thread-owned GC root. Used by
+/// `paths::run` to resolve the chain terminator's thread name + top frame.
+#[derive(Debug, Clone, Copy)]
+pub struct ThreadFrameRef {
+    pub thread_serial: u32,
+    /// `Some(idx)` for `RootJavaFrame` — index into the thread's stack
+    /// trace. `None` for `RootThreadObject` (no frame), `RootJniLocal`,
+    /// `RootJniMonitor` (we only have a stack depth, not a frame index).
+    pub frame_idx: Option<u32>,
+}
 
 /// Output of pass 1A. Holds enough metadata to:
 /// (a) resolve the user's target class FQ-name to a `class_object_id`,
@@ -54,6 +80,29 @@ pub struct Pass1Index {
     /// `object_id -> root tag label` (e.g. "RootJniGlobal", "RootJavaFrame").
     /// Used by `--paths-from-id` to label the chain terminator.
     pub gc_root_kind_by_id: AHashMap<u64, &'static str>,
+    // ---- v0.8.0 (feature A) thread + stack frame metadata ----
+    /// `thread_serial_number -> thread name`. Populated from `StartThread`.
+    pub thread_name_by_serial: AHashMap<u32, Box<str>>,
+    /// `thread_object_id -> thread_serial_number`. Used to resolve a
+    /// `RootThreadObject { thread_object_id }` back to its name (which is
+    /// keyed by serial).
+    pub thread_serial_by_obj_id: AHashMap<u64, u32>,
+    /// `stack_trace_serial_number -> [stack_frame_id, ...]`. Populated
+    /// from `StackTrace`.
+    pub stack_trace_by_serial: AHashMap<u32, Vec<u64>>,
+    /// `stack_frame_id -> raw StackFrameData`. utf8 resolution happens on
+    /// demand via `Pass1Index::resolve_frame()`. We store the raw record
+    /// so resolution stays lazy.
+    pub stack_frame_by_id: AHashMap<u64, StackFrameData>,
+    /// `class_serial_number -> class_name_id`. Captured from `LoadClass`.
+    /// Distinct from the existing `class_name_id_by_class_id` (which is
+    /// keyed by `class_object_id`); HPROF references classes by *serial*
+    /// in `StackFrame.class_serial_number` and `AllocationSite.class_serial_number`.
+    pub class_name_id_by_serial: AHashMap<u32, u64>,
+    /// Root object id -> thread metadata. Captured at index time so the
+    /// `paths` walker doesn't need to re-scan to find which thread owns a
+    /// terminating root.
+    pub root_thread_meta_by_id: AHashMap<u64, ThreadFrameRef>,
     pub id_size: u32,
 }
 
@@ -70,6 +119,33 @@ impl Pass1Index {
 
     fn field_name(&self, name_id: u64) -> Option<&str> {
         self.utf8_by_id.get(&name_id).map(|b| b.as_ref())
+    }
+
+    /// Resolve a `stack_frame_id` to a `ResolvedFrame` if all the utf8
+    /// references in the underlying `StackFrame` record are reachable.
+    /// Returns `None` if the frame id isn't known.
+    pub(crate) fn resolve_frame(&self, frame_id: u64) -> Option<ResolvedFrame> {
+        let f = self.stack_frame_by_id.get(&frame_id)?;
+        let method = self
+            .utf8_by_id
+            .get(&f.method_name_id)
+            .map(|s| s.as_ref().to_string())
+            .unwrap_or_else(|| format!("(method_name_id={})", f.method_name_id));
+        let class = self
+            .class_name_id_by_serial
+            .get(&f.class_serial_number)
+            .and_then(|nid| self.utf8_by_id.get(nid))
+            .map(|s| s.as_ref().replace('/', "."));
+        let file = self
+            .utf8_by_id
+            .get(&f.source_file_name_id)
+            .map(|s| s.as_ref().to_string());
+        Some(ResolvedFrame {
+            method,
+            class,
+            file,
+            line: f.line_number,
+        })
     }
 }
 
