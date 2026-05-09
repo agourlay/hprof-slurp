@@ -47,7 +47,7 @@ where
     let header = slurp_header(&mut reader)?;
     let id_size = header.size_pointers;
 
-    let mut parser = HprofRecordParser::with_retain_bodies(debug, retain_bodies);
+    let mut parser = HprofRecordParser::with_retain_bodies(debug, id_size, retain_bodies);
     let mut buf: Vec<u8> = Vec::with_capacity(1 << 20); // 1 MiB working buffer
     let mut pooled: Vec<Record> = Vec::with_capacity(1024);
     let mut chunk = vec![0u8; 1 << 20];

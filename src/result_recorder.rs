@@ -724,6 +724,7 @@ mod tests {
                 stack_trace_serial_number: 0,
                 class_object_id: 2,
                 data_size: 0,
+                body: None,
             }),
         ];
 
@@ -786,12 +787,14 @@ mod tests {
                 stack_trace_serial_number: 0,
                 number_of_elements: 1,
                 array_class_id: 20,
+                elements: None,
             }),
             Record::GcSegment(GcRecord::ObjectArrayDump {
                 object_id: 2,
                 stack_trace_serial_number: 0,
                 number_of_elements: 2,
                 array_class_id: 20,
+                elements: None,
             }),
         ];
 
