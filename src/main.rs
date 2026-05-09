@@ -1,4 +1,5 @@
 mod args;
+mod diff;
 mod errors;
 mod parser;
 mod paths;
@@ -41,9 +42,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
         } => run_summary(&input_file, top, debug, list_strings, json, now),
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
         mode @ Mode::Paths { .. } => run_paths(mode, now),
-        Mode::Diff { .. } => Err(HprofSlurpError::NotYetImplemented {
-            what: "diff-from / diff-to (Task 10 in plan)",
-        }),
+        mode @ Mode::Diff { .. } => run_diff(mode, now),
     }
 }
 
@@ -63,6 +62,26 @@ fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpErro
         println!("Output JSON result file {path}");
     }
     print!("{}", referrer::render_text(&result));
+    println!("\nFile successfully processed in {:?}", started.elapsed());
+    Ok(())
+}
+
+fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
+    let json = match &mode {
+        Mode::Diff { json, .. } => *json,
+        _ => unreachable!(),
+    };
+    let entries = diff::run(&mode)?;
+    if json {
+        let path = format!(
+            "hprof-slurp-diff-{}.json",
+            chrono::Utc::now().timestamp_millis()
+        );
+        let f = std::fs::File::create(&path)?;
+        serde_json::to_writer(std::io::BufWriter::new(f), &entries)?;
+        println!("Output JSON result file {path}");
+    }
+    print!("{}", diff::render_text(&entries));
     println!("\nFile successfully processed in {:?}", started.elapsed());
     Ok(())
 }

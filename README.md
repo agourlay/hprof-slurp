@@ -29,6 +29,11 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 - output results as JSON possible
 - **referrer tracing** (`--find-referrers`) — find what holds an over-allocated
   class or specific object id, with multi-hop chain support.
+- **path-to-root** (`--paths-from-id`) — walk holder chain from one object id
+  toward a GC root.
+- **snapshot diff** (`--diff-from` / `--diff-to`) — per-class delta in instance
+  count and shallow bytes between two captures (the strongest churn signal a
+  pair of static dumps can give you).
 
 ## Usage
 
@@ -184,6 +189,55 @@ tracing needs those bytes, so it runs in additional passes:
 
 Wall-cost is roughly `O(hops × file_size)`. On the bundled 3 MB JVM fixture this
 is single-digit milliseconds; on a 235 MB Android dump expect a few seconds.
+
+## Path-to-root (`--paths-from-id`)
+
+Given an object id (e.g. one surfaced as the largest of its class), walk the
+holder chain upward until a GC root is reached or `--max-depth` is exceeded.
+
+```bash
+hprof-slurp -i my.hprof --paths-from-id 66277392 --max-depth 16
+```
+
+Example:
+
+```
+Path from object_id=66277392 (depth 3 step(s)):
+  start  ── id=66277392
+  hop 1 ── id=66270001  (via java.lang.String.value)
+  hop 2 ── id=66145000  (via android.os.Bundle.mMap)
+  hop 3 ── id=66100000  (via android.os.MessageQueue[])
+  → reached GC root: RootJavaFrame
+```
+
+Wall cost is `O(depth × file_size)` since each hop is one streaming pass.
+
+## Snapshot diff (`--diff-from` / `--diff-to`)
+
+Compare two hprof files captured from the same process. The class with the
+largest delta in instance count is the strongest churn signal a pair of
+static dumps can give.
+
+```bash
+# capture before & after a workload
+hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
+
+# or sort by bytes growth
+hprof-slurp --diff-from before.hprof --diff-to after.hprof --diff-by bytes
+```
+
+Example output:
+
+```
+Class deltas (sorted, top 20 shown):
+        Δcount       Δbytes  count(a→b)  bytes(a→b)  class
+        +12000       +480000  100→12100   4KiB→480KiB  java.util.HashMap$Node
+         +8400       +268800  500→8900     20KiB→289KiB com.example.MyDto
+          +200       +200000  10→210       2KiB→202KiB  java.lang.String
+```
+
+Classes with zero delta are filtered out. `--by count` is the default; pass
+`--by bytes` to sort by shallow-size delta instead.
 
 ## GC churn analysis caveat
 
