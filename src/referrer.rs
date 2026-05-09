@@ -37,6 +37,10 @@ use crate::slurp::parse_records;
 /// strings. Built lazily — we only resolve frames the renderer actually
 /// asks for, so a dump with 50K frames doesn't pay for resolving any of
 /// them unless `--paths-from-id` chases one.
+// `dead_code` allowed only in the bridging commit between Task 1.2 (which
+// indexes the data) and Task 1.3 (which renders it via PathResult). The
+// allow goes away once paths.rs imports this in the next commit.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct ResolvedFrame {
     pub method: String,
@@ -50,6 +54,9 @@ pub struct ResolvedFrame {
 
 /// Pointer recorded when the indexer sees a thread-owned GC root. Used by
 /// `paths::run` to resolve the chain terminator's thread name + top frame.
+// `dead_code` allowed only in the bridging commit; consumed by paths::run
+// in the next commit (Task 1.3).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ThreadFrameRef {
     pub thread_serial: u32,
@@ -124,6 +131,7 @@ impl Pass1Index {
     /// Resolve a `stack_frame_id` to a `ResolvedFrame` if all the utf8
     /// references in the underlying `StackFrame` record are reachable.
     /// Returns `None` if the frame id isn't known.
+    #[allow(dead_code)] // bridging — consumed by paths::run in Task 1.3
     pub(crate) fn resolve_frame(&self, frame_id: u64) -> Option<ResolvedFrame> {
         let f = self.stack_frame_by_id.get(&frame_id)?;
         let method = self
@@ -329,12 +337,47 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
             idx.utf8_by_id.insert(id, str);
         }
         Record::LoadClass(LoadClassData {
+            serial_number,
             class_object_id,
             class_name_id,
             ..
         }) => {
             idx.class_name_id_by_class_id
                 .insert(class_object_id, class_name_id);
+            // Feature A (v0.8.0): also index by class serial — StackFrame
+            // and AllocationSite reference classes by serial, not obj id.
+            idx.class_name_id_by_serial
+                .insert(serial_number, class_name_id);
+        }
+        Record::StartThread {
+            thread_serial_number,
+            thread_object_id,
+            thread_name_id,
+            ..
+        } => {
+            if let Some(name) = idx.utf8_by_id.get(&thread_name_id).cloned() {
+                idx.thread_name_by_serial.insert(thread_serial_number, name);
+            } else {
+                // utf8 record may appear later; record a placeholder and
+                // tolerate the gap downstream.
+                idx.thread_name_by_serial.insert(
+                    thread_serial_number,
+                    format!("(name_id={thread_name_id})").into_boxed_str(),
+                );
+            }
+            idx.thread_serial_by_obj_id
+                .insert(thread_object_id, thread_serial_number);
+        }
+        Record::StackTrace(StackTraceData {
+            serial_number,
+            stack_frame_ids,
+            ..
+        }) => {
+            idx.stack_trace_by_serial
+                .insert(serial_number, stack_frame_ids);
+        }
+        Record::StackFrame(sfd) => {
+            idx.stack_frame_by_id.insert(sfd.stack_frame_id, sfd);
         }
         Record::GcSegment(gc) => match gc {
             GcRecord::ClassDump(boxed) => {
@@ -364,13 +407,35 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootJniGlobal");
             }
-            GcRecord::RootJniLocal { object_id, .. } => {
+            GcRecord::RootJniLocal {
+                object_id,
+                thread_serial_number,
+                ..
+            } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootJniLocal");
+                idx.root_thread_meta_by_id.insert(
+                    object_id,
+                    ThreadFrameRef {
+                        thread_serial: thread_serial_number,
+                        frame_idx: None,
+                    },
+                );
             }
-            GcRecord::RootJavaFrame { object_id, .. } => {
+            GcRecord::RootJavaFrame {
+                object_id,
+                thread_serial_number,
+                frame_number_in_stack_trace,
+            } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootJavaFrame");
+                idx.root_thread_meta_by_id.insert(
+                    object_id,
+                    ThreadFrameRef {
+                        thread_serial: thread_serial_number,
+                        frame_idx: Some(frame_number_in_stack_trace),
+                    },
+                );
             }
             GcRecord::RootNativeStack { object_id, .. } => {
                 idx.gc_root_ids.insert(object_id);
@@ -422,9 +487,20 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootVmInternal");
             }
-            GcRecord::RootJniMonitor { object_id, .. } => {
+            GcRecord::RootJniMonitor {
+                object_id,
+                thread_serial_number,
+                ..
+            } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootJniMonitor");
+                idx.root_thread_meta_by_id.insert(
+                    object_id,
+                    ThreadFrameRef {
+                        thread_serial: thread_serial_number,
+                        frame_idx: None,
+                    },
+                );
             }
             _ => {}
         },
@@ -656,6 +732,30 @@ mod tests {
             debug: false,
             json: false,
         }
+    }
+
+    #[test]
+    fn pass1_indexes_thread_names_and_stack_frames() {
+        let idx = pass1_index("test-heap-dumps/hprof-64.bin", false).unwrap();
+        // The bundled JVM fixture has 10 StackTrace + 20 StackFrame records
+        // (per test-heap-dumps/hprof-64-result.txt) but zero StartThread
+        // records. So thread_name_by_serial may be empty for this fixture;
+        // assert on what we know exists.
+        assert!(
+            !idx.stack_frame_by_id.is_empty(),
+            "expected ≥1 stack frame, got {}",
+            idx.stack_frame_by_id.len()
+        );
+        assert!(
+            !idx.stack_trace_by_serial.is_empty(),
+            "expected ≥1 stack trace, got {}",
+            idx.stack_trace_by_serial.len()
+        );
+        assert!(
+            idx.class_name_id_by_serial.len() >= 100,
+            "expected ≥100 class serial entries (one per LoadClass), got {}",
+            idx.class_name_id_by_serial.len()
+        );
     }
 
     #[test]
