@@ -17,13 +17,20 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-The underlying motivation is to enable the analysis of **huge** heap dumps which are much larger than the amount of RAM available on the host system.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, and (since v0.9.0) inline content previews so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string rather than just "a big char array." Output is structured for terminal reading and CI logs, not interactive exploration.
 
-`heaptrail` processes dump files in a **streaming fashion in a single pass** without storing intermediary results on the host.
+The parser is streaming and single-pass — no on-disk index, no full object graph in memory — so the same tool runs comfortably on a laptop against multi-gigabyte dumps that wouldn't open in a desktop UI.
 
-This approach makes it possible to provide an extremely fast overview of dump files without the need to spin up expensive beefy instance.
+### When to still reach for MAT or VisualVM
 
-However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/mat/) and [VisualVM](https://visualvm.github.io/) which provide more advanced features at a different cost.
+[Eclipse MAT](https://www.eclipse.org/mat/) and [VisualVM](https://visualvm.github.io/) remain the right tool when you need:
+
+- **Retained heap / dominator analysis.** heaptrail v0.9.0 reports shallow sizes only; full Lengauer–Tarjan dominators with retained-size accounting are scheduled for v1.0.0.
+- **Interactive graph exploration.** Clicking through inbound/outbound references is a UI capability and stays in MAT's column.
+- **OQL** for ad-hoc querying — heaptrail is a fixed-flag CLI by design.
+- **MAT's Leak Suspects** clustered narrative report.
+
+For everything else — large dumps, small hosts, headless workflows, single-command answers with content previews — `heaptrail` is the cheaper option, and the gap closes further once v1.0.0 lands.
 
 ## Documentation
 
