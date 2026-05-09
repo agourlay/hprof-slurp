@@ -23,6 +23,86 @@ const FILE_HEADER_LENGTH: usize = 31;
 // 64 MB buffer performs nicely (higher is faster but increases the memory consumption)
 pub const READ_BUFFER_SIZE: usize = 64 * 1024 * 1024;
 
+/// Synchronous record-by-record parsing. Parses the hprof header, then
+/// streams records through the in-process `HprofRecordParser`, calling
+/// `handler` for every record produced. Used by the multi-pass referrer /
+/// paths drivers, which benefit more from request flexibility than from
+/// the threaded prefetcher pipeline `slurp_file` uses.
+///
+/// Returns the dump's `id_size` (4 or 8) so callers can use it for field
+/// decoding without re-parsing the header themselves.
+pub fn parse_records<F>(
+    file_path: &str,
+    debug: bool,
+    retain_bodies: bool,
+    mut handler: F,
+) -> Result<u32, HprofSlurpError>
+where
+    F: FnMut(crate::parser::record::Record),
+{
+    use crate::parser::record_parser::HprofRecordParser;
+    use std::io::Read;
+    let file = File::open(file_path)?;
+    let mut reader = BufReader::new(file);
+    let header = slurp_header(&mut reader)?;
+    let id_size = header.size_pointers;
+
+    let mut parser = HprofRecordParser::with_retain_bodies(debug, retain_bodies);
+    let mut buf: Vec<u8> = Vec::with_capacity(1 << 20); // 1 MiB working buffer
+    let mut pooled: Vec<Record> = Vec::with_capacity(1024);
+    let mut chunk = vec![0u8; 1 << 20];
+
+    loop {
+        let n = reader.read(&mut chunk)?;
+        if n > 0 {
+            buf.extend_from_slice(&chunk[..n]);
+        }
+        if buf.is_empty() {
+            break;
+        }
+        match parser.parse_streaming(&buf, &mut pooled) {
+            Ok((rest, ())) => {
+                let consumed = buf.len() - rest.len();
+                buf.drain(0..consumed);
+                for rec in pooled.drain(..) {
+                    handler(rec);
+                }
+                if n == 0 && buf.is_empty() {
+                    break;
+                }
+                if n == 0 && consumed == 0 {
+                    // EOF and parser made no progress — leftover trailing bytes;
+                    // surface as a parse error rather than infinite-loop.
+                    return Err(InvalidHprofFile {
+                        message: format!(
+                            "trailing bytes at EOF: {} unparsed bytes",
+                            buf.len()
+                        ),
+                    });
+                }
+            }
+            Err(nom::Err::Incomplete(_)) => {
+                if n == 0 {
+                    return Err(InvalidHprofFile {
+                        message: format!(
+                            "unexpected EOF mid-record: {} unparsed bytes",
+                            buf.len()
+                        ),
+                    });
+                }
+                // need more data; loop and read more
+                continue;
+            }
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => {
+                return Err(InvalidHprofFile {
+                    message: format!("{e:?}"),
+                });
+            }
+        }
+    }
+    Ok(id_size)
+}
+
 pub fn slurp_file(
     file_path: &str,
     debug_mode: bool,
