@@ -279,8 +279,7 @@ mod args_tests {
 
     #[test]
     fn resolve_picks_summary_for_existing_file() {
-        let cli =
-            Cli::try_parse_from(["heaptrail", "-i", "test-heap-dumps/hprof-64.bin"]).unwrap();
+        let cli = Cli::try_parse_from(["heaptrail", "-i", "test-heap-dumps/hprof-64.bin"]).unwrap();
         match resolve(cli).unwrap() {
             Mode::Summary { input_file, .. } => {
                 assert_eq!(input_file, "test-heap-dumps/hprof-64.bin");
