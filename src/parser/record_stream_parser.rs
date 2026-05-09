@@ -28,7 +28,29 @@ impl HprofRecordStreamParser {
         processed_len: usize,
         initial_loop_buffer: Vec<u8>,
     ) -> Self {
-        let parser = HprofRecordParser::new(debug_mode, id_size);
+        Self::with_retain_bodies(
+            debug_mode,
+            id_size,
+            file_len,
+            processed_len,
+            initial_loop_buffer,
+            false,
+        )
+    }
+
+    /// Like `new`, but with explicit control over whether instance bodies
+    /// and object-array element ids are retained on the emitted GcRecords.
+    /// Set `retain_bodies = true` for `--find-referrers`, `--paths-from-id`,
+    /// and any other mode that needs to walk the reference graph.
+    pub const fn with_retain_bodies(
+        debug_mode: bool,
+        id_size: u32,
+        file_len: usize,
+        processed_len: usize,
+        initial_loop_buffer: Vec<u8>,
+        retain_bodies: bool,
+    ) -> Self {
+        let parser = HprofRecordParser::with_retain_bodies(debug_mode, id_size, retain_bodies);
         Self {
             parser,
             debug_mode,

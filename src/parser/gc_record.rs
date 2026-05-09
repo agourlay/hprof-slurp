@@ -111,12 +111,19 @@ pub enum GcRecord {
         stack_trace_serial_number: u32,
         class_object_id: u64,
         data_size: u32,
+        /// Raw instance field bytes, retained only in `retain_bodies` parser
+        /// mode (used by `--find-referrers` / `--paths-from-id`). `None` in
+        /// the default summary path so existing throughput is preserved.
+        body: Option<Box<[u8]>>,
     },
     ObjectArrayDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         array_class_id: u64,
+        /// Element object ids (`0` == null). Retained only in `retain_bodies`
+        /// parser mode. `None` in the default summary path.
+        elements: Option<Box<[u64]>>,
     },
     PrimitiveArrayDump {
         object_id: u64,

@@ -57,6 +57,12 @@ pub struct HprofRecordParser {
     debug_mode: bool,
     id_size: u32,
     heap_dump_remaining_len: u32,
+    /// When true, instance bodies and object-array element ids are retained on
+    /// `GcRecord::InstanceDump.body` / `GcRecord::ObjectArrayDump.elements`.
+    /// Used by `--find-referrers`, `--paths-from-id`, and any other mode that
+    /// needs to walk reference graphs. Default false; the summary path leaves
+    /// these as `None` to preserve streaming throughput.
+    retain_bodies: bool,
 }
 
 impl HprofRecordParser {
@@ -65,6 +71,16 @@ impl HprofRecordParser {
             debug_mode,
             id_size,
             heap_dump_remaining_len: 0,
+            retain_bodies: false,
+        }
+    }
+
+    pub const fn with_retain_bodies(debug_mode: bool, id_size: u32, retain_bodies: bool) -> Self {
+        Self {
+            debug_mode,
+            id_size,
+            heap_dump_remaining_len: 0,
+            retain_bodies,
         }
     }
 
@@ -103,7 +119,7 @@ impl HprofRecordParser {
                 })
             } else {
                 // GC record mode
-                parse_gc_record(i, id_size).map(|(r1, gc_sub)| {
+                parse_gc_record(i, id_size, self.retain_bodies).map(|(r1, gc_sub)| {
                     let gc_sub_len = i.len() - r1.len();
                     self.heap_dump_remaining_len = self
                         .heap_dump_remaining_len
@@ -174,7 +190,7 @@ where
     }
 }
 
-fn parse_gc_record(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+fn parse_gc_record(i: &[u8], id_size: u32, retain_bodies: bool) -> IResult<&[u8], GcRecord> {
     let (r1, tag) = parse_u8(i)?;
     match tag {
         TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(r1, id_size),
@@ -187,8 +203,10 @@ fn parse_gc_record(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
         TAG_GC_ROOT_MONITOR_USED => parse_gc_root_monitor_used(r1, id_size),
         TAG_GC_ROOT_THREAD_OBJ => parse_gc_root_thread_object(r1, id_size),
         TAG_GC_CLASS_DUMP => parse_gc_class_dump(r1, id_size),
-        TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(r1, id_size),
-        TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(r1, id_size),
+        TAG_GC_INSTANCE_DUMP if retain_bodies => parse_gc_instance_dump_full(r1, id_size),
+        TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump_lite(r1, id_size),
+        TAG_GC_OBJ_ARRAY_DUMP if retain_bodies => parse_gc_object_array_dump_full(r1, id_size),
+        TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump_lite(r1, id_size),
         TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(r1, id_size),
         x => panic!("unhandled gc record tag {x}"),
     }
@@ -464,20 +482,19 @@ fn parse_gc_class_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     })
 }
 
-fn parse_gc_instance_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+/// Default parser: skips the instance body bytes (the original streaming
+/// behavior). Used for summary mode where reference graph isn't needed.
+fn parse_gc_instance_dump_lite(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     flat_map(
         (id(id_size), parse_u32, id(id_size), parse_u32),
         |(object_id, stack_trace_serial_number, class_object_id, data_size)| {
             map(bytes::streaming::take(data_size), move |_bytes_segment| {
-                // Important: The actual content of the instance cannot be analyzed at this point because we miss the class information!
-                // Given that instances are found before the class info in the dump file, it would require two passes on the
-                // dump file with the additional storage of intermediary results on the disk to fully analyze the instances.
-                // hprof-slurp performs a single pass and makes no assumptions on the memory or storage available.
                 InstanceDump {
                     object_id,
                     stack_trace_serial_number,
                     class_object_id,
                     data_size,
+                    body: None,
                 }
             })
         },
@@ -485,21 +502,59 @@ fn parse_gc_instance_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     .parse(i)
 }
 
-fn parse_gc_object_array_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+/// Retain-bodies parser: copies the instance body into a `Box<[u8]>` so
+/// downstream recorders can walk fields against a known target id set.
+/// Pass-2 of `--find-referrers` and `--paths-from-id` use this.
+fn parse_gc_instance_dump_full(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    flat_map(
+        (id(id_size), parse_u32, id(id_size), parse_u32),
+        |(object_id, stack_trace_serial_number, class_object_id, data_size)| {
+            map(
+                bytes::streaming::take(data_size),
+                move |bytes_segment: &[u8]| InstanceDump {
+                    object_id,
+                    stack_trace_serial_number,
+                    class_object_id,
+                    data_size,
+                    body: Some(bytes_segment.to_vec().into_boxed_slice()),
+                },
+            )
+        },
+    )
+    .parse(i)
+}
+
+fn parse_gc_object_array_dump_lite(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     flat_map(
         (id(id_size), parse_u32, parse_u32, id(id_size)),
         move |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
             map(
                 bytes::streaming::take(u64::from(number_of_elements) * u64::from(id_size)),
-                move |_byte_array_elements| {
-                    // Do not parse the array of object references as it is not needed for any analyses so far.
-                    // see `count(id(id_size), number_of_elements as usize)(byte_array_elements)`
-                    ObjectArrayDump {
-                        object_id,
-                        stack_trace_serial_number,
-                        number_of_elements,
-                        array_class_id,
-                    }
+                move |_byte_array_elements| ObjectArrayDump {
+                    object_id,
+                    stack_trace_serial_number,
+                    number_of_elements,
+                    array_class_id,
+                    elements: None,
+                },
+            )
+        },
+    )
+    .parse(i)
+}
+
+fn parse_gc_object_array_dump_full(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    flat_map(
+        (id(id_size), parse_u32, parse_u32, id(id_size)),
+        move |(object_id, stack_trace_serial_number, number_of_elements, array_class_id)| {
+            map(
+                count(id(id_size), number_of_elements as usize),
+                move |elements_vec: Vec<u64>| ObjectArrayDump {
+                    object_id,
+                    stack_trace_serial_number,
+                    number_of_elements,
+                    array_class_id,
+                    elements: Some(elements_vec.into_boxed_slice()),
                 },
             )
         },
@@ -874,6 +929,101 @@ mod tests {
                 assert_eq!(data.stack_frame_ids, vec![10, 11]);
             }
             other => panic!("expected stack trace record, got {other:?}"),
+        }
+    }
+
+    fn synthetic_instance_dump_bytes(body_pattern: u8, body_len: u32) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&1u64.to_be_bytes()); // object_id
+        buf.extend_from_slice(&0u32.to_be_bytes()); // stack_trace_serial_number
+        buf.extend_from_slice(&2u64.to_be_bytes()); // class_object_id
+        buf.extend_from_slice(&body_len.to_be_bytes()); // data_size
+        buf.extend(std::iter::repeat_n(body_pattern, body_len as usize));
+        buf
+    }
+
+    #[test]
+    fn instance_dump_lite_returns_none_body() {
+        let buf = synthetic_instance_dump_bytes(0xAB, 16);
+        let (_, gcd) = parse_gc_instance_dump_lite(&buf, 8).unwrap();
+        match gcd {
+            InstanceDump {
+                object_id,
+                class_object_id,
+                data_size,
+                body,
+                ..
+            } => {
+                assert_eq!(object_id, 1);
+                assert_eq!(class_object_id, 2);
+                assert_eq!(data_size, 16);
+                assert!(body.is_none(), "lite parser should not retain body");
+            }
+            other => panic!("expected InstanceDump, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn instance_dump_full_retains_body() {
+        let buf = synthetic_instance_dump_bytes(0xAB, 16);
+        let (_, gcd) = parse_gc_instance_dump_full(&buf, 8).unwrap();
+        match gcd {
+            InstanceDump {
+                body: Some(b),
+                data_size,
+                ..
+            } => {
+                assert_eq!(data_size, 16);
+                assert_eq!(b.len(), 16);
+                assert!(b.iter().all(|&x| x == 0xAB));
+            }
+            other => panic!("expected InstanceDump with body, got {other:?}"),
+        }
+    }
+
+    fn synthetic_object_array_dump_bytes(num_elements: u32, base_id: u64) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&100u64.to_be_bytes()); // object_id
+        buf.extend_from_slice(&0u32.to_be_bytes()); // stack_trace
+        buf.extend_from_slice(&num_elements.to_be_bytes());
+        buf.extend_from_slice(&200u64.to_be_bytes()); // array_class_id
+        for n in 0..num_elements {
+            buf.extend_from_slice(&(base_id + u64::from(n)).to_be_bytes());
+        }
+        buf
+    }
+
+    #[test]
+    fn object_array_dump_lite_returns_none_elements() {
+        let buf = synthetic_object_array_dump_bytes(3, 1000);
+        let (_, gcd) = parse_gc_object_array_dump_lite(&buf, 8).unwrap();
+        match gcd {
+            ObjectArrayDump {
+                number_of_elements,
+                elements,
+                ..
+            } => {
+                assert_eq!(number_of_elements, 3);
+                assert!(elements.is_none(), "lite parser should not retain elements");
+            }
+            other => panic!("expected ObjectArrayDump, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn object_array_dump_full_retains_element_ids() {
+        let buf = synthetic_object_array_dump_bytes(3, 1000);
+        let (_, gcd) = parse_gc_object_array_dump_full(&buf, 8).unwrap();
+        match gcd {
+            ObjectArrayDump {
+                number_of_elements,
+                elements: Some(e),
+                ..
+            } => {
+                assert_eq!(number_of_elements, 3);
+                assert_eq!(e.as_ref(), &[1000u64, 1001, 1002]);
+            }
+            other => panic!("expected ObjectArrayDump with elements, got {other:?}"),
         }
     }
 }
