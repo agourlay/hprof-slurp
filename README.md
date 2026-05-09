@@ -19,7 +19,7 @@ The design of the underlying streaming parser is described in detail in
 
 `heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, and (since v0.9.0) inline content previews so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string rather than just "a big char array." Output is structured for terminal reading and CI logs, not interactive exploration.
 
-The parser is streaming and single-pass — no on-disk index, no full object graph in memory — so the same tool runs comfortably on a laptop against multi-gigabyte dumps that wouldn't open in a desktop UI.
+The parser is streaming and reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. Either way, no full object graph is held in memory, so multi-gigabyte dumps run comfortably on a laptop.
 
 ### When to use `heaptrail`
 
