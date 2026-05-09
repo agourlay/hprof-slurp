@@ -1596,7 +1596,9 @@ Expected: `success`; six binary assets listed; crates.io 1.0.0 live.
   - §3.2 (modules) → PR 1 (graph), PR 2 (dom), PR 3 (retained)
   - §3.3 (modified files) → PRs 4-6
   - §3.4 (data structures) → defined in PR 1 / PR 3 task code
-  - §3.5 (CLI surface) → Task 4.1
+  - §3.5 (edges stay u32 decision) → enforced in PR 1
+  - §3.6 (internal API stability) → contract; no task
+  - §3.7 (CLI surface) → Task 4.1
   - §4 (output format) → Tasks 4.2, 5.1, 6.1
   - §5 (perf + memory) → smoke tests in 4.2, 5.1, 6.1
   - §6 (testing) → unit tests in PR 2/3; integration smoke in 4.2, 5.1, 6.1

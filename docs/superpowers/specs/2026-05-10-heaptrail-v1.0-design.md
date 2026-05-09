@@ -30,6 +30,7 @@ The user pain shape is "is this 35,000-instance class actually 35 MB or actually
 - No incremental / streaming dominator computation. v1.0.0 builds the full graph in memory; users who can't afford the working memory budget skip the flag.
 - No retained-size deltas in `--diff-from`/`--diff-to`. Could come later; out of scope.
 - No "what would freeing this class save?" hypothetical-retained / exclusive-retained metric. Plain dominator-tree retained only.
+- **No reference-strength filtering.** v1.0.0 includes weak / soft / phantom-reference edges in the graph and therefore in retained-size sums — that is the strict graph-theoretic dominator-tree definition. MAT's default leak-hunting workflow excludes those edges, so a side-by-side comparison will show MAT's retained smaller than heaptrail's for any object reachable only via a `WeakReference`/`SoftReference`/`PhantomReference`. Selective exclusion ships in v1.1+ as `--exclude-soft-weak`, which rebuilds the graph dropping outgoing edges from `java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses. Document this in the USERGUIDE so users don't read MAT-vs-heaptrail divergence as a bug.
 
 ## 3. Architecture
 
@@ -119,7 +120,27 @@ pub struct RenderedResult {
 }
 ```
 
-### 3.5 CLI surface
+### 3.5 Edge representation — decision
+
+`ReferenceGraph.edges_targets: Vec<u32>` stores **target node indices only** — no per-edge field-name id, no per-edge reference-strength tag. Rationale:
+
+- Retained-size aggregation is label-free: it sums shallow bytes in the dominator-tree post-order, not per-field.
+- Reference-strength filtering (v1.1.0 `--exclude-soft-weak`) can be implemented at the **node** level: at graph-build time, detect when a source class is a `java.lang.ref.{Soft,Weak,Phantom}Reference` subclass, and drop **all** of its outgoing edges. The `Reference.referent` field is effectively the only outgoing object reference on those classes that matters; suppressing the source-node's whole edge fan is equivalent to per-edge filtering for retained-size purposes. Class-id set lookup at build time costs nothing.
+- Edge labels would cost ~30 MiB on a 200 MiB Android dump (`Vec<u16>` of length 15M edges). The only feature that would justify it is "merged shortest paths with field labels," which is independently scheduled for v1.1.0 but doesn't need per-edge labels — the renderer can resolve labels on demand by walking the source class layout for the few hops it needs to print.
+
+Decision: **edges stay `u32` for the v1.x line.**
+
+### 3.6 Internal API stability
+
+`ReferenceGraph`, `lengauer_tarjan`, and `RetainedAnalysis` (with its `retained`, `class_retained`, and `top_instances` fields) are part of heaptrail's **internal v1.x API contract**. v1.1+ features depend on them:
+
+- **`--leak-suspects`** consumes `retained` and `idom` to rank dominator-tree subtrees by retained share.
+- **`--exclude-soft-weak`** modifies the *graph build* (drops outgoing edges from `Reference` subclasses) but reuses the dominator + retained pipeline as-is.
+- **`--merge-paths`** consumes `idom` to fold paths that converge at the same dominator.
+
+These types must not be renamed, restructured, or have their semantics changed without bumping the major version. New optional fields are fine; renaming `class_retained` is not. The crate is a binary so this contract is internal — the constraint is on heaptrail's own development cadence, not on downstream API users.
+
+### 3.7 CLI surface
 
 ```
 --retained-size       Compute and surface retained sizes via dominator tree.
