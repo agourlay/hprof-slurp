@@ -5,6 +5,7 @@ mod errors;
 mod parser;
 mod paths;
 mod prefetch_reader;
+mod preview;
 mod referrer;
 mod rendered_result;
 mod result_recorder;
