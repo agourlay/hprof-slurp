@@ -65,6 +65,7 @@ a JVM dump captured this way.
 | Walk an object up to a GC root | `heaptrail -i heap.hprof --paths-from-id <u64>` |
 | Compare two snapshots (churn) | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
 | Pipe to `jq` / dashboards | append `--json` to any of the above |
+| **Show what a giant `char[]`/`byte[]` actually contains** | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
 
 Common flags:
 
@@ -74,6 +75,9 @@ Common flags:
 - `--max-depth N` — bail on path walk after N hops (default 12).
 - `--diff-by count\|bytes` — sort diff by Δinstance-count (default) or Δshallow-bytes.
 - `-l` / `--listStrings` — dump every UTF-8 string in summary mode.
+- `--preview-bytes N` — opt-in content preview for primitive arrays (v0.9.0).
+- `--list-arrays-min-bytes N` — threshold for the `-l --preview-bytes`
+  standalone-large-arrays section (default 1024).
 - `-d` / `--debug` — verbose record-tag tracing.
 - `--json` — also write a structured JSON sidecar file.
 
@@ -390,6 +394,83 @@ heaptrail --diff-from heap-phase4-jvm.hprof --diff-to heap-phase4-jvm.hprof
 
 (Real wall time on the 235 MiB dump: 320 ms — both files share the OS page
 cache after the first read.)
+
+---
+
+## B — `--preview-bytes` — content preview
+
+### Why this exists
+
+Real session that motivated this: `summary` showed a 72 MiB `char[]`.
+`--paths-from-id` walked to a `StringBuilder.value` rooted at a Gson
+serializer. The chain told us *who* held it but not *what* it contained.
+The investigation needed:
+
+1. `adb shell` into the device to find files matching the size
+2. Source-grep the codebase for serialization code
+3. Eventually realize it was the `home_catalog_snapshot.xml` from
+   `SharedPreferences`
+
+If the first 200 chars had been visible inline, the identification would
+have been instant: `<?xml version="1.0" encoding='utf-8' standalone='yes' ?>`
+unmistakably labels the `char[]` as the SharedPreferences blob.
+
+heaptrail told us *who* held it. `--preview-bytes` answers *what* it is.
+
+### How to use it
+
+`--preview-bytes N` is a global flag. When set, primitive arrays
+(`char[]`, `byte[]`, etc.) get a preview line showing the first N bytes,
+auto-decoded as text or hex.
+
+```bash
+# In summary's "Largest array instances" list
+heaptrail -i my.hprof -t 5 --preview-bytes 200
+
+# Under primitive-array hops in --paths-from-id
+heaptrail -i my.hprof --paths-from-id 1661812752 --max-depth 12 --preview-bytes 200
+
+# When --find-referrers targets a specific array
+heaptrail -i my.hprof --find-referrers id:1661812752 --preview-bytes 200
+
+# Lists every standalone large array (>= 1 KiB) above the String list
+heaptrail -i my.hprof -l --preview-bytes 200 --list-arrays-min-bytes 1024
+```
+
+### Sanitization
+
+| Element type | Decoder | Fallback |
+|--------------|---------|----------|
+| `Char` (UTF-16 BE — Java strings) | UTF-16 → escaped text | hex |
+| `Byte` | UTF-8 → escaped text | hex |
+| `Int` / `Long` / `Float` / `Double` / `Short` | always hex | – |
+
+Control chars (other than `\n`, `\t`, `\r`, which are kept as escape
+sequences) are rendered as `\xNN`. Hex output is xxd-style (offset, hex,
+ASCII column).
+
+### Memory cost
+
+`--preview-bytes N` runs an opt-in parser pass that retains *at most* N
+bytes per primitive array. For an Android dump with ~1.3M primitive
+arrays and N=200, peak working memory adds ~260 MiB. For typical JVM
+dumps (orders of magnitude fewer arrays) the cost is negligible.
+
+### When to use
+
+- After `summary` shows a giant `char[]` / `byte[]` whose retainer chain
+  doesn't identify the content — the canonical SharedPreferences-XML /
+  cached-JSON / image-buffer disambiguation case. `--preview-bytes 200`
+  plus a re-run of `summary` adds inline content snippets to the
+  largest-array list.
+- During `--paths-from-id` walks where a hop lands on a primitive array
+  (e.g. `StringBuilder.value` → giant `char[]` of unknown content).
+- For ad-hoc inspection: `--find-referrers id:<u64> --preview-bytes 200`
+  shows the array's contents as a header on the referrer report.
+- For exploratory listing of all big text-like arrays:
+  `-l --preview-bytes 200` adds a "Standalone large arrays" section
+  after the `List of Strings` block — useful when the leak is in raw
+  `byte[]` / `char[]` allocations, not `java.lang.String` instances.
 
 ---
 

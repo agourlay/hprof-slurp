@@ -13,7 +13,7 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 0.8.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 0.9.0+).
 
 ## When to use
 
@@ -226,6 +226,43 @@ First thing to reach for after `summary` when alloc-tracking is on.
 slurp pass; the resolution overhead is dominated by class+frame map
 lookups, not parsing).
 
+### 6. `--preview-bytes N` — content preview (v0.9.0, feature B)
+
+Global flag (not its own mode — applies to summary, `--paths-from-id`,
+`--find-referrers id:N`, and `-l`). When set, primitive arrays
+(`char[]`, `byte[]`, etc.) are previewed inline:
+
+```bash
+heaptrail -i heap.hprof -t 5 --preview-bytes 200
+heaptrail -i heap.hprof --paths-from-id <u64> --preview-bytes 200
+heaptrail -i heap.hprof --find-referrers id:<u64> --preview-bytes 200
+heaptrail -i heap.hprof -l --preview-bytes 200
+```
+
+**What it tells you:** UTF-8 / UTF-16 BE / hex auto-detect of the
+first N bytes per primitive array, surfaced under each "Largest array
+instances" entry, primitive-array path hops, find-referrers targets,
+and (with `-l`) a standalone-large-arrays listing keyed off
+`--list-arrays-min-bytes` (default 1024 bytes).
+
+*Engineering use case:* a 72 MiB `char[]` whose holder chain ended at
+a Gson `StringBuilder` — heaptrail told us *who* held it but not
+*what* it contained. Identifying the content as a SharedPreferences
+XML blob required `adb shell` to find a 7.86 MB file on disk plus a
+source-grep for `gson\.toJson|moshi.*toJson`. With
+`--preview-bytes 200`, the inline
+`<?xml version="1.0" encoding='utf-8' standalone='yes' ?>...home_catalog_snapshot...`
+would have identified it instantly. This is the canonical
+"big primitive array of unknown content" disambiguation pattern —
+SharedPreferences XML, cached JSON, decoded log buffers, and image
+magic bytes all read at a glance.
+
+**Wall time / memory:** opt-in parser pass retains at most N bytes
+per primitive array. Memory bound: N × array-count. ~260 MiB peak on
+a 200 MiB Android dump with N=200; negligible on typical JVM dumps.
+Default 0 (off) — every existing CLI invocation produces byte-identical
+output unless `--preview-bytes` is set.
+
 ### `--json` for any mode
 
 Append `--json` to any of the above. Writes `heaptrail-<mode>-<ts>.json`
@@ -260,6 +297,12 @@ Given a fresh heap dump and a vague "memory looks bad" report:
    that allocated it." Most direct shortcut available; skips the
    source-grep step entirely. Use as a *replacement* for steps 2–4
    when the data is present.
+7. (Optional) **`--preview-bytes 200`** → append to any of the above
+   surfaces inline content for `char[]` / `byte[]` arrays. Use when a
+   chain leads to a giant primitive array and the holder identity
+   alone doesn't say what it contains (the canonical "is this big
+   `char[]` a SharedPreferences XML, a cached JSON blob, a log buffer,
+   or a decoded image?" disambiguation).
 
 ## Capturing an Android heap dump
 
@@ -296,6 +339,7 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Compare two snapshots | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
 | Glob targeting (family of classes) | `heaptrail -i heap.hprof --target-glob 'com.foo.**'` |
 | Allocation sites (when alloc-tracked) | `heaptrail -i heap.hprof --allocation-sites --top 20` |
+| Inline content preview for `char[]`/`byte[]` | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
 | JSON sidecar | append `--json` to any of the above |
 | List all UTF-8 strings | `heaptrail -i heap.hprof -l` |
 

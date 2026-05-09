@@ -55,6 +55,11 @@ reference and worked examples.
 - **allocation sites** (`--allocation-sites`) — when the dump was captured
   under allocation tracking, print the top-N call sites with resolved Java
   stack traces.
+- **content preview** (`--preview-bytes`) — show the first N bytes/chars
+  of `char[]` / `byte[]` arrays inline (UTF-8 / UTF-16 / hex auto-detect).
+  Identifies SharedPreferences XML, JSON caches, log buffers, and
+  image-magic-byte signatures without leaving heaptrail. Closes the gap
+  between *who* holds an over-allocated array and *what* is in it.
 
 ## Usage
 
@@ -212,6 +217,28 @@ Requires the dump to have been captured under allocation tracking
 top-N allocation sites with resolved Java stack traces. Summary always
 reports whether the dump has alloc-tracking data. Details in
 [USERGUIDE §C](USERGUIDE.md#c---allocation-sites--per-class-stack-traces).
+
+### `--preview-bytes` — content preview (v0.9.0)
+
+```bash
+heaptrail -i my.hprof -t 5 --preview-bytes 200
+heaptrail -i my.hprof --paths-from-id <id> --preview-bytes 200
+heaptrail -i my.hprof --find-referrers id:<id> --preview-bytes 200
+heaptrail -i my.hprof -l --preview-bytes 200 --list-arrays-min-bytes 4096
+```
+
+Show the first N bytes/chars of primitive arrays (`char[]`, `byte[]`,
+etc.) inline with the existing output. UTF-8 / UTF-16 BE auto-detect
+with control-char escaping; falls back to xxd-style hex on binary.
+Default 0 (off).
+
+**Engineering motivation:** a 72 MiB `char[]` whose holder chain ended
+at a Gson `StringBuilder` told us *who* held it but not *what* it
+contained — investigation needed `adb shell` for file size + source-grep
+for serialization candidates. With `--preview-bytes 200`, the inline
+`<?xml version="1.0"...home_catalog_snapshot...` would have identified
+it as the SharedPreferences XML blob in one command. Details in
+[USERGUIDE §B](USERGUIDE.md#b---preview-bytes--content-preview).
 
 ### `--json` — structured output for scripts
 
