@@ -45,17 +45,30 @@ pub struct PathResult {
     pub root_frame: Option<crate::referrer::ResolvedFrame>,
     pub max_depth_reached: bool,
     pub depth: u8,
+    /// Preview bodies (when --preview-bytes > 0) keyed by object_id.
+    /// Used by `render_text` to display content under primitive-array
+    /// hops or the start id. Skipped from JSON since the truncated
+    /// blob isn't useful structured.
+    #[serde(skip)]
+    pub array_previews: ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>,
 }
 
 pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
-    let (input_file, start_object_id, max_depth, debug) = match mode {
+    let (input_file, start_object_id, max_depth, debug, preview_bytes) = match mode {
         Mode::Paths {
             input_file,
             object_id,
             max_depth,
             debug,
+            preview_bytes,
             ..
-        } => (input_file.as_str(), *object_id, *max_depth, *debug),
+        } => (
+            input_file.as_str(),
+            *object_id,
+            *max_depth,
+            *debug,
+            *preview_bytes,
+        ),
         _ => {
             return Err(HprofSlurpError::NotYetImplemented {
                 what: "paths::run only handles Mode::Paths",
@@ -64,6 +77,12 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
     };
 
     let idx = pass1_index(input_file, debug)?;
+    let array_previews: ahash::AHashMap<u64, crate::result_recorder::ArrayPreview> =
+        if preview_bytes > 0 {
+            collect_primitive_array_previews(input_file, debug, preview_bytes)?
+        } else {
+            ahash::AHashMap::new()
+        };
 
     let mut steps: Vec<PathStep> = Vec::new();
     let mut current = start_object_id;
@@ -150,7 +169,45 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
         root_frame,
         max_depth_reached,
         depth,
+        array_previews,
     })
+}
+
+/// Run an extra streaming pass with retain_primitive_bodies=true and
+/// `preview_bytes_limit=N` to collect truncated bodies of every
+/// primitive array in the dump, keyed by object_id. Used by
+/// `--paths-from-id --preview-bytes N` and `--find-referrers id:N
+/// --preview-bytes N`.
+pub(crate) fn collect_primitive_array_previews(
+    path: &str,
+    debug: bool,
+    preview_bytes: u32,
+) -> Result<ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>, HprofSlurpError> {
+    use crate::parser::record::Record;
+    let mut previews: ahash::AHashMap<u64, crate::result_recorder::ArrayPreview> =
+        ahash::AHashMap::new();
+    crate::slurp::parse_records_with_modes(path, debug, false, true, preview_bytes, |rec| {
+        if let Record::GcSegment(GcRecord::PrimitiveArrayDump {
+            object_id,
+            number_of_elements,
+            element_type,
+            body: Some(b),
+            ..
+        }) = rec
+        {
+            let elem_size = field_byte_size(element_type, 1);
+            let total = u64::from(number_of_elements) * (elem_size as u64);
+            previews.insert(
+                object_id,
+                crate::result_recorder::ArrayPreview {
+                    element_type,
+                    bytes: b,
+                    total_bytes: total,
+                },
+            );
+        }
+    })?;
+    Ok(previews)
 }
 
 /// One streaming pass: scan every InstanceDump body and ObjectArrayDump
@@ -245,6 +302,9 @@ pub fn render_text(r: &PathResult) -> String {
         r.start_object_id, r.depth
     );
     let _ = writeln!(out, "  start  ── id={}", r.start_object_id);
+    if let Some(preview) = r.array_previews.get(&r.start_object_id) {
+        render_preview_block(&mut out, preview);
+    }
     for (i, s) in r.steps.iter().enumerate() {
         let arrow = match (&s.via_field, s.array_index) {
             (Some(f), _) => format!("via {}.{}", s.holder_class, f),
@@ -257,6 +317,9 @@ pub fn render_text(r: &PathResult) -> String {
             i + 1,
             s.holder_object_id,
         );
+        if let Some(preview) = r.array_previews.get(&s.holder_object_id) {
+            render_preview_block(&mut out, preview);
+        }
     }
     if r.terminated_at_root {
         let _ = writeln!(
@@ -299,6 +362,33 @@ pub fn render_text(r: &PathResult) -> String {
     out
 }
 
+fn render_preview_block(out: &mut String, preview: &crate::result_recorder::ArrayPreview) {
+    use crate::preview::{PreviewKind, render_preview};
+    use std::fmt::Write;
+    let kind = render_preview(
+        &preview.bytes,
+        preview.element_type,
+        preview.total_bytes as usize,
+    );
+    match kind {
+        PreviewKind::Text { snippet, truncated } => {
+            let trimmed: String = snippet.chars().take(140).collect();
+            let suffix = if truncated || snippet.chars().count() > 140 {
+                "..."
+            } else {
+                ""
+            };
+            let _ = writeln!(out, "         {trimmed}{suffix}");
+        }
+        PreviewKind::Hex { lines, total_bytes } => {
+            let _ = writeln!(out, "         (binary, {total_bytes} bytes total)");
+            for line in lines.iter().take(2) {
+                let _ = writeln!(out, "         {line}");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,7 +400,35 @@ mod tests {
             max_depth,
             debug: false,
             json: false,
+            preview_bytes: 0,
         }
+    }
+
+    #[test]
+    fn render_text_includes_start_preview_when_array_previews_has_start_id() {
+        use crate::result_recorder::ArrayPreview;
+        let mut previews = ahash::AHashMap::new();
+        previews.insert(
+            42u64,
+            ArrayPreview {
+                element_type: crate::parser::gc_record::FieldType::Byte,
+                bytes: b"<?xml version=\"1.0\"?>".to_vec().into_boxed_slice(),
+                total_bytes: 21,
+            },
+        );
+        let r = PathResult {
+            start_object_id: 42,
+            steps: vec![],
+            terminated_at_root: false,
+            root_kind: None,
+            root_thread_name: None,
+            root_frame: None,
+            max_depth_reached: false,
+            depth: 0,
+            array_previews: previews,
+        };
+        let out = render_text(&r);
+        assert!(out.contains("<?xml"), "expected preview, got:\n{out}");
     }
 
     #[test]
@@ -329,6 +447,7 @@ mod tests {
             }),
             max_depth_reached: false,
             depth: 0,
+            array_previews: ahash::AHashMap::new(),
         };
         let out = render_text(&r);
         assert!(
@@ -360,6 +479,7 @@ mod tests {
             root_frame: None,
             max_depth_reached: false,
             depth: 1,
+            array_previews: ahash::AHashMap::new(),
         };
         let out = render_text(&r);
         assert!(
@@ -379,6 +499,7 @@ mod tests {
             root_frame: None,
             max_depth_reached: false,
             depth: 0,
+            array_previews: ahash::AHashMap::new(),
         };
         let out = render_text(&r);
         assert!(

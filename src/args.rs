@@ -144,6 +144,7 @@ pub enum Mode {
         max_depth: u8,
         debug: bool,
         json: bool,
+        preview_bytes: u32,
     },
     Diff {
         from: String,
@@ -232,6 +233,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             max_depth: cli.max_depth,
             debug: cli.debug,
             json: cli.json,
+            preview_bytes: cli.preview_bytes,
         });
     }
     Ok(Mode::Summary {
