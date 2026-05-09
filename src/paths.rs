@@ -25,6 +25,9 @@ pub struct PathStep {
     pub holder_class: String,
     /// Field name when the holder is an instance, `None` when it is an Object[].
     pub via_field: Option<String>,
+    /// Element slot when the holder is an `Object[]`; `None` for
+    /// instance-field hops. Always `Some(_)` when `via_field` is `None`.
+    pub array_index: Option<u32>,
     /// The id we were tracing on this hop.
     pub held_object_id: u64,
 }
@@ -196,6 +199,7 @@ fn find_first_holder(
                                     holder_object_id: object_id,
                                     holder_class,
                                     via_field,
+                                    array_index: None,
                                     held_object_id: target,
                                 });
                                 return;
@@ -210,6 +214,10 @@ fn find_first_holder(
                     elements: Some(elems),
                     ..
                 } if elems.contains(&target) => {
+                    let array_index = elems
+                        .iter()
+                        .position(|&rid| rid == target)
+                        .map(|p| p as u32);
                     let holder_class = idx
                         .class_name(array_class_id)
                         .unwrap_or_else(|| format!("(class_id={array_class_id})"));
@@ -217,6 +225,7 @@ fn find_first_holder(
                         holder_object_id: object_id,
                         holder_class,
                         via_field: None,
+                        array_index,
                         held_object_id: target,
                     });
                 }
@@ -237,9 +246,10 @@ pub fn render_text(r: &PathResult) -> String {
     );
     let _ = writeln!(out, "  start  ── id={}", r.start_object_id);
     for (i, s) in r.steps.iter().enumerate() {
-        let arrow = match &s.via_field {
-            Some(f) => format!("via {}.{}", s.holder_class, f),
-            None => format!("via {}[]", s.holder_class),
+        let arrow = match (&s.via_field, s.array_index) {
+            (Some(f), _) => format!("via {}.{}", s.holder_class, f),
+            (None, Some(idx)) => format!("via {}[{idx}]", s.holder_class),
+            (None, None) => format!("via {}[]", s.holder_class),
         };
         let _ = writeln!(
             out,
@@ -330,6 +340,31 @@ mod tests {
                 "at android.app.SharedPreferencesImpl$EditorImpl.commitToMemory(SharedPreferencesImpl.java:478)"
             ),
             "expected qualified frame, got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn render_text_shows_array_index_for_object_array_hop() {
+        let r = PathResult {
+            start_object_id: 100,
+            steps: vec![PathStep {
+                holder_object_id: 200,
+                holder_class: "java.lang.Object[]".to_string(),
+                via_field: None,
+                array_index: Some(12),
+                held_object_id: 100,
+            }],
+            terminated_at_root: false,
+            root_kind: None,
+            root_thread_name: None,
+            root_frame: None,
+            max_depth_reached: false,
+            depth: 1,
+        };
+        let out = render_text(&r);
+        assert!(
+            out.contains("via java.lang.Object[][12]"),
+            "expected array index in arrow, got:\n{out}"
         );
     }
 
