@@ -35,6 +35,11 @@ pub struct PathResult {
     pub steps: Vec<PathStep>,
     pub terminated_at_root: bool,
     pub root_kind: Option<&'static str>,
+    /// Thread name (when the terminating root is owned by a thread).
+    /// Always `None` for non-thread roots like `RootStickyClass`.
+    pub root_thread_name: Option<String>,
+    /// Top frame at the terminator (only for `RootJavaFrame`).
+    pub root_frame: Option<crate::referrer::ResolvedFrame>,
     pub max_depth_reached: bool,
     pub depth: u8,
 }
@@ -63,11 +68,55 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
     let mut max_depth_reached = false;
     let mut terminated_at_root = false;
     let mut root_kind: Option<&'static str> = None;
+    let mut root_thread_name: Option<String> = None;
+    let mut root_frame: Option<crate::referrer::ResolvedFrame> = None;
 
     loop {
         if let Some(kind) = idx.gc_root_kind_by_id.get(&current).copied() {
             terminated_at_root = true;
             root_kind = Some(kind);
+            // Resolve thread name + top frame for thread-owned roots.
+            // (a) RootJavaFrame/RootJniLocal/RootJniMonitor have a
+            //     ThreadFrameRef in root_thread_meta_by_id.
+            // (b) RootThreadObject's object_id IS the thread itself, so
+            //     look it up in thread_serial_by_obj_id to get the serial.
+            let meta = idx
+                .root_thread_meta_by_id
+                .get(&current)
+                .copied()
+                .or_else(|| {
+                    idx.thread_serial_by_obj_id.get(&current).map(|&serial| {
+                        crate::referrer::ThreadFrameRef {
+                            thread_serial: serial,
+                            frame_idx: None,
+                        }
+                    })
+                });
+            if let Some(m) = meta {
+                root_thread_name = idx
+                    .thread_name_by_serial
+                    .get(&m.thread_serial)
+                    .map(|s| s.as_ref().to_string());
+                if let Some(idx_in_trace) = m.frame_idx {
+                    // Frame index is into the thread's stack trace. The
+                    // StackTrace records are keyed by their own serial,
+                    // not by thread_serial. We don't have a direct
+                    // thread_serial -> stack_trace_serial map; iterate
+                    // stack_trace_by_serial to find the trace whose
+                    // thread_serial matches. (Cheap: usually <100 traces.)
+                    // NOTE: StackTraceData is not stored, only frame ids;
+                    // best we can do is look up the first matching trace.
+                    // For robustness, also fall back to looking up the
+                    // index in any trace recorded against this thread's
+                    // serial: many dumps record multiple stack traces per
+                    // thread but the indexer only kept the frame ids.
+                    if let Some(frames) = idx.stack_trace_by_serial.get(&m.thread_serial)
+                        && let Some(&frame_id) = frames.get(idx_in_trace as usize)
+                    {
+                        root_frame = idx.resolve_frame(frame_id);
+                    }
+                }
+            }
             break;
         }
         if depth >= max_depth {
@@ -94,6 +143,8 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
         steps,
         terminated_at_root,
         root_kind,
+        root_thread_name,
+        root_frame,
         max_depth_reached,
         depth,
     })
@@ -203,6 +254,33 @@ pub fn render_text(r: &PathResult) -> String {
             "  → reached GC root: {}",
             r.root_kind.unwrap_or("(unknown)")
         );
+        // Thread + frame block (feature A). Renders only when meta is present.
+        if let Some(name) = &r.root_thread_name {
+            let _ = writeln!(out, "        thread \"{name}\"");
+        } else if matches!(
+            r.root_kind,
+            Some("RootJavaFrame")
+                | Some("RootJniLocal")
+                | Some("RootJniMonitor")
+                | Some("RootThreadObject")
+        ) {
+            // Thread root, but no metadata — be explicit so users know it's
+            // a dump-content gap, not a heaptrail bug.
+            let _ = writeln!(out, "        (thread metadata not in dump)");
+        }
+        if let Some(f) = &r.root_frame {
+            let qualified = match &f.class {
+                Some(c) => format!("{c}.{}", f.method),
+                None => f.method.clone(),
+            };
+            let location = match (&f.file, f.line) {
+                (Some(file), n) if n > 0 => format!("({file}:{n})"),
+                (Some(file), _) => format!("({file})"),
+                (None, n) if n > 0 => format!("(line {n})"),
+                (None, _) => String::new(),
+            };
+            let _ = writeln!(out, "        at {qualified}{location}");
+        }
     } else if r.max_depth_reached {
         let _ = writeln!(out, "  → stopped at --max-depth (chain may continue)");
     } else {
@@ -223,6 +301,55 @@ mod tests {
             debug: false,
             json: false,
         }
+    }
+
+    #[test]
+    fn render_text_shows_thread_block_for_root_java_frame() {
+        let r = PathResult {
+            start_object_id: 100,
+            steps: vec![],
+            terminated_at_root: true,
+            root_kind: Some("RootJavaFrame"),
+            root_thread_name: Some("pool-7-thread-2".to_string()),
+            root_frame: Some(crate::referrer::ResolvedFrame {
+                method: "commitToMemory".to_string(),
+                class: Some("android.app.SharedPreferencesImpl$EditorImpl".to_string()),
+                file: Some("SharedPreferencesImpl.java".to_string()),
+                line: 478,
+            }),
+            max_depth_reached: false,
+            depth: 0,
+        };
+        let out = render_text(&r);
+        assert!(
+            out.contains("thread \"pool-7-thread-2\""),
+            "expected thread name, got:\n{out}"
+        );
+        assert!(
+            out.contains(
+                "at android.app.SharedPreferencesImpl$EditorImpl.commitToMemory(SharedPreferencesImpl.java:478)"
+            ),
+            "expected qualified frame, got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn render_text_shows_metadata_gap_for_thread_root_without_meta() {
+        let r = PathResult {
+            start_object_id: 100,
+            steps: vec![],
+            terminated_at_root: true,
+            root_kind: Some("RootJavaFrame"),
+            root_thread_name: None,
+            root_frame: None,
+            max_depth_reached: false,
+            depth: 0,
+        };
+        let out = render_text(&r);
+        assert!(
+            out.contains("(thread metadata not in dump)"),
+            "expected gap line, got:\n{out}"
+        );
     }
 
     #[test]

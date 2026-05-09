@@ -37,10 +37,6 @@ use crate::slurp::parse_records;
 /// strings. Built lazily — we only resolve frames the renderer actually
 /// asks for, so a dump with 50K frames doesn't pay for resolving any of
 /// them unless `--paths-from-id` chases one.
-// `dead_code` allowed only in the bridging commit between Task 1.2 (which
-// indexes the data) and Task 1.3 (which renders it via PathResult). The
-// allow goes away once paths.rs imports this in the next commit.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct ResolvedFrame {
     pub method: String,
@@ -54,9 +50,6 @@ pub struct ResolvedFrame {
 
 /// Pointer recorded when the indexer sees a thread-owned GC root. Used by
 /// `paths::run` to resolve the chain terminator's thread name + top frame.
-// `dead_code` allowed only in the bridging commit; consumed by paths::run
-// in the next commit (Task 1.3).
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ThreadFrameRef {
     pub thread_serial: u32,
@@ -131,7 +124,6 @@ impl Pass1Index {
     /// Resolve a `stack_frame_id` to a `ResolvedFrame` if all the utf8
     /// references in the underlying `StackFrame` record are reachable.
     /// Returns `None` if the frame id isn't known.
-    #[allow(dead_code)] // bridging — consumed by paths::run in Task 1.3
     pub(crate) fn resolve_frame(&self, frame_id: u64) -> Option<ResolvedFrame> {
         let f = self.stack_frame_by_id.get(&frame_id)?;
         let method = self
