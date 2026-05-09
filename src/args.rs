@@ -33,6 +33,20 @@ pub struct Cli {
     #[arg(long = "json", default_value_t = false)]
     pub json: bool,
 
+    /// Show first N bytes/chars of primitive arrays in summary, paths,
+    /// find-referrers id:N, and (with -l) the standalone-array list.
+    /// Default 0 (off); recommended 200. UTF-8 / UTF-16 BE auto-detect
+    /// with control-char escaping; falls back to xxd-style hex on
+    /// binary content. See USERGUIDE §B.
+    #[arg(long = "preview-bytes", value_name = "N", default_value_t = 0)]
+    pub preview_bytes: u32,
+
+    /// Minimum total byte size for a standalone primitive array to
+    /// appear in `-l` output. Effective only when both `-l` and
+    /// `--preview-bytes` are set. Default 1024.
+    #[arg(long = "list-arrays-min-bytes", default_value_t = 1024)]
+    pub list_arrays_min_bytes: u32,
+
     // -- referrer mode --
     /// Find direct + N-hop referrers of a target. Accepts an FQ class name
     /// (e.g. `java.util.ArrayList`) or `id:<u64>` / a bare `<u64>` for a
@@ -112,6 +126,8 @@ pub enum Mode {
         debug: bool,
         list_strings: bool,
         json: bool,
+        preview_bytes: u32,
+        list_arrays_min_bytes: u32,
     },
     FindReferrers {
         input_file: String,
@@ -224,6 +240,8 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         debug: cli.debug,
         list_strings: cli.list_strings,
         json: cli.json,
+        preview_bytes: cli.preview_bytes,
+        list_arrays_min_bytes: cli.list_arrays_min_bytes,
     })
 }
 
@@ -254,6 +272,30 @@ mod args_tests {
         assert!(cli.find_referrers.is_none());
         assert!(cli.paths_from_id.is_none());
         assert!(cli.diff_from.is_none());
+    }
+
+    #[test]
+    fn parses_preview_bytes() {
+        let cli =
+            Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "--preview-bytes", "200"]).unwrap();
+        assert_eq!(cli.preview_bytes, 200);
+        assert_eq!(cli.list_arrays_min_bytes, 1024); // default
+    }
+
+    #[test]
+    fn parses_list_arrays_min_bytes() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--preview-bytes",
+            "100",
+            "--list-arrays-min-bytes",
+            "4096",
+        ])
+        .unwrap();
+        assert_eq!(cli.preview_bytes, 100);
+        assert_eq!(cli.list_arrays_min_bytes, 4096);
     }
 
     #[test]

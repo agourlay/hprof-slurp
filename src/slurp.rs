@@ -122,10 +122,33 @@ where
     Ok(id_size)
 }
 
+/// Existing entry point — runs the streaming pipeline with no preview
+/// retention. Equivalent to `slurp_file_with_preview(.., 0, 1024)`.
 pub fn slurp_file(
     file_path: &str,
     debug_mode: bool,
     list_strings: bool,
+) -> Result<RenderedResult, HprofSlurpError> {
+    slurp_file_with_preview(file_path, debug_mode, list_strings, 0, 1024)
+}
+
+/// Like `slurp_file`, with explicit control over primitive-array
+/// preview capture (v0.9.0 feature B). When `preview_bytes > 0`:
+///
+/// * the parser is constructed with `retain_primitive_bodies=true`
+///   and `preview_bytes_limit=preview_bytes`
+/// * the recorder retains the truncated body of the largest array
+///   of each element type for surfacing under "Largest array
+///   instances" entries
+///
+/// `list_arrays_min_bytes` is the threshold for the `-l` extension
+/// covered by PR 6.
+pub fn slurp_file_with_preview(
+    file_path: &str,
+    debug_mode: bool,
+    list_strings: bool,
+    preview_bytes: u32,
+    list_arrays_min_bytes: u32,
 ) -> Result<RenderedResult, HprofSlurpError> {
     let file = File::open(file_path)?;
     let file_len = file.metadata()?.len() as usize;
@@ -182,12 +205,15 @@ pub fn slurp_file(
 
     // Init stream parser
     let initial_loop_buffer = Vec::with_capacity(READ_BUFFER_SIZE); // will be added to the data pool after the first chunk
-    let stream_parser = HprofRecordStreamParser::new(
+    let stream_parser = HprofRecordStreamParser::with_modes(
         debug_mode,
         id_size,
         file_len,
         FILE_HEADER_LENGTH,
         initial_loop_buffer,
+        false, // retain_bodies
+        preview_bytes > 0,
+        preview_bytes,
     );
 
     // Start stream parser
@@ -200,7 +226,8 @@ pub fn slurp_file(
     )?;
 
     // Init result recorder
-    let result_recorder = ResultRecorder::new(id_size, list_strings);
+    let result_recorder =
+        ResultRecorder::with_preview(id_size, list_strings, preview_bytes, list_arrays_min_bytes);
     let recorder_thread = result_recorder.start(receive_records, send_result, send_pooled_vec)?;
 
     // Init progress bar

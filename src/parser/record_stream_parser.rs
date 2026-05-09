@@ -21,47 +21,6 @@ pub struct HprofRecordStreamParser {
 }
 
 impl HprofRecordStreamParser {
-    pub const fn new(
-        debug_mode: bool,
-        id_size: u32,
-        file_len: usize,
-        processed_len: usize,
-        initial_loop_buffer: Vec<u8>,
-    ) -> Self {
-        Self::with_retain_bodies(
-            debug_mode,
-            id_size,
-            file_len,
-            processed_len,
-            initial_loop_buffer,
-            false,
-        )
-    }
-
-    /// Like `new`, but with explicit control over whether instance bodies
-    /// and object-array element ids are retained on the emitted GcRecords.
-    /// Set `retain_bodies = true` for `--find-referrers`, `--paths-from-id`,
-    /// and any other mode that needs to walk the reference graph.
-    pub const fn with_retain_bodies(
-        debug_mode: bool,
-        id_size: u32,
-        file_len: usize,
-        processed_len: usize,
-        initial_loop_buffer: Vec<u8>,
-        retain_bodies: bool,
-    ) -> Self {
-        Self::with_modes(
-            debug_mode,
-            id_size,
-            file_len,
-            processed_len,
-            initial_loop_buffer,
-            retain_bodies,
-            false,
-            0,
-        )
-    }
-
     /// Full mode-control entry. v0.9.0 adds `retain_primitive_bodies`
     /// and `preview_bytes_limit` on top of the existing `retain_bodies`
     /// flag, so callers can opt into primitive-array previews

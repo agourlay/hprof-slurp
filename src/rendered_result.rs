@@ -89,6 +89,11 @@ pub struct RenderedResult {
     /// programmatically — kept public for downstream JSON consumers.
     #[allow(dead_code)]
     pub allocation_sites_record_count: u32,
+    /// `object_id -> ArrayPreview` for the largest primitive array of
+    /// each element type. Empty when `--preview-bytes` was not set.
+    /// (v0.9.0 feature B — consumed by the summary renderer to print
+    /// preview lines under "Largest array instances".)
+    pub array_previews: ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>,
 }
 
 impl RenderedResult {
@@ -101,8 +106,9 @@ impl RenderedResult {
             captured_strings,
             allocation_sites: _,
             allocation_sites_record_count: _,
+            array_previews,
         } = self;
-        let memory = Self::render_memory_usage(&mut memory_usage, top);
+        let memory = Self::render_memory_usage(&mut memory_usage, top, &array_previews);
         let mut result = format!("{summary}\n{thread_info}\n{memory}");
         if let Some(duplicated_strings) = duplicated_strings {
             writeln!(result, "{duplicated_strings}").expect("write should not fail");
@@ -113,7 +119,11 @@ impl RenderedResult {
         result
     }
 
-    fn render_memory_usage(memory_usage: &mut Vec<ClassAllocationStats>, top: usize) -> String {
+    fn render_memory_usage(
+        memory_usage: &mut Vec<ClassAllocationStats>,
+        top: usize,
+        array_previews: &ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>,
+    ) -> String {
         // Holds the final result
         let mut analysis = String::new();
 
@@ -164,6 +174,37 @@ impl RenderedResult {
                     display_size, s.largest_object_id, s.class_name
                 )
                 .expect("Could not write to analysis");
+                // v0.9.0 (feature B): preview line for the largest
+                // primitive array of this class, when --preview-bytes was
+                // set. Indented two extra spaces under the class row.
+                if let Some(preview) = array_previews.get(&s.largest_object_id) {
+                    use crate::preview::{PreviewKind, render_preview};
+                    let kind = render_preview(
+                        &preview.bytes,
+                        preview.element_type,
+                        preview.total_bytes as usize,
+                    );
+                    match kind {
+                        PreviewKind::Text { snippet, truncated } => {
+                            let trimmed: String = snippet.chars().take(140).collect();
+                            let suffix = if truncated || snippet.chars().count() > 140 {
+                                "..."
+                            } else {
+                                ""
+                            };
+                            writeln!(analysis, "             {trimmed}{suffix}")
+                                .expect("Could not write to analysis");
+                        }
+                        PreviewKind::Hex { lines, total_bytes } => {
+                            writeln!(analysis, "             (binary, {total_bytes} bytes total)")
+                                .expect("Could not write to analysis");
+                            for line in lines.iter().take(2) {
+                                writeln!(analysis, "             {line}")
+                                    .expect("Could not write to analysis");
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -325,7 +366,8 @@ mod tests {
     fn text_output_describes_raw_shallow_dump_objects() {
         let mut memory_usage = vec![ClassAllocationStats::new("Thing".to_string(), 1, 16, 16)];
 
-        let output = RenderedResult::render_memory_usage(&mut memory_usage, 1);
+        let output =
+            RenderedResult::render_memory_usage(&mut memory_usage, 1, &ahash::AHashMap::new());
 
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));

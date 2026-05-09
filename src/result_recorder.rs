@@ -75,10 +75,27 @@ impl ArrayCounter {
     }
 }
 
+/// Truncated body of a single primitive array, captured for the
+/// `--preview-bytes` family of features (v0.9.0).
+#[derive(Debug, Clone)]
+pub struct ArrayPreview {
+    pub element_type: FieldType,
+    pub bytes: Box<[u8]>,
+    /// Full size of the array in bytes (not the truncated `bytes`).
+    pub total_bytes: u64,
+}
+
 pub struct ResultRecorder {
     // Recorder's params
     id_size: u32,
     list_strings: bool,
+    /// v0.9.0 — non-zero enables primitive-array preview capture.
+    preview_bytes: u32,
+    /// v0.9.0 — threshold for the `-l` standalone-array section.
+    /// Wired into the recorder constructor now; consumed in PR 6 by the
+    /// extended `render_captured_strings` (`-l --preview-bytes`).
+    #[allow(dead_code)]
+    list_arrays_min_bytes: u32,
     // Tag counters
     classes_unloaded: u32,
     stack_frames: u32,
@@ -121,13 +138,27 @@ pub struct ResultRecorder {
     object_array_counters: AHashMap<u64, ArrayCounter>,
     stack_trace_by_serial_number: AHashMap<u32, StackTraceData>,
     stack_frame_by_id: AHashMap<u64, StackFrameData>,
+    /// `object_id -> truncated body` for the largest primitive array of
+    /// each element type. Only populated when `preview_bytes > 0`. Drained
+    /// into `RenderedResult.array_previews`.
+    array_previews: AHashMap<u64, ArrayPreview>,
 }
 
 impl ResultRecorder {
-    pub fn new(id_size: u32, list_strings: bool) -> Self {
+    /// v0.9.0: full constructor with explicit `preview_bytes` /
+    /// `list_arrays_min_bytes` for primitive-array preview capture.
+    /// Pass `0, 1024` for the default behavior (no preview retention).
+    pub fn with_preview(
+        id_size: u32,
+        list_strings: bool,
+        preview_bytes: u32,
+        list_arrays_min_bytes: u32,
+    ) -> Self {
         Self {
             id_size,
             list_strings,
+            preview_bytes,
+            list_arrays_min_bytes,
             classes_unloaded: 0,
             stack_frames: 0,
             stack_traces: 0,
@@ -163,6 +194,7 @@ impl ResultRecorder {
             object_array_counters: AHashMap::new(),
             stack_trace_by_serial_number: AHashMap::default(),
             stack_frame_by_id: AHashMap::default(),
+            array_previews: AHashMap::new(),
         }
     }
 
@@ -205,6 +237,7 @@ impl ResultRecorder {
                             },
                             allocation_sites: mem::take(&mut self.captured_allocation_sites),
                             allocation_sites_record_count: self.allocation_sites,
+                            array_previews: mem::take(&mut self.array_previews),
                         };
                         send_result
                             .send(rendered_result)
@@ -316,6 +349,7 @@ impl ResultRecorder {
                             object_id,
                             number_of_elements,
                             element_type,
+                            body,
                             ..
                         } => {
                             let size_bytes = primitive_array_size(
@@ -327,6 +361,45 @@ impl ResultRecorder {
                                 .entry(*element_type)
                                 .or_insert_with(ArrayCounter::empty)
                                 .add_array(size_bytes, *object_id);
+
+                            // v0.9.0 (feature B): capture truncated body
+                            // for the largest primitive array per class.
+                            // We key the preview under the same object_id
+                            // that `add_array` records as
+                            // `max_size_object_id` — the summary's
+                            // "Largest array instances" lookup uses that
+                            // exact id, so the preview always finds its
+                            // entry. Insertion is gated on this being
+                            // *the* current max (post-`add_array`), with a
+                            // contains_key short-circuit so we don't
+                            // re-clone if the same id arrives twice.
+                            if self.preview_bytes > 0
+                                && let Some(b) = body
+                            {
+                                let new_max_oid = self
+                                    .primitive_array_counters
+                                    .get(element_type)
+                                    .map(|ac| ac.max_size_object_id)
+                                    .unwrap_or(0);
+                                if new_max_oid == *object_id
+                                    && !self.array_previews.contains_key(object_id)
+                                {
+                                    // Drop any previous holder for this
+                                    // element type so we don't accumulate
+                                    // when a sequence of strictly larger
+                                    // arrays arrives.
+                                    self.array_previews
+                                        .retain(|_, v| v.element_type != *element_type);
+                                    self.array_previews.insert(
+                                        *object_id,
+                                        ArrayPreview {
+                                            element_type: *element_type,
+                                            bytes: b.clone(),
+                                            total_bytes: size_bytes,
+                                        },
+                                    );
+                                }
+                            }
 
                             self.heap_dump_segments_gc_primitive_array_dump += 1;
                         }
@@ -718,7 +791,7 @@ mod tests {
 
     #[test]
     fn instance_size_uses_mat_style_recursive_field_layout() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::with_preview(4, false, 0, 1024);
         let mut records = vec![
             Record::Utf8String {
                 id: 10,
@@ -793,7 +866,7 @@ mod tests {
 
     #[test]
     fn primitive_array_size_uses_exact_padding_per_array() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::with_preview(4, false, 0, 1024);
         let mut records = vec![
             Record::GcSegment(GcRecord::PrimitiveArrayDump {
                 object_id: 1,
@@ -824,7 +897,7 @@ mod tests {
 
     #[test]
     fn object_array_size_uses_exact_padding_per_array() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::with_preview(4, false, 0, 1024);
         let mut records = vec![
             Record::Utf8String {
                 id: 10,

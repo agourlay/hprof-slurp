@@ -19,7 +19,7 @@ use rendered_result::JsonResult;
 
 use crate::args::{Cli, Mode, resolve};
 use crate::errors::HprofSlurpError;
-use crate::slurp::slurp_file;
+use crate::slurp::slurp_file_with_preview;
 
 fn main() {
     std::process::exit(match main_result() {
@@ -41,7 +41,18 @@ fn main_result() -> Result<(), HprofSlurpError> {
             debug,
             list_strings,
             json,
-        } => run_summary(&input_file, top, debug, list_strings, json, now),
+            preview_bytes,
+            list_arrays_min_bytes,
+        } => run_summary(
+            &input_file,
+            top,
+            debug,
+            list_strings,
+            json,
+            preview_bytes,
+            list_arrays_min_bytes,
+            now,
+        ),
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
         mode @ Mode::Paths { .. } => run_paths(mode, now),
         mode @ Mode::Diff { .. } => run_diff(mode, now),
@@ -129,15 +140,24 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_summary(
     input_file: &str,
     top: usize,
     debug: bool,
     list_strings: bool,
     json: bool,
+    preview_bytes: u32,
+    list_arrays_min_bytes: u32,
     started: Instant,
 ) -> Result<(), HprofSlurpError> {
-    let mut rendered_result = slurp_file(input_file, debug, list_strings)?;
+    let mut rendered_result = slurp_file_with_preview(
+        input_file,
+        debug,
+        list_strings,
+        preview_bytes,
+        list_arrays_min_bytes,
+    )?;
     if json {
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);
         json_result.save_as_file()?;

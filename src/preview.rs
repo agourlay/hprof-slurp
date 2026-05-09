@@ -29,7 +29,6 @@ pub enum PreviewKind {
 /// `total_size_bytes` is the *full* size of the array (not just the
 /// truncated `bytes`); used for the "showing first N of M" header in
 /// the hex render.
-#[allow(dead_code)] // bridging — consumed in PR 3 (summary preview integration)
 pub fn render_preview(
     bytes: &[u8],
     element_type: FieldType,
