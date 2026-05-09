@@ -8,6 +8,8 @@ jobs:
   upload-bins:
     name: "Upload release binaries"
     strategy:
+      # One target failing should not cancel the others.
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
@@ -37,11 +39,14 @@ jobs:
   publish-crate:
     name: "Publish on crates.io"
     runs-on: ubuntu-latest
+    # Only run when a CARGO_TOKEN secret is configured. Avoids the
+    # "a value is required for '--token <TOKEN>'" failure on forks
+    # that haven't set up crates.io publishing yet.
+    if: ${{ vars.PUBLISH_TO_CRATES_IO == 'true' }}
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v6
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@stable
       - name: Publish
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: --token ${{ secrets.CARGO_TOKEN }}
+        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
