@@ -800,12 +800,14 @@ mod tests {
                 stack_trace_serial_number: 0,
                 number_of_elements: 1,
                 element_type: FieldType::Bool,
+                body: None,
             }),
             Record::GcSegment(GcRecord::PrimitiveArrayDump {
                 object_id: 2,
                 stack_trace_serial_number: 0,
                 number_of_elements: 2,
                 element_type: FieldType::Bool,
+                body: None,
             }),
         ];
 

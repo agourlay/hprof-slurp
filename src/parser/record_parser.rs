@@ -75,15 +75,34 @@ pub struct HprofRecordParser {
     /// needs to walk reference graphs. Default false; the summary path leaves
     /// these as `None` to preserve streaming throughput.
     retain_bodies: bool,
+    /// v0.9.0: when true, primitive array bodies are retained on
+    /// `PrimitiveArrayDump.body`, truncated to `preview_bytes_limit` bytes.
+    retain_primitive_bodies: bool,
+    /// Cap per primitive array when `retain_primitive_bodies` is true.
+    /// 0 means "no cap" (retain full body — discouraged for large dumps).
+    preview_bytes_limit: u32,
 }
 
 impl HprofRecordParser {
-    pub const fn with_retain_bodies(debug_mode: bool, id_size: u32, retain_bodies: bool) -> Self {
+    /// Construct a parser with all current opt-in modes spelled out.
+    /// External callers (`HprofRecordStreamParser::with_modes`,
+    /// `slurp::parse_records_with_modes`) delegate to this. There's no
+    /// shorter constructor — passing the flags explicitly keeps the
+    /// cost ladder visible at every call site.
+    pub const fn with_modes(
+        debug_mode: bool,
+        id_size: u32,
+        retain_bodies: bool,
+        retain_primitive_bodies: bool,
+        preview_bytes_limit: u32,
+    ) -> Self {
         Self {
             debug_mode,
             id_size,
             heap_dump_remaining_len: 0,
             retain_bodies,
+            retain_primitive_bodies,
+            preview_bytes_limit,
         }
     }
 
@@ -122,7 +141,14 @@ impl HprofRecordParser {
                 })
             } else {
                 // GC record mode
-                parse_gc_record(i, id_size, self.retain_bodies).map(|(r1, gc_sub)| {
+                parse_gc_record(
+                    i,
+                    id_size,
+                    self.retain_bodies,
+                    self.retain_primitive_bodies,
+                    self.preview_bytes_limit,
+                )
+                .map(|(r1, gc_sub)| {
                     let gc_sub_len = i.len() - r1.len();
                     self.heap_dump_remaining_len = self
                         .heap_dump_remaining_len
@@ -193,7 +219,14 @@ where
     }
 }
 
-fn parse_gc_record(i: &[u8], id_size: u32, retain_bodies: bool) -> IResult<&[u8], GcRecord> {
+#[allow(clippy::too_many_arguments)] // dispatch arity tracks the parser modes; folding into a struct hides intent
+fn parse_gc_record(
+    i: &[u8],
+    id_size: u32,
+    retain_bodies: bool,
+    retain_primitive_bodies: bool,
+    preview_bytes_limit: u32,
+) -> IResult<&[u8], GcRecord> {
     let (r1, tag) = parse_u8(i)?;
     match tag {
         TAG_GC_ROOT_UNKNOWN => parse_gc_root_unknown(r1, id_size),
@@ -210,7 +243,10 @@ fn parse_gc_record(i: &[u8], id_size: u32, retain_bodies: bool) -> IResult<&[u8]
         TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump_lite(r1, id_size),
         TAG_GC_OBJ_ARRAY_DUMP if retain_bodies => parse_gc_object_array_dump_full(r1, id_size),
         TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump_lite(r1, id_size),
-        TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(r1, id_size),
+        TAG_GC_PRIM_ARRAY_DUMP if retain_primitive_bodies => {
+            parse_gc_primitive_array_dump_full(r1, id_size, preview_bytes_limit)
+        }
+        TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump_lite(r1, id_size),
         // Android HPROF 1.0.3 extensions (am dumpheap on modern ART).
         TAG_GC_ROOT_INTERNED_STRING => parse_gc_root_interned_string(r1, id_size),
         TAG_GC_ROOT_FINALIZING => parse_gc_root_finalizing(r1, id_size),
@@ -670,6 +706,52 @@ fn parse_gc_primitive_array_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRec
                     stack_trace_serial_number,
                     number_of_elements,
                     element_type,
+                    body: None,
+                },
+            )
+        },
+    )
+    .parse(i)
+}
+
+/// Default parser: skips the primitive body bytes (the original
+/// streaming behavior). Used everywhere `--preview-bytes` is not set.
+fn parse_gc_primitive_array_dump_lite(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    parse_gc_primitive_array_dump(i, id_size)
+}
+
+/// Retain-bodies parser: copies up to `preview_bytes_limit` bytes of
+/// the array body into the GcRecord. The parser still consumes the
+/// full payload (we don't seek), but only stores the truncated prefix
+/// to keep memory bounded. preview_bytes_limit = 0 means "retain full".
+fn parse_gc_primitive_array_dump_full(
+    i: &[u8],
+    id_size: u32,
+    preview_bytes_limit: u32,
+) -> IResult<&[u8], GcRecord> {
+    flat_map(
+        (id(id_size), parse_u32, parse_u32, parse_field_type),
+        move |(object_id, stack_trace_serial_number, number_of_elements, element_type)| {
+            map(
+                skip_array_value(element_type, number_of_elements),
+                move |raw_bytes: &[u8]| {
+                    let cap = if preview_bytes_limit == 0 {
+                        raw_bytes.len()
+                    } else {
+                        std::cmp::min(raw_bytes.len(), preview_bytes_limit as usize)
+                    };
+                    let body = if cap == 0 {
+                        None
+                    } else {
+                        Some(raw_bytes[..cap].to_vec().into_boxed_slice())
+                    };
+                    PrimitiveArrayDump {
+                        object_id,
+                        stack_trace_serial_number,
+                        number_of_elements,
+                        element_type,
+                        body,
+                    }
                 },
             )
         },
@@ -1131,7 +1213,7 @@ mod tests {
         let mut buf = Vec::with_capacity(payload.len() + 1);
         buf.push(tag);
         buf.extend_from_slice(payload);
-        let (rest, gcd) = parse_gc_record(&buf, id_size, false).unwrap();
+        let (rest, gcd) = parse_gc_record(&buf, id_size, false, false, 0).unwrap();
         assert!(rest.is_empty(), "parser left {} bytes unread", rest.len());
         gcd
     }
@@ -1234,6 +1316,64 @@ mod tests {
         match dispatch_gc_record(0x8C, &payload, 8) {
             GcRecord::RootReferenceCleanup { object_id } => assert_eq!(object_id, 11),
             other => panic!("expected RootReferenceCleanup, got {other:?}"),
+        }
+    }
+
+    // ---- v0.9.0 (feature B) primitive-array preview tests ----
+
+    fn synthetic_primitive_array_dump_bytes(num_elements: u32, element_byte: u8) -> Vec<u8> {
+        let mut buf = Vec::new();
+        // object_id (8 bytes)
+        buf.extend_from_slice(&[0; 8]);
+        // stack trace serial (4 bytes)
+        buf.extend_from_slice(&[0; 4]);
+        // num elements (4 bytes)
+        buf.extend_from_slice(&num_elements.to_be_bytes());
+        // element_type: FieldType::Byte = 8
+        buf.push(8);
+        // body: num_elements bytes of `element_byte`
+        buf.extend(std::iter::repeat_n(element_byte, num_elements as usize));
+        buf
+    }
+
+    #[test]
+    fn parse_gc_primitive_array_dump_lite_returns_none_body() {
+        let buf = synthetic_primitive_array_dump_bytes(64, 0xAB);
+        let (_, gcd) = parse_gc_primitive_array_dump_lite(&buf, 8).unwrap();
+        match gcd {
+            GcRecord::PrimitiveArrayDump {
+                body: None,
+                number_of_elements,
+                ..
+            } => {
+                assert_eq!(number_of_elements, 64);
+            }
+            other => panic!("expected None body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gc_primitive_array_dump_full_truncates_to_limit() {
+        let buf = synthetic_primitive_array_dump_bytes(1024, 0xCD);
+        let (_, gcd) = parse_gc_primitive_array_dump_full(&buf, 8, 100).unwrap();
+        match gcd {
+            GcRecord::PrimitiveArrayDump { body: Some(b), .. } => {
+                assert_eq!(b.len(), 100, "expected truncation to 100 bytes");
+                assert!(b.iter().all(|&x| x == 0xCD));
+            }
+            other => panic!("expected Some(100) body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gc_primitive_array_dump_full_keeps_smaller_than_limit_intact() {
+        let buf = synthetic_primitive_array_dump_bytes(8, 0xEF);
+        let (_, gcd) = parse_gc_primitive_array_dump_full(&buf, 8, 200).unwrap();
+        match gcd {
+            GcRecord::PrimitiveArrayDump { body: Some(b), .. } => {
+                assert_eq!(b.len(), 8, "expected full body, no padding");
+            }
+            other => panic!("expected Some(8) body, got {other:?}"),
         }
     }
 }

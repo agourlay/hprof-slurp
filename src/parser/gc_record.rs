@@ -173,6 +173,11 @@ pub enum GcRecord {
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         element_type: FieldType,
+        /// Truncated raw bytes (first `preview_bytes_limit` per array).
+        /// Retained only when the parser is constructed with
+        /// `retain_primitive_bodies = true` (v0.9.0 feature B). `None` in
+        /// the default summary path so existing throughput is preserved.
+        body: Option<Box<[u8]>>,
     },
     ClassDump(Box<ClassDumpFields>), // rare enough to be boxed to avoid large variant cost
 }

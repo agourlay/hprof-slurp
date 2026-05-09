@@ -35,6 +35,25 @@ pub fn parse_records<F>(
     file_path: &str,
     debug: bool,
     retain_bodies: bool,
+    handler: F,
+) -> Result<u32, HprofSlurpError>
+where
+    F: FnMut(crate::parser::record::Record),
+{
+    parse_records_with_modes(file_path, debug, retain_bodies, false, 0, handler)
+}
+
+/// Like `parse_records`, but with explicit control over both
+/// `retain_bodies` (for instance fields + object-array elements) and
+/// `retain_primitive_bodies` (for primitive-array bodies). The latter
+/// is gated on `preview_bytes_limit` to bound memory usage. v0.9.0
+/// feature B uses this to collect primitive previews on demand.
+pub fn parse_records_with_modes<F>(
+    file_path: &str,
+    debug: bool,
+    retain_bodies: bool,
+    retain_primitive_bodies: bool,
+    preview_bytes_limit: u32,
     mut handler: F,
 ) -> Result<u32, HprofSlurpError>
 where
@@ -47,7 +66,13 @@ where
     let header = slurp_header(&mut reader)?;
     let id_size = header.size_pointers;
 
-    let mut parser = HprofRecordParser::with_retain_bodies(debug, id_size, retain_bodies);
+    let mut parser = HprofRecordParser::with_modes(
+        debug,
+        id_size,
+        retain_bodies,
+        retain_primitive_bodies,
+        preview_bytes_limit,
+    );
     let mut buf: Vec<u8> = Vec::with_capacity(1 << 20); // 1 MiB working buffer
     let mut pooled: Vec<Record> = Vec::with_capacity(1024);
     let mut chunk = vec![0u8; 1 << 20];
