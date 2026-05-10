@@ -179,41 +179,44 @@ pub struct ReferrerResult {
     /// JSON since the truncated blob isn't useful structured.
     #[serde(skip)]
     pub array_previews: AHashMap<u64, crate::result_recorder::ArrayPreview>,
+    /// v1.0.0 (feature E): `class_name -> retained_bytes` from the
+    /// dominator tree (when `--retained-size` was set). `None`
+    /// otherwise. Skipped from JSON to keep the schema stable;
+    /// consumers that want class-level retained should run
+    /// `summary --retained-size --json`.
+    #[serde(skip)]
+    pub class_retained_by_name: Option<AHashMap<String, u64>>,
 }
 
 pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
-    // PR 6 will consume `retained_size` to add a class-retained column
-    // on the holder rows. For now, explicitly read-and-ignore so the
-    // field isn't dead-code.
-    let _retained_size = match mode {
-        Mode::FindReferrers { retained_size, .. } => *retained_size,
-        _ => false,
-    };
-    let (input_file, target, hops, top, include_statics, debug, preview_bytes) = match mode {
-        Mode::FindReferrers {
-            input_file,
-            target,
-            hops,
-            top,
-            include_statics,
-            debug,
-            preview_bytes,
-            ..
-        } => (
-            input_file.as_str(),
-            target.clone(),
-            *hops,
-            *top,
-            *include_statics,
-            *debug,
-            *preview_bytes,
-        ),
-        _ => {
-            return Err(HprofSlurpError::NotYetImplemented {
-                what: "referrer::run only handles Mode::FindReferrers",
-            });
-        }
-    };
+    let (input_file, target, hops, top, include_statics, debug, preview_bytes, retained_size) =
+        match mode {
+            Mode::FindReferrers {
+                input_file,
+                target,
+                hops,
+                top,
+                include_statics,
+                debug,
+                preview_bytes,
+                retained_size,
+                ..
+            } => (
+                input_file.as_str(),
+                target.clone(),
+                *hops,
+                *top,
+                *include_statics,
+                *debug,
+                *preview_bytes,
+                *retained_size,
+            ),
+            _ => {
+                return Err(HprofSlurpError::NotYetImplemented {
+                    what: "referrer::run only handles Mode::FindReferrers",
+                });
+            }
+        };
 
     let idx = pass1_index(input_file, debug)?;
     let array_previews: AHashMap<u64, crate::result_recorder::ArrayPreview> = if preview_bytes > 0 {
@@ -221,6 +224,23 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
     } else {
         AHashMap::new()
     };
+
+    // v1.0.0 (feature E): build the dominator tree once and roll up
+    // retained sizes per class so the renderer can add a `class
+    // retained` column to the holder tables.
+    let class_retained_by_name: Option<AHashMap<String, u64>> = if retained_size {
+        let graph = crate::reference_graph::build_from_pass1(input_file, &idx, debug)?;
+        let idom = crate::dominators::lengauer_tarjan(&graph);
+        let analysis = crate::retained::compute(&graph, &idom, 0);
+        let mut by_name: AHashMap<String, u64> = AHashMap::new();
+        for (&cid, &bytes) in &analysis.class_retained {
+            by_name.insert(referrer_class_label(&idx, cid), bytes);
+        }
+        Some(by_name)
+    } else {
+        None
+    };
+
     let (target_label, target_ids, matched_classes) =
         resolve_target_ids(input_file, &idx, &target, debug)?;
 
@@ -289,10 +309,41 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         target_instance_count: target_ids.len() as u64,
         matched_classes,
         array_previews,
+        class_retained_by_name,
         hop1: top_n(&idx, by_field_hop1, top),
         hop2: top_n(&idx, by_field_hop2, top),
         hop3: top_n(&idx, by_field_hop3, top),
     })
+}
+
+/// Class-name label for retained-size lookups. Mirrors
+/// `slurp::class_label` (kept private there) but adapted for
+/// `Pass1Index`'s `class_name` accessor and the synthetic
+/// primitive-array sentinel scheme used by `reference_graph`.
+fn referrer_class_label(idx: &Pass1Index, class_object_id: u64) -> String {
+    if class_object_id >> 8 == 0x00FF_FFFF_FFFF_FFFFu64 {
+        return match class_object_id & 0xFF {
+            1 => "bool[]".to_string(),
+            2 => "byte[]".to_string(),
+            3 => "char[]".to_string(),
+            4 => "short[]".to_string(),
+            5 => "int[]".to_string(),
+            6 => "float[]".to_string(),
+            7 => "long[]".to_string(),
+            8 => "double[]".to_string(),
+            _ => "primitive[]".to_string(),
+        };
+    }
+    if let Some(name) = idx.class_name(class_object_id) {
+        if let Some(stripped) = name.strip_prefix("[[L").and_then(|s| s.strip_suffix(';')) {
+            return format!("{stripped}[]");
+        }
+        if let Some(stripped) = name.strip_prefix("[L").and_then(|s| s.strip_suffix(';')) {
+            return format!("{stripped}[]");
+        }
+        return name;
+    }
+    format!("class:{class_object_id:x}")
 }
 
 /// Resolve the user's target spec into a concrete id set. Returns
@@ -786,12 +837,18 @@ pub fn render_text(r: &ReferrerResult) -> String {
         r.target_instance_count, r.target_label
     );
     render_target_preview(&mut out, &r.target_label, &r.array_previews);
-    render_section(&mut out, "Direct referrers (1-hop)", &r.hop1);
+    render_section(
+        &mut out,
+        "Direct referrers (1-hop)",
+        &r.hop1,
+        r.class_retained_by_name.as_ref(),
+    );
     if !r.hop2.is_empty() {
         render_section(
             &mut out,
             "2-hop referrers (X holds Object[] which holds target)",
             &r.hop2,
+            r.class_retained_by_name.as_ref(),
         );
     }
     if !r.hop3.is_empty() {
@@ -799,6 +856,7 @@ pub fn render_text(r: &ReferrerResult) -> String {
             &mut out,
             "3-hop referrers (X holds Y which holds Object[] which holds target)",
             &r.hop3,
+            r.class_retained_by_name.as_ref(),
         );
     }
     out
@@ -849,7 +907,12 @@ fn render_target_preview(
     }
 }
 
-fn render_section(out: &mut String, title: &str, rows: &[ReferrerEntry]) {
+fn render_section(
+    out: &mut String,
+    title: &str,
+    rows: &[ReferrerEntry],
+    class_retained_by_name: Option<&AHashMap<String, u64>>,
+) {
     use std::fmt::Write;
     let _ = writeln!(out, "\n=== {title} ===");
     if rows.is_empty() {
@@ -862,25 +925,40 @@ fn render_section(out: &mut String, title: &str, rows: &[ReferrerEntry]) {
         .max()
         .unwrap_or(40)
         .min(120);
-    let _ = writeln!(
-        out,
-        "  {:<width$} {:>10}",
-        "holder.field (or class[] for arrays)",
-        "ref count",
-        width = max_holder.max(36)
-    );
-    for e in rows {
-        let key = match &e.field_name {
-            None => format!("{}[]", e.holder_class),
-            Some(f) => format!("{}.{f}", e.holder_class),
-        };
+    let width = max_holder.max(36);
+    if let Some(class_retained) = class_retained_by_name {
+        let _ = writeln!(
+            out,
+            "  {:<width$} {:>10} {:>15}",
+            "holder.field (or class[] for arrays)", "ref count", "class retained",
+        );
+        for e in rows {
+            let key = match &e.field_name {
+                None => format!("{}[]", e.holder_class),
+                Some(f) => format!("{}.{f}", e.holder_class),
+            };
+            let retained = class_retained.get(&e.holder_class).copied().unwrap_or(0);
+            let _ = writeln!(
+                out,
+                "  {:<width$} {:>10} {:>15}",
+                trim(&key, width),
+                e.ref_count,
+                crate::utils::pretty_bytes_size(retained),
+            );
+        }
+    } else {
         let _ = writeln!(
             out,
             "  {:<width$} {:>10}",
-            trim(&key, max_holder.max(36)),
-            e.ref_count,
-            width = max_holder.max(36)
+            "holder.field (or class[] for arrays)", "ref count",
         );
+        for e in rows {
+            let key = match &e.field_name {
+                None => format!("{}[]", e.holder_class),
+                Some(f) => format!("{}.{f}", e.holder_class),
+            };
+            let _ = writeln!(out, "  {:<width$} {:>10}", trim(&key, width), e.ref_count,);
+        }
     }
 }
 
