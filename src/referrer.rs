@@ -104,6 +104,14 @@ pub struct Pass1Index {
     /// terminating root.
     pub root_thread_meta_by_id: AHashMap<u64, ThreadFrameRef>,
     pub id_size: u32,
+    // ---- v1.1.0 derivations (populated post-build by reference_classes::derive) ----
+    /// Transitive subclasses of `java.lang.ref.{Soft,Weak,Phantom}Reference`.
+    /// Empty when none of the three marker classes were loaded.
+    pub reference_subclass_set: AHashSet<u64>,
+    /// `android.graphics.Bitmap` class metadata, when present in the
+    /// dump. `None` on JVM dumps and on Android dumps where Bitmap was
+    /// not loaded.
+    pub bitmap_class_info: Option<crate::reference_classes::BitmapClassInfo>,
 }
 
 impl Pass1Index {
@@ -662,6 +670,13 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
         _ => {}
     })?;
     idx.id_size = id_size;
+
+    // v1.1.0: derive soft/weak/phantom subclass set + bitmap class info
+    // from the now-populated index. Cheap (~10 ms on 200 MiB Android).
+    let (refs, bitmap) = crate::reference_classes::derive(&idx);
+    idx.reference_subclass_set = refs.soft_weak_phantom;
+    idx.bitmap_class_info = bitmap;
+
     Ok(idx)
 }
 
@@ -1041,6 +1056,22 @@ mod tests {
             "expected ≥100 class serial entries (one per LoadClass), got {}",
             idx.class_name_id_by_serial.len()
         );
+    }
+
+    #[test]
+    fn pass1_populates_v1_1_derivations_on_canonical_fixture() {
+        let path = "JAVA_PROFILE_1.0.3.hprof";
+        if !std::path::Path::new(path).exists() {
+            eprintln!("skipping — fixture {path} not present");
+            return;
+        }
+        let idx = pass1_index(path, false).expect("pass1");
+        assert!(
+            !idx.reference_subclass_set.is_empty(),
+            "Android fixture should have loaded WeakReference; subclass set is empty"
+        );
+        // bitmap_class_info may or may not be present depending on whether
+        // android.graphics.Bitmap was loaded; we don't assert presence.
     }
 
     #[test]
