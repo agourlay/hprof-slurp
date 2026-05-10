@@ -51,23 +51,23 @@ pub struct PathResult {
     /// blob isn't useful structured.
     #[serde(skip)]
     pub array_previews: ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>,
+    /// Per-object retained bytes from the dominator tree (when
+    /// `--retained-size` was set). `None` otherwise. Skipped from JSON
+    /// because each value is per-instance (the JSON consumer should
+    /// run summary's --retained-size for class-level rollups).
+    #[serde(skip)]
+    pub retained_by_oid: Option<ahash::AHashMap<u64, u64>>,
 }
 
 pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
-    // PR 5 will consume `retained_size` to annotate hops with the
-    // dominator-tree retained size of each hop's object. For now,
-    // explicitly read-and-ignore so the field isn't dead-code.
-    let _retained_size = match mode {
-        Mode::Paths { retained_size, .. } => *retained_size,
-        _ => false,
-    };
-    let (input_file, start_object_id, max_depth, debug, preview_bytes) = match mode {
+    let (input_file, start_object_id, max_depth, debug, preview_bytes, retained_size) = match mode {
         Mode::Paths {
             input_file,
             object_id,
             max_depth,
             debug,
             preview_bytes,
+            retained_size,
             ..
         } => (
             input_file.as_str(),
@@ -75,6 +75,7 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
             *max_depth,
             *debug,
             *preview_bytes,
+            *retained_size,
         ),
         _ => {
             return Err(HprofSlurpError::NotYetImplemented {
@@ -90,6 +91,26 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
         } else {
             ahash::AHashMap::new()
         };
+
+    // v1.0.0 (feature E): build the dominator tree once and keep a
+    // per-object retained-bytes map for the renderer to annotate each
+    // hop. Cost is the same as summary's --retained-size: a second
+    // retain_bodies pass + LT + DFS.
+    let retained_by_oid: Option<ahash::AHashMap<u64, u64>> = if retained_size {
+        let graph = crate::reference_graph::build_from_pass1(input_file, &idx, debug)?;
+        let idom = crate::dominators::lengauer_tarjan(&graph);
+        let analysis = crate::retained::compute(&graph, &idom, 0);
+        let mut map: ahash::AHashMap<u64, u64> = ahash::AHashMap::with_capacity(graph.node_count());
+        for i in 0..graph.node_count() {
+            if i as u32 == graph.super_root {
+                continue;
+            }
+            map.insert(graph.node_ids[i], analysis.retained[i]);
+        }
+        Some(map)
+    } else {
+        None
+    };
 
     let mut steps: Vec<PathStep> = Vec::new();
     let mut current = start_object_id;
@@ -177,6 +198,7 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
         max_depth_reached,
         depth,
         array_previews,
+        retained_by_oid,
     })
 }
 
@@ -308,7 +330,12 @@ pub fn render_text(r: &PathResult) -> String {
         "\nPath from object_id={} (depth {} step(s)):",
         r.start_object_id, r.depth
     );
-    let _ = writeln!(out, "  start  ── id={}", r.start_object_id);
+    let _ = writeln!(
+        out,
+        "  start  ── id={}{}",
+        r.start_object_id,
+        retained_suffix(r, r.start_object_id)
+    );
     if let Some(preview) = r.array_previews.get(&r.start_object_id) {
         render_preview_block(&mut out, preview);
     }
@@ -320,9 +347,10 @@ pub fn render_text(r: &PathResult) -> String {
         };
         let _ = writeln!(
             out,
-            "  hop{:>2} ── id={}  ({arrow})",
+            "  hop{:>2} ── id={}{}  ({arrow})",
             i + 1,
             s.holder_object_id,
+            retained_suffix(r, s.holder_object_id),
         );
         if let Some(preview) = r.array_previews.get(&s.holder_object_id) {
             render_preview_block(&mut out, preview);
@@ -367,6 +395,19 @@ pub fn render_text(r: &PathResult) -> String {
         let _ = writeln!(out, "  → orphan: no holder found in dump");
     }
     out
+}
+
+/// Format the trailing `(retained=<size>)` annotation for a hop's
+/// object id. Returns an empty string when `--retained-size` was off
+/// or when the id isn't in the retained map (unreachable nodes).
+fn retained_suffix(r: &PathResult, object_id: u64) -> String {
+    let Some(map) = r.retained_by_oid.as_ref() else {
+        return String::new();
+    };
+    let Some(&bytes) = map.get(&object_id) else {
+        return String::new();
+    };
+    format!(" (retained={})", crate::utils::pretty_bytes_size(bytes))
 }
 
 fn render_preview_block(out: &mut String, preview: &crate::result_recorder::ArrayPreview) {
@@ -434,6 +475,7 @@ mod tests {
             max_depth_reached: false,
             depth: 0,
             array_previews: previews,
+            retained_by_oid: None,
         };
         let out = render_text(&r);
         assert!(out.contains("<?xml"), "expected preview, got:\n{out}");
@@ -456,6 +498,7 @@ mod tests {
             max_depth_reached: false,
             depth: 0,
             array_previews: ahash::AHashMap::new(),
+            retained_by_oid: None,
         };
         let out = render_text(&r);
         assert!(
@@ -488,6 +531,7 @@ mod tests {
             max_depth_reached: false,
             depth: 1,
             array_previews: ahash::AHashMap::new(),
+            retained_by_oid: None,
         };
         let out = render_text(&r);
         assert!(
@@ -508,6 +552,7 @@ mod tests {
             max_depth_reached: false,
             depth: 0,
             array_previews: ahash::AHashMap::new(),
+            retained_by_oid: None,
         };
         let out = render_text(&r);
         assert!(
