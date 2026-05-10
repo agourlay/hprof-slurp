@@ -19,15 +19,16 @@ The design of the underlying streaming parser is described in detail in
 
 `heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, and (since v0.9.0) inline content previews so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string rather than just "a big char array." Output is structured for terminal reading and CI logs, not interactive exploration.
 
-The parser is streaming and reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. Either way, no full object graph is held in memory, so multi-gigabyte dumps run comfortably on a laptop.
+The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
 ### When to use `heaptrail`
 
 - **Agentic / LLM-driven investigation.** Structured terminal output (with `--json` for machine consumers) lets an agent run heaptrail, read the result, and decide on the next probe. A GUI tool can't sit inside that loop.
 - **Headless / CI workflows.** Single static binary, no JVM dependency, deterministic output that diffs cleanly between runs. Fits scheduled jobs, regression-detection pipelines, post-incident automation.
-- **Dumps larger than host RAM.** Streaming and single-pass; no on-disk index, no full object graph in memory. Multi-gigabyte captures run on a laptop.
+- **Dumps larger than host RAM.** Default and investigation modes don't hold a full object graph in memory; multi-gigabyte captures run on a laptop. (`--retained-size` is the exception — dominator analysis requires a full graph.)
 - **Content-aware diagnosis.** Inline previews of large primitive arrays in summary, paths, and referrer output identify the *kind* of bug — a `SharedPreferences` XML blob or an inflated Gson string — which MAT's narrative output doesn't surface (you can click into a String in MAT, but Leak Suspects doesn't preview content).
-- **Narrow, repeatable questions.** "Who holds class X?", "What changed between these two dumps?", "What are the top allocation sites?" — single-command answers in seconds, no load-and-explore session.
+- **Retained-size triage.** Lengauer–Tarjan dominator-tree retained sizes augment `summary`, `--paths-from-id`, and `--find-referrers` — the wrapper-vs-subgraph question MAT answers, at the CLI in seconds rather than a GUI session.
+- **Narrow, repeatable questions.** "Who holds class X?", "What changed between these two dumps?", "What dominates the heap by retained size?", "What are the top allocation sites?" — single-command answers in seconds, no load-and-explore session.
 
 ### When to use [Eclipse MAT](https://www.eclipse.org/mat/) or [VisualVM](https://visualvm.github.io/)
 
