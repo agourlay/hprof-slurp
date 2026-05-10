@@ -5,7 +5,7 @@ authors = [
     "John Neerdael <john@neerdael.nl>",
     "Arnaud Gourlay <arnaud.gourlay@gmail.com>",
 ]
-description = "JVM/Android heap dump (hprof) analyzer with referrer tracing, path-to-root walk, and snapshot diff. Forked from hprof-slurp with significantly expanded triage features."
+description = "Production-grade leak hunting at the CLI for JVM/Android hprof dumps: retained-size dominators, leak suspects, reference-strength filtering, content previews, bitmap mode, snapshot diff. LLM-friendly."
 repository = "https://github.com/johnneerdael/heaptrail"
 homepage = "https://github.com/johnneerdael/heaptrail"
 license = "Apache-2.0"
