@@ -102,6 +102,16 @@ pub struct Cli {
     /// (Android: `am profile start <pid>` before `am dumpheap`).
     #[arg(long = "allocation-sites", default_value_t = false)]
     pub allocation_sites: bool,
+
+    /// Compute and surface retained sizes via Lengauer–Tarjan
+    /// dominator tree. Annotates summary's class table (re-sorted by
+    /// retained), `--paths-from-id` hops, and `--find-referrers`
+    /// holders. Adds ~250 MiB working memory and ~1–3 s wall time
+    /// on a 200 MiB Android dump. Includes weak/soft/phantom-reference
+    /// edges (graph-theoretic dominator-tree definition); excluding
+    /// those is a v1.1+ flag. Default off.
+    #[arg(long = "retained-size", default_value_t = false)]
+    pub retained_size: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,6 +138,7 @@ pub enum Mode {
         json: bool,
         preview_bytes: u32,
         list_arrays_min_bytes: u32,
+        retained_size: bool,
     },
     FindReferrers {
         input_file: String,
@@ -138,6 +149,7 @@ pub enum Mode {
         debug: bool,
         json: bool,
         preview_bytes: u32,
+        retained_size: bool,
     },
     Paths {
         input_file: String,
@@ -146,6 +158,7 @@ pub enum Mode {
         debug: bool,
         json: bool,
         preview_bytes: u32,
+        retained_size: bool,
     },
     Diff {
         from: String,
@@ -226,6 +239,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             debug: cli.debug,
             json: cli.json,
             preview_bytes: cli.preview_bytes,
+            retained_size: cli.retained_size,
         });
     }
     if let Some(object_id) = cli.paths_from_id {
@@ -236,6 +250,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             debug: cli.debug,
             json: cli.json,
             preview_bytes: cli.preview_bytes,
+            retained_size: cli.retained_size,
         });
     }
     Ok(Mode::Summary {
@@ -246,6 +261,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         json: cli.json,
         preview_bytes: cli.preview_bytes,
         list_arrays_min_bytes: cli.list_arrays_min_bytes,
+        retained_size: cli.retained_size,
     })
 }
 

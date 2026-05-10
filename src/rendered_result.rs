@@ -94,6 +94,13 @@ pub struct RenderedResult {
     /// (v0.9.0 feature B — consumed by the summary renderer to print
     /// preview lines under "Largest array instances".)
     pub array_previews: ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>,
+    /// `class_name -> retained_bytes` from the dominator tree.
+    /// `None` unless `--retained-size` was set. (v1.0.0 feature E —
+    /// consumed to add a retained column and re-sort the class table.)
+    pub class_retained_by_name: Option<ahash::AHashMap<String, u64>>,
+    /// Top-N (object_id, class_name, retained_bytes) by retained
+    /// size, descending. `None` unless `--retained-size` was set.
+    pub top_retained_instances: Option<Vec<(u64, String, u64)>>,
 }
 
 impl RenderedResult {
@@ -107,8 +114,16 @@ impl RenderedResult {
             allocation_sites: _,
             allocation_sites_record_count: _,
             array_previews,
+            class_retained_by_name,
+            top_retained_instances,
         } = self;
-        let memory = Self::render_memory_usage(&mut memory_usage, top, &array_previews);
+        let memory = Self::render_memory_usage(
+            &mut memory_usage,
+            top,
+            &array_previews,
+            class_retained_by_name.as_ref(),
+            top_retained_instances.as_deref(),
+        );
         let mut result = format!("{summary}\n{thread_info}\n{memory}");
         if let Some(duplicated_strings) = duplicated_strings {
             writeln!(result, "{duplicated_strings}").expect("write should not fail");
@@ -123,6 +138,8 @@ impl RenderedResult {
         memory_usage: &mut Vec<ClassAllocationStats>,
         top: usize,
         array_previews: &ahash::AHashMap<u64, crate::result_recorder::ArrayPreview>,
+        class_retained_by_name: Option<&ahash::AHashMap<String, u64>>,
+        top_retained_instances: Option<&[(u64, String, u64)]>,
     ) -> String {
         // Holds the final result
         let mut analysis = String::new();
@@ -139,11 +156,30 @@ impl RenderedResult {
         )
         .expect("Could not write to analysis");
 
-        // Top allocated classes analysis
-        writeln!(analysis, "\nTop {top} raw shallow heap classes:\n")
+        // Top allocated classes analysis. When --retained-size is set,
+        // sort by retained size and render the retained column; otherwise
+        // sort by shallow as before.
+        if let Some(class_retained) = class_retained_by_name {
+            writeln!(
+                analysis,
+                "\nTop {top} classes by retained heap (dominator tree):\n"
+            )
             .expect("Could not write to analysis");
-        memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
-        Self::render_table(top, &mut analysis, memory_usage.as_slice());
+            memory_usage.sort_by_key(|b| {
+                std::cmp::Reverse(class_retained.get(&b.class_name).copied().unwrap_or(0))
+            });
+            Self::render_table_with_retained(
+                top,
+                &mut analysis,
+                memory_usage.as_slice(),
+                class_retained,
+            );
+        } else {
+            writeln!(analysis, "\nTop {top} raw shallow heap classes:\n")
+                .expect("Could not write to analysis");
+            memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
+            Self::render_table(top, &mut analysis, memory_usage.as_slice());
+        }
 
         // Top largest instances analysis
         writeln!(analysis, "\nTop {top} largest instances:\n")
@@ -208,7 +244,125 @@ impl RenderedResult {
             }
         }
 
+        // v1.0.0 (feature E): "Largest retained instances" hot list,
+        // mirroring the array-instances block above.
+        if let Some(top_retained) = top_retained_instances
+            && !top_retained.is_empty()
+        {
+            writeln!(analysis, "\nLargest retained instances object ids:")
+                .expect("Could not write to analysis");
+            for (oid, class_name, retained) in top_retained.iter().take(top) {
+                let display_size = pretty_bytes_size(*retained);
+                writeln!(
+                    analysis,
+                    "  {display_size:>10} object_id={oid} {class_name}"
+                )
+                .expect("Could not write to analysis");
+            }
+        }
+
         analysis
+    }
+
+    /// v1.0.0 (feature E): like `render_table` but adds a `retained`
+    /// column populated from `class_retained_by_name`. Missing entries
+    /// render as `0.00bytes` (which is correct — class wasn't reached
+    /// from any GC root in the dominator tree).
+    fn render_table_with_retained(
+        top: usize,
+        analysis: &mut String,
+        rows: &[ClassAllocationStats],
+        class_retained: &ahash::AHashMap<String, u64>,
+    ) {
+        let rows_formatted: Vec<_> = rows
+            .iter()
+            .take(top)
+            .map(|s| {
+                let shallow = pretty_bytes_size(s.allocation_size_bytes);
+                let retained =
+                    pretty_bytes_size(class_retained.get(&s.class_name).copied().unwrap_or(0));
+                let largest = pretty_bytes_size(s.largest_allocation_bytes);
+                (
+                    shallow,
+                    s.instance_count,
+                    retained,
+                    largest,
+                    s.class_name.clone(),
+                )
+            })
+            .collect();
+
+        let header = ["Shallow", "Instances", "Retained", "Largest", "Class name"];
+        let widths: [usize; 5] = [
+            header[0]
+                .len()
+                .max(rows_formatted.iter().map(|r| r.0.len()).max().unwrap_or(0)),
+            header[1].len().max(
+                rows_formatted
+                    .iter()
+                    .map(|r| r.1.to_string().len())
+                    .max()
+                    .unwrap_or(0),
+            ),
+            header[2]
+                .len()
+                .max(rows_formatted.iter().map(|r| r.2.len()).max().unwrap_or(0)),
+            header[3]
+                .len()
+                .max(rows_formatted.iter().map(|r| r.3.len()).max().unwrap_or(0)),
+            header[4]
+                .len()
+                .max(rows_formatted.iter().map(|r| r.4.len()).max().unwrap_or(0)),
+        ];
+
+        let line = format!(
+            "+-{:-<w0$}-+-{:-<w1$}-+-{:-<w2$}-+-{:-<w3$}-+-{:-<w4$}-+",
+            "",
+            "",
+            "",
+            "",
+            "",
+            w0 = widths[0],
+            w1 = widths[1],
+            w2 = widths[2],
+            w3 = widths[3],
+            w4 = widths[4]
+        );
+        writeln!(analysis, "{line}").expect("write");
+        writeln!(
+            analysis,
+            "| {:>w0$} | {:>w1$} | {:>w2$} | {:>w3$} | {:<w4$} |",
+            header[0],
+            header[1],
+            header[2],
+            header[3],
+            header[4],
+            w0 = widths[0],
+            w1 = widths[1],
+            w2 = widths[2],
+            w3 = widths[3],
+            w4 = widths[4]
+        )
+        .expect("write");
+        writeln!(analysis, "{line}").expect("write");
+        for (shallow, count, retained, largest, name) in rows_formatted {
+            writeln!(
+                analysis,
+                "| {:>w0$} | {:>w1$} | {:>w2$} | {:>w3$} | {:<w4$} |",
+                shallow,
+                count,
+                retained,
+                largest,
+                name,
+                w0 = widths[0],
+                w1 = widths[1],
+                w2 = widths[2],
+                w3 = widths[3],
+                w4 = widths[4]
+            )
+            .expect("write");
+        }
+        writeln!(analysis, "{line}").expect("write");
     }
 
     // Render table from [(class_name, count, largest_allocation, instance_size)]
@@ -366,8 +520,13 @@ mod tests {
     fn text_output_describes_raw_shallow_dump_objects() {
         let mut memory_usage = vec![ClassAllocationStats::new("Thing".to_string(), 1, 16, 16)];
 
-        let output =
-            RenderedResult::render_memory_usage(&mut memory_usage, 1, &ahash::AHashMap::new());
+        let output = RenderedResult::render_memory_usage(
+            &mut memory_usage,
+            1,
+            &ahash::AHashMap::new(),
+            None,
+            None,
+        );
 
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));

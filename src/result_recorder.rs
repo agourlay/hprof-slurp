@@ -241,6 +241,8 @@ impl ResultRecorder {
                             allocation_sites: mem::take(&mut self.captured_allocation_sites),
                             allocation_sites_record_count: self.allocation_sites,
                             array_previews: mem::take(&mut self.array_previews),
+                            class_retained_by_name: None,
+                            top_retained_instances: None,
                         };
                         send_result
                             .send(rendered_result)

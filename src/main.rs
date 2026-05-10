@@ -22,7 +22,6 @@ use rendered_result::JsonResult;
 
 use crate::args::{Cli, Mode, resolve};
 use crate::errors::HprofSlurpError;
-use crate::slurp::slurp_file_with_preview;
 
 fn main() {
     std::process::exit(match main_result() {
@@ -46,6 +45,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             json,
             preview_bytes,
             list_arrays_min_bytes,
+            retained_size,
         } => run_summary(
             &input_file,
             top,
@@ -54,6 +54,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             json,
             preview_bytes,
             list_arrays_min_bytes,
+            retained_size,
             now,
         ),
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
@@ -152,14 +153,16 @@ fn run_summary(
     json: bool,
     preview_bytes: u32,
     list_arrays_min_bytes: u32,
+    retained_size: bool,
     started: Instant,
 ) -> Result<(), HprofSlurpError> {
-    let mut rendered_result = slurp_file_with_preview(
+    let mut rendered_result = crate::slurp::slurp_file_with_modes(
         input_file,
         debug,
         list_strings,
         preview_bytes,
         list_arrays_min_bytes,
+        retained_size,
     )?;
     if json {
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);

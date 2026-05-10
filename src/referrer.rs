@@ -182,6 +182,13 @@ pub struct ReferrerResult {
 }
 
 pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
+    // PR 6 will consume `retained_size` to add a class-retained column
+    // on the holder rows. For now, explicitly read-and-ignore so the
+    // field isn't dead-code.
+    let _retained_size = match mode {
+        Mode::FindReferrers { retained_size, .. } => *retained_size,
+        _ => false,
+    };
     let (input_file, target, hops, top, include_statics, debug, preview_bytes) = match mode {
         Mode::FindReferrers {
             input_file,
@@ -899,6 +906,7 @@ mod tests {
             debug: false,
             json: false,
             preview_bytes: 0,
+            retained_size: false,
         }
     }
 

@@ -262,6 +262,88 @@ pub fn slurp_file_with_preview(
     Ok(rendered_result)
 }
 
+/// v1.0.0 (feature E): like `slurp_file_with_preview`, but when
+/// `retained_size` is set runs a second pass to build the object
+/// reference graph, computes the Lengauer–Tarjan dominator tree, and
+/// populates `RenderedResult.class_retained_by_name` +
+/// `top_retained_instances`. Adds ~250 MiB working memory and
+/// ~1–3 s wall time on a 200 MiB Android dump.
+pub fn slurp_file_with_modes(
+    file_path: &str,
+    debug_mode: bool,
+    list_strings: bool,
+    preview_bytes: u32,
+    list_arrays_min_bytes: u32,
+    retained_size: bool,
+) -> Result<RenderedResult, HprofSlurpError> {
+    let mut rr = slurp_file_with_preview(
+        file_path,
+        debug_mode,
+        list_strings,
+        preview_bytes,
+        list_arrays_min_bytes,
+    )?;
+
+    if retained_size {
+        let idx = crate::referrer::pass1_index(file_path, debug_mode)?;
+        let graph = crate::reference_graph::build_from_pass1(file_path, &idx, debug_mode)?;
+        let idom = crate::dominators::lengauer_tarjan(&graph);
+        // Top 50 hot list — UI shows top-N capped by --top, but a slightly
+        // larger pool here gives the user some headroom if -t is bumped.
+        let analysis = crate::retained::compute(&graph, &idom, 50);
+
+        let class_retained_by_name = analysis
+            .class_retained
+            .iter()
+            .map(|(&cid, &bytes)| (class_label(&idx, cid), bytes))
+            .collect::<ahash::AHashMap<String, u64>>();
+
+        let top_retained_instances = analysis
+            .top_instances
+            .iter()
+            .map(|&(oid, cid, bytes)| (oid, class_label(&idx, cid), bytes))
+            .collect();
+
+        rr.class_retained_by_name = Some(class_retained_by_name);
+        rr.top_retained_instances = Some(top_retained_instances);
+    }
+
+    Ok(rr)
+}
+
+/// Convert a class object id (real or `reference_graph` synthetic
+/// primitive sentinel) to the human-readable label used in summary's
+/// class table. Mirrors `ResultRecorder::aggregate_memory_usage`'s
+/// labeling so retained-size lookups by name match the recorder's rows.
+fn class_label(idx: &crate::referrer::Pass1Index, class_object_id: u64) -> String {
+    // Synthetic primitive ids from `reference_graph::primitive_synthetic_class_id`.
+    if class_object_id >> 8 == 0x00FF_FFFF_FFFF_FFFFu64 {
+        let n = class_object_id & 0xFF;
+        return match n {
+            1 => "bool[]".to_string(),
+            2 => "byte[]".to_string(),
+            3 => "char[]".to_string(),
+            4 => "short[]".to_string(),
+            5 => "int[]".to_string(),
+            6 => "float[]".to_string(),
+            7 => "long[]".to_string(),
+            8 => "double[]".to_string(),
+            _ => "primitive[]".to_string(),
+        };
+    }
+    if let Some(name) = idx.class_name(class_object_id) {
+        // Object array names in HPROF: `[Ljava/lang/String;` → `java.lang.String[]`.
+        if let Some(stripped) = name.strip_prefix("[[L").and_then(|s| s.strip_suffix(';')) {
+            return format!("{stripped}[]");
+        }
+        if let Some(stripped) = name.strip_prefix("[L").and_then(|s| s.strip_suffix(';')) {
+            return format!("{stripped}[]");
+        }
+        return name;
+    }
+    format!("class:{class_object_id:x}")
+}
+
 pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlurpError> {
     let mut header_buffer = vec![0; FILE_HEADER_LENGTH];
     reader.read_exact(&mut header_buffer)?;

@@ -54,6 +54,13 @@ pub struct PathResult {
 }
 
 pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
+    // PR 5 will consume `retained_size` to annotate hops with the
+    // dominator-tree retained size of each hop's object. For now,
+    // explicitly read-and-ignore so the field isn't dead-code.
+    let _retained_size = match mode {
+        Mode::Paths { retained_size, .. } => *retained_size,
+        _ => false,
+    };
     let (input_file, start_object_id, max_depth, debug, preview_bytes) = match mode {
         Mode::Paths {
             input_file,
@@ -401,6 +408,7 @@ mod tests {
             debug: false,
             json: false,
             preview_bytes: 0,
+            retained_size: false,
         }
     }
 
