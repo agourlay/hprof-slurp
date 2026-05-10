@@ -128,6 +128,13 @@ pub struct Cli {
     /// applicable). Default threshold 0.05 (5%).
     #[arg(long = "leak-suspects", value_name = "THRESHOLD", num_args = 0..=1, default_missing_value = "0.05")]
     pub leak_suspects: Option<f32>,
+
+    /// Modifier on `--paths-from-id`. Fold paths-to-root for all
+    /// instances of the start id's class into a single tree with
+    /// branch counts. Pair with `--retained-size` for graph-verified
+    /// convergence; otherwise textual prefix matching with a banner.
+    #[arg(long = "merge-paths", default_value_t = false)]
+    pub merge_paths: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -178,6 +185,7 @@ pub enum Mode {
         preview_bytes: u32,
         retained_size: bool,
         exclude_soft_weak: bool,
+        merge_paths: bool,
     },
     Diff {
         from: String,
@@ -292,6 +300,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     }
     if let Some(object_id) = cli.paths_from_id {
         return Ok(Mode::Paths {
+            merge_paths: cli.merge_paths,
             input_file,
             object_id,
             max_depth: cli.max_depth,

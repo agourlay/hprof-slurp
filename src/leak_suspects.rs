@@ -131,6 +131,7 @@ pub fn run(mode: &Mode) -> Result<SuspectsReport, HprofSlurpError> {
             preview_bytes: 0,
             retained_size: false,
             exclude_soft_weak,
+            merge_paths: false,
         };
         let path_to_root = crate::paths::run(&path_mode)?;
 

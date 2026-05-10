@@ -4,6 +4,7 @@ mod diff;
 mod dominators;
 mod errors;
 mod leak_suspects;
+mod merge_paths;
 mod parser;
 mod paths;
 mod prefetch_reader;
@@ -150,10 +151,27 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
 }
 
 fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let json = match &mode {
-        Mode::Paths { json, .. } => *json,
+    let (json, merge) = match &mode {
+        Mode::Paths {
+            json, merge_paths, ..
+        } => (*json, *merge_paths),
         _ => unreachable!(),
     };
+    if merge {
+        let result = merge_paths::run(&mode)?;
+        if json {
+            let path = format!(
+                "heaptrail-merge-paths-{}.json",
+                chrono::Utc::now().timestamp_millis()
+            );
+            let f = std::fs::File::create(&path)?;
+            serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
+            println!("Output JSON result file {path}");
+        }
+        print!("{}", merge_paths::render_text(&result));
+        println!("\nFile successfully processed in {:?}", started.elapsed());
+        return Ok(());
+    }
     let result = paths::run(&mode)?;
     if json {
         let path = format!(
