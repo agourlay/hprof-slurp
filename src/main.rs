@@ -3,6 +3,7 @@ mod args;
 mod diff;
 mod dominators;
 mod errors;
+mod leak_suspects;
 mod parser;
 mod paths;
 mod prefetch_reader;
@@ -64,7 +65,28 @@ fn main_result() -> Result<(), HprofSlurpError> {
         mode @ Mode::Paths { .. } => run_paths(mode, now),
         mode @ Mode::Diff { .. } => run_diff(mode, now),
         mode @ Mode::AllocationSites { .. } => run_allocation_sites(mode, now),
+        mode @ Mode::LeakSuspects { .. } => run_leak_suspects(mode, now),
     }
+}
+
+fn run_leak_suspects(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
+    let json = match &mode {
+        Mode::LeakSuspects { json, .. } => *json,
+        _ => unreachable!(),
+    };
+    let result = leak_suspects::run(&mode)?;
+    if json {
+        let path = format!(
+            "heaptrail-leak-suspects-{}.json",
+            chrono::Utc::now().timestamp_millis()
+        );
+        let f = std::fs::File::create(&path)?;
+        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
+        println!("Output JSON result file {path}");
+    }
+    print!("{}", leak_suspects::render_text(&result));
+    println!("\nFile successfully processed in {:?}", started.elapsed());
+    Ok(())
 }
 
 fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {

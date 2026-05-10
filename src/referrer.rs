@@ -258,7 +258,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         let analysis = crate::retained::compute(&graph, &idom, 0);
         let mut by_name: AHashMap<String, u64> = AHashMap::new();
         for (&cid, &bytes) in &analysis.class_retained {
-            by_name.insert(referrer_class_label(&idx, cid), bytes);
+            by_name.insert(class_label_for_id(&idx, cid), bytes);
         }
         Some(by_name)
     } else {
@@ -347,7 +347,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
 /// `slurp::class_label` (kept private there) but adapted for
 /// `Pass1Index`'s `class_name` accessor and the synthetic
 /// primitive-array sentinel scheme used by `reference_graph`.
-fn referrer_class_label(idx: &Pass1Index, class_object_id: u64) -> String {
+pub(crate) fn class_label_for_id(idx: &Pass1Index, class_object_id: u64) -> String {
     if class_object_id >> 8 == 0x00FF_FFFF_FFFF_FFFFu64 {
         return match class_object_id & 0xFF {
             1 => "bool[]".to_string(),

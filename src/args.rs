@@ -120,6 +120,14 @@ pub struct Cli {
     /// otherwise bury the real strong reference. Default off.
     #[arg(long = "exclude-soft-weak", default_value_t = false)]
     pub exclude_soft_weak: bool,
+
+    /// Auto-rank dominators with retained share ≥ THRESHOLD; emit
+    /// narrative + path-to-root + content preview per suspect.
+    /// Implies --retained-size. Top-N suspects bounded by --top.
+    /// Always shows at least top-3 (flagged "below threshold" if
+    /// applicable). Default threshold 0.05 (5%).
+    #[arg(long = "leak-suspects", value_name = "THRESHOLD", num_args = 0..=1, default_missing_value = "0.05")]
+    pub leak_suspects: Option<f32>,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,6 +192,15 @@ pub enum Mode {
         debug: bool,
         json: bool,
     },
+    LeakSuspects {
+        input_file: String,
+        top: usize,
+        threshold: f32,
+        exclude_soft_weak: bool,
+        preview_bytes: u32,
+        debug: bool,
+        json: bool,
+    },
 }
 
 /// Resolve the parsed CLI into a single concrete `Mode`. Enforces:
@@ -199,11 +216,18 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     let paths_set = cli.paths_from_id.is_some();
     let diff_set = cli.diff_from.is_some() || cli.diff_to.is_some();
     let alloc_sites_set = cli.allocation_sites;
+    let leak_suspects_set = cli.leak_suspects.is_some();
 
-    let mode_count = [referrers_set, paths_set, diff_set, alloc_sites_set]
-        .iter()
-        .filter(|b| **b)
-        .count();
+    let mode_count = [
+        referrers_set,
+        paths_set,
+        diff_set,
+        alloc_sites_set,
+        leak_suspects_set,
+    ]
+    .iter()
+    .filter(|b| **b)
+    .count();
     if mode_count > 1 {
         return Err(ConflictingModes);
     }
@@ -229,6 +253,18 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         return Ok(Mode::AllocationSites {
             input_file,
             top: cli.top,
+            debug: cli.debug,
+            json: cli.json,
+        });
+    }
+
+    if let Some(threshold) = cli.leak_suspects {
+        return Ok(Mode::LeakSuspects {
+            input_file,
+            top: cli.top,
+            threshold,
+            exclude_soft_weak: cli.exclude_soft_weak,
+            preview_bytes: cli.preview_bytes,
             debug: cli.debug,
             json: cli.json,
         });
