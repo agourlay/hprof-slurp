@@ -630,6 +630,283 @@ typical JVM dumps. Default off.
 
 ---
 
+## `--exclude-soft-weak` — drop weak/soft/phantom holders (v1.1.0)
+
+### Why this exists
+
+Real Android dump pain: a `--paths-from-id` walk for a leaked
+`MainActivity` shows the holder chain as
+
+```
+  hop 1 ── id=...  (via leakcanary.KeyedWeakReference.referent)
+  hop 2 ── id=...  (via leakcanary.KeyedWeakReferenceWatcher.watchedRefs)
+  hop 3 ── id=...  (via java.lang.ref.Reference.discovered)
+  ... 12 more hops of WeakReference / Reference internals ...
+```
+
+The actual *strong* holder — the EventBus subscriber, the static
+cache, the lambda capturing `this` — is buried underneath that.
+LeakCanary's watchers, the framework's `WeakReference<Activity>`,
+and `Reference.discovered` chains are all by-design weak; including
+them in path walks is correct graph-theoretically but useless for
+leak hunting.
+
+MAT solves this with a default "Exclude phantom/weak/soft references"
+toggle in its leak-hunting workflow. heaptrail v1.1.0 does the same
+via `--exclude-soft-weak`.
+
+### How to use it
+
+`--exclude-soft-weak` is a *modifier* on existing modes:
+
+```bash
+heaptrail -i my.hprof --paths-from-id <id> --exclude-soft-weak
+heaptrail -i my.hprof --retained-size --exclude-soft-weak
+heaptrail -i my.hprof --find-referrers <class> --exclude-soft-weak
+heaptrail -i my.hprof --leak-suspects --exclude-soft-weak
+```
+
+When set, every outgoing edge from any
+`java.lang.ref.{Soft,Weak,Phantom}Reference` subclass is dropped.
+This applies symmetrically to:
+
+- **Graph build (with `--retained-size`):** Reference-subclass
+  source nodes have 0 outgoing edges, so retained sums no longer
+  credit their referents. An object reachable *only* through a
+  `WeakReference` becomes unreachable in the filtered graph
+  (retained == 0). Matches MAT's leak-hunting default.
+- **Path walks (`--paths-from-id`, `--find-referrers`,
+  `--merge-paths`):** when a hop lands on a Reference subclass
+  holder, the walker terminates with the annotation
+  `[soft/weak/phantom — excluded]; re-run without --exclude-soft-weak
+  to see the weak chain`. The chain is truncated; the user can re-run
+  to see the suppressed weak holders if needed.
+
+### When to use
+
+- **Always, for Android leak hunting.** LeakCanary itself relies on
+  WeakReference; without this flag, every leaked Activity's path
+  starts with LeakCanary's own watcher.
+- **For "is this object reachable at all?"** combined with
+  `--retained-size --exclude-soft-weak`: an object whose retained
+  drops to 0 with the flag is held only weakly — it'll be reclaimed
+  on the next GC cycle.
+
+### Caveat
+
+heaptrail's retained sums under `--exclude-soft-weak` will sometimes
+differ from MAT's by a small margin: MAT also has a separate
+"Exclude finalizer references" toggle (for
+`java.lang.ref.FinalReference` / `Finalizer` chains). v1.1.0 doesn't
+expose that as a separate flag; usually inconsequential.
+
+---
+
+## `--leak-suspects` — automated suspect identification (v1.1.0)
+
+### Why this exists
+
+`summary --retained-size` ranks classes by retained heap, but
+*finding the leak* still requires you to know what class to look for.
+On an unfamiliar dump — first time triaging an OOM from a service
+you didn't write — this is exactly the friction point: you can see
+`java.util.HashMap$Node` retained 47 MiB, but is that 47 MiB
+distributed across the codebase normally, or is it one runaway
+`HashMap` somewhere?
+
+MAT solves this with its "Leak Suspects" report: it auto-ranks
+dominators by retained share, picks the dominant *accumulating
+class* in each suspect's subtree, and writes a narrative paragraph
+per suspect. heaptrail v1.1.0 does the same — terminal-readable,
+content-aware via `--preview-bytes`, and content-aware out of the
+box (the answer to MAT's narrative is *also* the answer to "what's
+in the giant array").
+
+### How to use it
+
+```bash
+# Default 5% retained-share threshold; recommended for first triage:
+heaptrail -i my.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200
+
+# Tighter threshold (10%) when you want only the biggest:
+heaptrail -i my.hprof --leak-suspects=0.10 --exclude-soft-weak
+
+# JSON sidecar for CI gates:
+heaptrail -i my.hprof --leak-suspects --json
+```
+
+### Output anatomy
+
+```
+Heap: 234.18 MiB total, 187.42 MiB retained-reachable.
+Threshold: 5.0 % retained share. Showing 3 suspect(s) (1 above threshold).
+
+Suspect 1 — 47.32 MiB (25.2 % of heap)
+  dominator: com.example.app.AppCache (object_id=4097812752)
+  accumulating: 234 instances of java.lang.String, total 42.10 MiB
+  preview: {"airsDays":["Mon","Wed","Fri"],"seasonNumber":3, ...
+  path to GC root:
+    [id=4097812752] com.example.app.AppCache
+      ↑ static field INSTANCE in AppCache
+        (root: System Class)
+```
+
+Each suspect has:
+- **dominator** — the object that, if collected, would free this
+  retained subtree.
+- **accumulating** — the most-common class inside the dominated
+  subtree, with instance count and shallow-byte total. Tells you
+  *what* is accumulating (e.g. "234 Strings of total 42 MiB" → JSON
+  cache; "12 large `Bitmap`s of total 16 MiB" → image leak).
+- **preview** — first ~120 chars of the dominator's content (when
+  `--preview-bytes` is set and the dominator is a primitive array).
+- **path to GC root** — full chain via `--paths-from-id`'s walker.
+
+### Threshold + top-3 fallback
+
+`--leak-suspects[=THRESHOLD]` defaults to 0.05 (5%). When no
+dominator clears the threshold, the report falls back to **top-3
+suspects flagged "(below threshold)"** so you always get something
+useful. Useful when the heap is dominated by a single huge cache:
+without the fallback the report would show one entry and stop.
+
+### When to use
+
+- **First-pass triage on an unfamiliar dump.** The
+  "open MAT, click Leak Suspects" workflow, run from a CLI in seconds.
+- **Pair with `--exclude-soft-weak`** unless you specifically want
+  weak holders to count. The recommended default is
+  `--leak-suspects --exclude-soft-weak --preview-bytes 200`.
+
+---
+
+## `--merge-paths` — fold parallel paths-to-root (v1.1.0)
+
+### Why this exists
+
+When 47 leaked `MainActivity` instances all share the same holder
+chain, the *common prefix* is what tells you the leak is the
+EventBus. But `--paths-from-id` walks one instance at a time —
+running it 47 times gives you 47 nearly-identical chains and forces
+you to spot the shared structure by eye.
+
+`--merge-paths` resolves all instances of the start id's class in a
+single pass and folds their paths into a single tree with branch
+counts. The `[47×]` annotation on each hop tells you "this hop is
+shared by all 47 instances" — the EventBus jumps out immediately.
+
+### How to use it
+
+```bash
+heaptrail -i my.hprof --paths-from-id <any-instance-id> --merge-paths --retained-size
+```
+
+Output:
+
+```
+Target: com.example.app.MainActivity — 37 instance(s) merged.
+(merge verified via dominator convergence)
+
+  ↑ field handler in MainActivity                              [37×]
+    ↑ field this$0 in EventBus$SubscriberHolder                 [37×]
+      ↑ key in ConcurrentHashMap$Node (subscribers)             [37×]
+        ↑ static EventBus.INSTANCE                              [37×]
+```
+
+When paths fork, branches render as their own subtrees:
+
+```
+  ↑ field handler in MainActivity                              [25×]
+    ↑ ... continues ...
+  ↑ field activityRef in NavHostController                     [12×]
+    ↑ ... continues ...
+```
+
+### Graph-verified vs textual merge
+
+Without `--retained-size`, the merge is a **textual prefix match** —
+two paths sharing a hop class+field name are folded together even
+if they don't graph-converge at the same dominator. Almost always
+correct in practice; the renderer emits a banner so you know the
+difference. Pair with `--retained-size` for **dominator-verified
+convergence** when the answer matters.
+
+### Limitation
+
+The target must be a class instance, not a primitive array — "fold
+all paths to all instances of class X" is the design goal, and
+primitive arrays aren't a class. For primitive arrays, use plain
+`--paths-from-id`.
+
+---
+
+## `--bitmaps` — Bitmap pixel-byte accounting (v1.1.0)
+
+### Why this exists
+
+Bitmaps dominate Android heaps. A 12 MiB `byte[]` in
+`summary --retained-size`'s class table is just "another big
+primitive array" until you see it's a 4096×4096 ARGB_8888 bitmap
+held by a `RecyclerView.ViewHolder` that should have recycled.
+
+`--bitmaps` walks every `android.graphics.Bitmap` instance, reads
+the cached field offsets (resolved at index time), and computes
+pixel bytes from `width × height × config`. Top-N output ranks them
+by pixel size with location (Java-heap or native).
+
+### How to use it
+
+```bash
+heaptrail -i my.hprof --bitmaps -t 20
+```
+
+Output:
+
+```
+Top 20 Bitmap instances by pixel bytes:
+  pixel_bytes   dimensions    config        location  object_id
+    64.00 MiB   4096×4096     ARGB_8888     native    4097812752
+    12.00 MiB   1024×3072     ARGB_8888     java      2097446928
+     4.00 MiB   1024×1024     ARGB_8888     java      1723142144
+    ...
+
+Total bitmap pixel bytes: 96.50 MiB across 247 instances.
+```
+
+### Java-heap vs native
+
+- **Pre-O Android** (API ≤ 25) stores pixel data in a Java `byte[]`
+  pointed to by `Bitmap.mBuffer`. heaptrail's `location` column
+  shows `java`. The Java-heap pixel array is in the dump and counted
+  toward heap totals.
+- **O+ Android** (API ≥ 26) moved pixel data to native heap; only
+  `mNativeBitmap` (a long handle) remains in the Java heap.
+  heaptrail's `location` column shows `native`. **The pixel bytes
+  reported are estimated from `width × height × bpp`, not from the
+  dump itself** — native heap isn't captured in `am dumpheap`. The
+  number is approximate (a small over-estimate is possible if the
+  config has stride padding).
+
+### When to use
+
+- **Triaging Android OOM where bitmaps are suspect.** Image
+  carousels, large posters, RecyclerView misuse.
+- **Combined with `--paths-from-id`:** find a giant bitmap, then
+  walk its holder chain to identify the misbehaving view holder /
+  fragment / cache.
+
+### Limitations in v1.1.0
+
+- `config` defaults to `ARGB_8888` (4 bpp). Resolving the actual
+  `Bitmap.Config` enum constant requires an extra pass to read each
+  enum's `name` field; deferred to v1.2 since ARGB_8888 is by far
+  the most common case.
+- `holder_summary` is `None` (would require a path-to-root walk per
+  bitmap; expensive on dumps with hundreds of bitmaps). Use
+  `--paths-from-id <object_id>` directly to chase a specific bitmap.
+
+---
+
 ## `--target-glob` — pattern targeting
 
 ### Why this exists

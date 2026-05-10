@@ -13,7 +13,7 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.0.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.1.0+).
 
 ## When to use
 
@@ -301,6 +301,109 @@ Selective exclusion ships in v1.1+ as `--exclude-soft-weak`.
 ~1–3 s wall time on a 200 MiB Android dump. Default off; existing
 output unchanged when the flag is unset.
 
+### 8. `--exclude-soft-weak` — drop weak/soft/phantom holders (v1.1.0, feature G)
+
+Modifier flag. Drops outgoing edges from
+`java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses across path
+walks and the retained-size graph build. Compatible with
+`--paths-from-id`, `--find-referrers`, `--retained-size`, and
+`--leak-suspects`.
+
+```bash
+heaptrail -i heap.hprof --paths-from-id <id> --exclude-soft-weak
+heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak
+```
+
+*Engineering use case:* on Android, LeakCanary's
+`KeyedWeakReference` watchers, the framework's
+`WeakReference<Activity>`, and `Reference.discovered` chains all
+appear as holders in path walks — the actual *strong* holder is
+buried 12 hops underneath. MAT's default leak-hunting view excludes
+these automatically; this flag matches that behavior. **The
+recommended Android leak-hunting workflow always pairs
+`--leak-suspects --exclude-soft-weak`.**
+
+**Wall time / memory:** rebuilds the reference graph minus
+Reference-subclass edges. Same cost as `--retained-size` (~1.5 s on
+200 MiB Android); typically slightly faster (5–15 % fewer edges).
+
+### 9. `--leak-suspects[=THRESHOLD]` — automated suspect identification (v1.1.0, feature H)
+
+Auto-rank dominators by retained share against a threshold (default
+0.05 = 5 %). Per-suspect output: dominator class + object_id,
+accumulating-class summary (most-common class in dominated
+subtree), content preview (when `--preview-bytes` is set), full
+path-to-root via `--paths-from-id`'s walker.
+
+```bash
+heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200
+heaptrail -i heap.hprof --leak-suspects=0.10  # tighter threshold
+```
+
+*Engineering use case:* the canonical "what's wrong with this
+dump?" question. `summary --retained-size` requires you to already
+know what class to investigate; `--leak-suspects` doesn't. Same
+diagnostic shape as MAT's "Leak Suspects" report — terminal-readable,
+content-aware (the preview line tells you the suspect *content*
+inline, which MAT's Leak Suspects doesn't surface).
+
+**Always shows top-3 even if all below threshold** (flagged
+"below threshold"). Useful when one massive cache dominates the
+heap and would otherwise be the only entry.
+
+**Wall time / memory:** runs the v1.0.0 dominator pipeline
+(~1.5 s) + `dom_children` derivation (~12 MiB / 200 ms) + N path
+walks (~5–20 ms each, where N = `--top` capped at threshold count).
+
+### 10. `--merge-paths` — fold paths-to-root for all instances of a class (v1.1.0, feature I)
+
+Modifier on `--paths-from-id`. Resolves all instances of the start
+id's class and folds their paths-to-root into a single tree with
+`[Nx]` branch counts.
+
+```bash
+heaptrail -i heap.hprof --paths-from-id <any-instance-of-target> \
+    --merge-paths --retained-size
+```
+
+*Engineering use case:* when 47 leaked `MainActivity` instances
+share the same holder chain, the *common prefix* tells you "it's
+the EventBus" — but `--paths-from-id` walks one instance at a time.
+Running it 47 times would force the user to spot the shared
+structure by eye. `--merge-paths` collapses the 47 paths into one
+tree showing `[47×]` on each shared hop; the EventBus jumps out.
+
+**With `--retained-size`:** branches are dominator-verified
+(graph-converged at the same idom). **Without:** textual prefix
+match only — usually correct, but the renderer emits a banner
+("re-run with --retained-size for graph-verified convergence").
+
+**Wall time / memory:** N × per-instance path cost. ~1 s for 50
+leaked Activities on a 200 MiB Android dump.
+
+### 11. `--bitmaps` — Bitmap pixel-byte accounting (v1.1.0, feature J)
+
+Independent of the dominator pipeline. Walks every
+`android.graphics.Bitmap` instance, reads
+`mWidth`/`mHeight`/`mConfig`/`mBuffer` from each, computes pixel
+bytes, and emits a top-N report.
+
+```bash
+heaptrail -i heap.hprof --bitmaps -t 20
+```
+
+*Engineering use case:* bitmaps dominate Android heaps but are
+invisible to the class-name view. A 12 MiB `byte[]` is just
+"another big primitive array" until you see it's a 4096×4096
+ARGB_8888 bitmap held by a `RecyclerView.ViewHolder`. Handles both
+pre-O (Java-heap pixel data via `mBuffer`) and O+ (native pixel
+data sized via `width × height × bpp`).
+
+**Wall time / memory:** single instance scan filtered by Bitmap
+class id. Negligible cost; ~400 KiB working memory for ~5K
+bitmaps. Returns "android.graphics.Bitmap not loaded" error on
+non-Android dumps.
+
 ### `--json` for any mode
 
 Append `--json` to any of the above. Writes `heaptrail-<mode>-<ts>.json`
@@ -350,6 +453,22 @@ Given a fresh heap dump and a vague "memory looks bad" report:
    objects can anchor deep subgraphs whose retained cost is orders of
    magnitude larger. The "is this 35K-instance retention 35 MB or
    350 MB?" prioritization question.
+9. (v1.1.0, **recommended for Android first-pass**)
+   **`--leak-suspects --exclude-soft-weak --preview-bytes 200`** →
+   the "what's wrong with this dump?" entry point. Auto-ranks
+   dominators by retained share, picks the accumulating class per
+   suspect, walks the path to GC root, and emits a content snippet.
+   `--exclude-soft-weak` strips LeakCanary watchers and framework
+   `WeakReference` chains so the *strong* holder surfaces.
+10. (Optional) **`--merge-paths`** → modifier on `--paths-from-id`.
+    When N leaked instances of the same class share a holder chain,
+    folds the N paths into one tree with `[N×]` branch counts.
+    "47 MainActivity instances all share an EventBus holder" — one
+    command instead of 47.
+11. (Android-only) **`--bitmaps`** → top-N
+    `android.graphics.Bitmap` instances by pixel-byte size. Surfaces
+    bitmap leaks invisible to the class-name view (a 12 MiB `byte[]`
+    becomes "4096×4096 ARGB_8888 bitmap").
 
 ## Capturing an Android heap dump
 
@@ -388,6 +507,10 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Allocation sites (when alloc-tracked) | `heaptrail -i heap.hprof --allocation-sites --top 20` |
 | Inline content preview for `char[]`/`byte[]` | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
 | Retained-size triage (wrapper-vs-subgraph) | append `--retained-size` to summary, paths, or find-referrers |
+| Filter weak/soft/phantom holders (Android default) | append `--exclude-soft-weak` to any retained-size or path-walk mode |
+| Automated leak-suspect identification | `heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200` |
+| Fold N paths-to-root into one tree | append `--merge-paths` to `--paths-from-id <any-instance>` |
+| Bitmap pixel-byte accounting (Android) | `heaptrail -i heap.hprof --bitmaps -t 20` |
 | JSON sidecar | append `--json` to any of the above |
 | List all UTF-8 strings | `heaptrail -i heap.hprof -l` |
 

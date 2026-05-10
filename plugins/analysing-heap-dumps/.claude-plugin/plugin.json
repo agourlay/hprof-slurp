@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "analysing-heap-dumps",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Investigate .hprof files (Android or JVM heap dumps), diagnose memory leaks, find what holds an over-allocated class or specific object id, measure GC churn between two snapshots, or chase OutOfMemoryError. Wraps heaptrail with auto-install instructions.",
   "author": {
     "name": "John Neerdael",

@@ -308,9 +308,75 @@ that motivated `--preview-bytes` at the *content* level — `--retained-size`
 solves it at the *prioritization* level.
 
 Includes weak/soft/phantom-reference edges by default
-(graph-theoretic dominator definition); selective exclusion is v1.1+
-via `--exclude-soft-weak`. Details in
+(graph-theoretic dominator definition); pair with
+`--exclude-soft-weak` (v1.1.0) for MAT-style filtering. Details in
 [USERGUIDE — `--retained-size`](USERGUIDE.md#--retained-size--dominator-tree-retained-sizes).
+
+### `--exclude-soft-weak` — filter weak holders (v1.1.0)
+
+```bash
+heaptrail -i my.hprof --paths-from-id <id> --exclude-soft-weak
+heaptrail -i my.hprof --retained-size --exclude-soft-weak
+heaptrail -i my.hprof --leak-suspects --exclude-soft-weak
+```
+
+Modifier flag. Drops outgoing edges from
+`java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses across path
+walks and the retained-size graph. **Engineering motivation:** on
+Android, LeakCanary's `KeyedWeakReference` watchers, the framework's
+`WeakReference<Activity>`, and `Reference.discovered` chains all
+appear as holders in path walks — the real strong holder is buried
+underneath. MAT's default leak-hunting view excludes these
+automatically; this flag matches that behavior. **Default off; pair
+with `--leak-suspects` for the recommended workflow.**
+
+### `--leak-suspects` — automated suspect identification (v1.1.0)
+
+```bash
+heaptrail -i my.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200
+heaptrail -i my.hprof --leak-suspects=0.10  # 10% threshold
+```
+
+Auto-rank dominators by retained share against a threshold (default
+5%). Per-suspect output: dominator class + object_id, accumulating-
+class summary, content preview (when `--preview-bytes` is set), and
+full path-to-root. Always shows top-3 even if all below threshold.
+**Engineering motivation:** answers the "what's wrong with this
+dump?" question without requiring you to know what class to grep
+for first. heaptrail's answer to MAT's Leak Suspects narrative
+report — same data, terminal-readable, content-aware via
+`--preview-bytes`.
+
+### `--merge-paths` — fold parallel paths-to-root (v1.1.0)
+
+```bash
+heaptrail -i my.hprof --paths-from-id <id> --merge-paths --retained-size
+```
+
+Modifier on `--paths-from-id`. Resolves all instances of the start
+id's class and folds their paths-to-root into a single tree with
+branch counts. **Engineering motivation:** when 47 leaked
+`MainActivity` instances share the same holder chain, the *common
+prefix* tells you "it's the EventBus" — but `--paths-from-id` walks
+one instance at a time. `--merge-paths` collapses the 47 paths into
+one tree showing `[47×]` on each shared hop. Pair with
+`--retained-size` for graph-verified convergence; otherwise textual
+prefix matching with a banner.
+
+### `--bitmaps` — Bitmap pixel-byte accounting (v1.1.0)
+
+```bash
+heaptrail -i my.hprof --bitmaps -t 20
+```
+
+List top-N `android.graphics.Bitmap` instances by pixel-byte size.
+Reports `width × height × config`, location (java/native), and one-
+line holder summary. **Engineering motivation:** bitmaps dominate
+Android heaps but are invisible to the class-name view — a 12 MiB
+`byte[]` is just "another big primitive array" until you see it's a
+4096×4096 ARGB_8888 bitmap held by a `RecyclerView.ViewHolder`.
+Handles both pre-O Java-heap pixel data (via `mBuffer`) and O+
+native pixel data (sized via `width × height × bpp`).
 
 ### `--json` — structured output for scripts
 
