@@ -65,6 +65,110 @@ pub struct PathResult {
     pub terminated_by_soft_weak: Option<()>,
 }
 
+/// Inputs to the per-instance path walker. `idx` is borrowed; the
+/// walker re-streams the dump on every call so callers like
+/// `merge_paths` (PR 6) pay file I/O proportional to the target count,
+/// not the dump size. Returned `PathResult.array_previews` and
+/// `retained_by_oid` are empty/None — the caller fills them after a
+/// fan-out to `paths::run` is unnecessary.
+pub struct PathWalkInputs<'a> {
+    pub idx: &'a Pass1Index,
+    pub start_object_id: u64,
+    pub max_depth: u8,
+    pub input_file: &'a str,
+    pub debug: bool,
+    pub exclude_soft_weak: bool,
+}
+
+/// Walk a single object id toward a GC root. Pure walker — no pass1
+/// indexing, no preview collection, no dominator pipeline. Suitable
+/// for batch invocation (e.g. `merge_paths` calling once per target
+/// instance).
+pub fn compute_path_for_object(inp: &PathWalkInputs) -> Result<PathResult, HprofSlurpError> {
+    let idx = inp.idx;
+    let mut steps: Vec<PathStep> = Vec::new();
+    let mut current = inp.start_object_id;
+    let mut depth: u8 = 0;
+    let mut max_depth_reached = false;
+    let mut terminated_at_root = false;
+    let mut root_kind: Option<&'static str> = None;
+    let mut root_thread_name: Option<String> = None;
+    let mut root_frame: Option<crate::referrer::ResolvedFrame> = None;
+    let mut terminated_by_soft_weak: Option<()> = None;
+
+    loop {
+        if let Some(kind) = idx.gc_root_kind_by_id.get(&current).copied() {
+            terminated_at_root = true;
+            root_kind = Some(kind);
+            let meta = idx
+                .root_thread_meta_by_id
+                .get(&current)
+                .copied()
+                .or_else(|| {
+                    idx.thread_serial_by_obj_id.get(&current).map(|&serial| {
+                        crate::referrer::ThreadFrameRef {
+                            thread_serial: serial,
+                            frame_idx: None,
+                        }
+                    })
+                });
+            if let Some(m) = meta {
+                root_thread_name = idx
+                    .thread_name_by_serial
+                    .get(&m.thread_serial)
+                    .map(|s| s.as_ref().to_string());
+                if let Some(idx_in_trace) = m.frame_idx
+                    && let Some(frames) = idx.stack_trace_by_serial.get(&m.thread_serial)
+                    && let Some(&frame_id) = frames.get(idx_in_trace as usize)
+                {
+                    root_frame = idx.resolve_frame(frame_id);
+                }
+            }
+            break;
+        }
+        if depth >= inp.max_depth {
+            max_depth_reached = true;
+            break;
+        }
+        match find_first_holder(
+            inp.input_file,
+            idx,
+            current,
+            inp.debug,
+            inp.exclude_soft_weak,
+        )? {
+            HolderResult::Holder(step) => {
+                let next = step.holder_object_id;
+                steps.push(step);
+                if next == current {
+                    break;
+                }
+                current = next;
+                depth += 1;
+            }
+            HolderResult::None => break,
+            HolderResult::WeakRejected => {
+                terminated_by_soft_weak = Some(());
+                break;
+            }
+        }
+    }
+
+    Ok(PathResult {
+        start_object_id: inp.start_object_id,
+        steps,
+        terminated_at_root,
+        root_kind,
+        root_thread_name,
+        root_frame,
+        max_depth_reached,
+        depth,
+        array_previews: ahash::AHashMap::new(),
+        retained_by_oid: None,
+        terminated_by_soft_weak,
+    })
+}
+
 pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
     let (
         input_file,
@@ -108,10 +212,6 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
             ahash::AHashMap::new()
         };
 
-    // v1.0.0 (feature E): build the dominator tree once and keep a
-    // per-object retained-bytes map for the renderer to annotate each
-    // hop. Cost is the same as summary's --retained-size: a second
-    // retain_bodies pass + LT + DFS.
     let retained_by_oid: Option<ahash::AHashMap<u64, u64>> = if retained_size {
         let graph = crate::reference_graph::build_from_pass1_with(
             input_file,
@@ -133,100 +233,18 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
         None
     };
 
-    let mut steps: Vec<PathStep> = Vec::new();
-    let mut current = start_object_id;
-    let mut depth: u8 = 0;
-    let mut max_depth_reached = false;
-    let mut terminated_at_root = false;
-    let mut root_kind: Option<&'static str> = None;
-    let mut root_thread_name: Option<String> = None;
-    let mut root_frame: Option<crate::referrer::ResolvedFrame> = None;
-    let mut terminated_by_soft_weak: Option<()> = None;
-
-    loop {
-        if let Some(kind) = idx.gc_root_kind_by_id.get(&current).copied() {
-            terminated_at_root = true;
-            root_kind = Some(kind);
-            // Resolve thread name + top frame for thread-owned roots.
-            // (a) RootJavaFrame/RootJniLocal/RootJniMonitor have a
-            //     ThreadFrameRef in root_thread_meta_by_id.
-            // (b) RootThreadObject's object_id IS the thread itself, so
-            //     look it up in thread_serial_by_obj_id to get the serial.
-            let meta = idx
-                .root_thread_meta_by_id
-                .get(&current)
-                .copied()
-                .or_else(|| {
-                    idx.thread_serial_by_obj_id.get(&current).map(|&serial| {
-                        crate::referrer::ThreadFrameRef {
-                            thread_serial: serial,
-                            frame_idx: None,
-                        }
-                    })
-                });
-            if let Some(m) = meta {
-                root_thread_name = idx
-                    .thread_name_by_serial
-                    .get(&m.thread_serial)
-                    .map(|s| s.as_ref().to_string());
-                if let Some(idx_in_trace) = m.frame_idx {
-                    // Frame index is into the thread's stack trace. The
-                    // StackTrace records are keyed by their own serial,
-                    // not by thread_serial. We don't have a direct
-                    // thread_serial -> stack_trace_serial map; iterate
-                    // stack_trace_by_serial to find the trace whose
-                    // thread_serial matches. (Cheap: usually <100 traces.)
-                    // NOTE: StackTraceData is not stored, only frame ids;
-                    // best we can do is look up the first matching trace.
-                    // For robustness, also fall back to looking up the
-                    // index in any trace recorded against this thread's
-                    // serial: many dumps record multiple stack traces per
-                    // thread but the indexer only kept the frame ids.
-                    if let Some(frames) = idx.stack_trace_by_serial.get(&m.thread_serial)
-                        && let Some(&frame_id) = frames.get(idx_in_trace as usize)
-                    {
-                        root_frame = idx.resolve_frame(frame_id);
-                    }
-                }
-            }
-            break;
-        }
-        if depth >= max_depth {
-            max_depth_reached = true;
-            break;
-        }
-        match find_first_holder(input_file, &idx, current, debug, exclude_soft_weak)? {
-            HolderResult::Holder(step) => {
-                let next = step.holder_object_id;
-                steps.push(step);
-                if next == current {
-                    // self-cycle (shouldn't happen but bail rather than loop)
-                    break;
-                }
-                current = next;
-                depth += 1;
-            }
-            HolderResult::None => break,
-            HolderResult::WeakRejected => {
-                terminated_by_soft_weak = Some(());
-                break;
-            }
-        }
-    }
-
-    Ok(PathResult {
+    let inp = PathWalkInputs {
+        idx: &idx,
         start_object_id,
-        steps,
-        terminated_at_root,
-        root_kind,
-        root_thread_name,
-        root_frame,
-        max_depth_reached,
-        depth,
-        array_previews,
-        retained_by_oid,
-        terminated_by_soft_weak,
-    })
+        max_depth,
+        input_file,
+        debug,
+        exclude_soft_weak,
+    };
+    let mut path = compute_path_for_object(&inp)?;
+    path.array_previews = array_previews;
+    path.retained_by_oid = retained_by_oid;
+    Ok(path)
 }
 
 /// Run an extra streaming pass with retain_primitive_bodies=true and
