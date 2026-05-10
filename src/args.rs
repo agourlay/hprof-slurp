@@ -135,6 +135,13 @@ pub struct Cli {
     /// convergence; otherwise textual prefix matching with a banner.
     #[arg(long = "merge-paths", default_value_t = false)]
     pub merge_paths: bool,
+
+    /// List top-N android.graphics.Bitmap instances by pixel-byte
+    /// size. Reports width × height × config and pixel bytes;
+    /// Java-heap or native location; one-line holder summary.
+    /// Android dumps only.
+    #[arg(long = "bitmaps", default_value_t = false)]
+    pub bitmaps: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +216,12 @@ pub enum Mode {
         debug: bool,
         json: bool,
     },
+    Bitmaps {
+        input_file: String,
+        top: usize,
+        debug: bool,
+        json: bool,
+    },
 }
 
 /// Resolve the parsed CLI into a single concrete `Mode`. Enforces:
@@ -225,6 +238,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     let diff_set = cli.diff_from.is_some() || cli.diff_to.is_some();
     let alloc_sites_set = cli.allocation_sites;
     let leak_suspects_set = cli.leak_suspects.is_some();
+    let bitmaps_set = cli.bitmaps;
 
     let mode_count = [
         referrers_set,
@@ -232,6 +246,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         diff_set,
         alloc_sites_set,
         leak_suspects_set,
+        bitmaps_set,
     ]
     .iter()
     .filter(|b| **b)
@@ -273,6 +288,15 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             threshold,
             exclude_soft_weak: cli.exclude_soft_weak,
             preview_bytes: cli.preview_bytes,
+            debug: cli.debug,
+            json: cli.json,
+        });
+    }
+
+    if cli.bitmaps {
+        return Ok(Mode::Bitmaps {
+            input_file,
+            top: cli.top,
             debug: cli.debug,
             json: cli.json,
         });
