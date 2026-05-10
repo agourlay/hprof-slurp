@@ -13,7 +13,7 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 0.9.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.0.0+).
 
 ## When to use
 
@@ -263,6 +263,44 @@ a 200 MiB Android dump with N=200; negligible on typical JVM dumps.
 Default 0 (off) — every existing CLI invocation produces byte-identical
 output unless `--preview-bytes` is set.
 
+### 7. `--retained-size` — dominator-tree retained sizes (v1.0.0, feature E)
+
+Global flag. When set, summary's class table re-sorts by retained
+heap and adds a `retained` column; a "Largest retained instances"
+hot list of `(object_id, class, retained_bytes)` follows;
+`--paths-from-id` annotates each hop with `(retained=<size>)`;
+`--find-referrers` adds a `class retained` column to holder rows.
+
+```bash
+heaptrail -i heap.hprof --retained-size -t 20
+heaptrail -i heap.hprof --paths-from-id <u64> --retained-size
+heaptrail -i heap.hprof --find-referrers <class-or-id> --retained-size
+```
+
+**What it tells you:** the bytes that would actually be reclaimed if
+every instance of a class disappeared — the metric Eclipse MAT calls
+"retained heap." Closes heaptrail's last gap with MAT for single-shot
+triage. Computed via Lengauer–Tarjan dominators on the in-memory
+object-reference graph.
+
+*Engineering use case:* the canonical wrapper-vs-subgraph question.
+A `ResolvedDisplayItem` is 88 bytes shallow but holds a 12-element
+`ResolvedDisplayFieldSlots` and an `ArtworkBundle`. For 35K
+instances, shallow size says 3 MB and ranks the class low; retained
+size answers whether the *real* cost is 35 MB or 350 MB. Same
+diagnostic shape as `--preview-bytes` for v0.9.0 — the data was
+always in the dump, but heaptrail wasn't surfacing it. Now it does.
+
+**Reference strengths:** v1.0.0 includes weak / soft / phantom-reference
+edges in the graph (strict graph-theoretic dominator definition).
+Eclipse MAT's default leak-hunting view excludes those, so MAT and
+heaptrail will sometimes report different retained sizes — by design.
+Selective exclusion ships in v1.1+ as `--exclude-soft-weak`.
+
+**Wall time / memory:** opt-in, adds ~200 MiB working memory and
+~1–3 s wall time on a 200 MiB Android dump. Default off; existing
+output unchanged when the flag is unset.
+
 ### `--json` for any mode
 
 Append `--json` to any of the above. Writes `heaptrail-<mode>-<ts>.json`
@@ -303,6 +341,15 @@ Given a fresh heap dump and a vague "memory looks bad" report:
    alone doesn't say what it contains (the canonical "is this big
    `char[]` a SharedPreferences XML, a cached JSON blob, a log buffer,
    or a decoded image?" disambiguation).
+8. (Optional) **`--retained-size`** → append to summary,
+   `--paths-from-id`, or `--find-referrers`. Re-sorts summary's class
+   table by dominator-tree retained bytes and adds a "Largest retained
+   instances" hot list; annotates path hops with `(retained=<size>)`;
+   adds a `class retained` column to find-referrers holder rows. Use
+   when a class with high instance count has low shallow size — wrapper
+   objects can anchor deep subgraphs whose retained cost is orders of
+   magnitude larger. The "is this 35K-instance retention 35 MB or
+   350 MB?" prioritization question.
 
 ## Capturing an Android heap dump
 
@@ -340,6 +387,7 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Glob targeting (family of classes) | `heaptrail -i heap.hprof --target-glob 'com.foo.**'` |
 | Allocation sites (when alloc-tracked) | `heaptrail -i heap.hprof --allocation-sites --top 20` |
 | Inline content preview for `char[]`/`byte[]` | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
+| Retained-size triage (wrapper-vs-subgraph) | append `--retained-size` to summary, paths, or find-referrers |
 | JSON sidecar | append `--json` to any of the above |
 | List all UTF-8 strings | `heaptrail -i heap.hprof -l` |
 

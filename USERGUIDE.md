@@ -66,6 +66,7 @@ a JVM dump captured this way.
 | Compare two snapshots (churn) | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
 | Pipe to `jq` / dashboards | append `--json` to any of the above |
 | **Show what a giant `char[]`/`byte[]` actually contains** | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
+| **Retained-size triage** ("is 35K instances actually 35 MB or 350 MB?") | append `--retained-size` to summary, paths-from-id, or find-referrers |
 
 Common flags:
 
@@ -524,6 +525,108 @@ With it, root-cause and remediation strategy fell out in one pass:
 both classes of finding (duplicate concurrent parses + SharedPreferences
 XML inflation) point to the same fix — replace
 `gson.fromJson(String, type)` with streaming reads.
+
+---
+
+## `--retained-size` — dominator-tree retained sizes
+
+### Why this exists
+
+`summary` ranks classes by **shallow** size — bytes occupied by the
+instance header and own fields. For wrapper objects that hold deep
+subgraphs, shallow drastically under-represents the cost of allowing
+the class to live.
+
+The engineering session that drove this feature: a
+`ResolvedDisplayItem` was 88 bytes shallow, but each instance held a
+12-element `ResolvedDisplayFieldSlots` (each slot pointing at typed
+content) and an `ArtworkBundle` (multiple image references). Shallow
+size flagged the class at 3 MB across 35K instances. The actual
+question — "is this 35K-instance retention 35 MB, or is it 350 MB?"
+— could only be answered by following references manually for one
+instance and multiplying out, or by reaching for Eclipse MAT.
+
+heaptrail v1.0.0 brings retained size — the metric MAT computes via
+dominator-tree analysis — to the CLI. Same diagnostic shape as
+`--preview-bytes` for v0.9.0: the data was always there, but
+heaptrail wasn't surfacing it; now it does.
+
+### How to use it
+
+```bash
+# Re-sort the class table by retained bytes; add "Largest retained
+# instances" hot list of (object_id, class, retained_bytes).
+heaptrail -i my.hprof --retained-size -t 20
+
+# Annotate each path-from-id hop with that hop object's retained size.
+heaptrail -i my.hprof --paths-from-id <u64> --retained-size
+
+# Add a `class retained` column to each holder row.
+heaptrail -i my.hprof --find-referrers <class-or-id> --retained-size
+```
+
+Output example (re-sorted summary table):
+
+```
++----------+-----------+-----------+-------------+---------------------------------------+
+|  Shallow | Instances |  Retained |     Largest | Class name                            |
++----------+-----------+-----------+-------------+---------------------------------------+
+|  2.80MiB |    122154 | 126.84MiB |  24.00bytes | java.util.ArrayList                   |
+|  1.53MiB |     28697 |  58.58MiB |  56.00bytes | com.nexio.tv.domain.model.CatalogRow  |
+| 56.89MiB |    573552 |  57.37MiB | 104.00bytes | com.nexio.tv.domain.model.MetaPreview |
+|  8.25KiB |       352 |  15.18MiB |  24.00bytes | kotlin.SynchronizedLazyImpl           |
++----------+-----------+-----------+-------------+---------------------------------------+
+```
+
+The table makes the wrapper-vs-subgraph effect immediately visible:
+`SynchronizedLazyImpl` is 8 KiB shallow but anchors **15 MiB** of
+retained subgraph — a small wrapper class that's individually trivial
+but, in aggregate, owns a serious chunk of the heap. Shallow size
+would have placed it well below the visible cutoff.
+
+### How it's computed
+
+heaptrail builds an in-memory CSR object-reference graph from the
+hprof, computes immediate dominators using Lengauer–Tarjan
+(O(N α(N))), then walks the dominator tree post-order to sum
+retained bytes per node. Class-level totals and the top-N
+largest-retained instance ids fall out of the same pass.
+
+### Reference strength: weak / soft / phantom edges are included
+
+heaptrail v1.0.0's dominator tree treats every reference as equal —
+including `WeakReference`, `SoftReference`, and `PhantomReference`
+edges. That's the strict graph-theoretic dominator definition.
+
+Eclipse MAT's default leak-hunting workflow excludes those edges, so
+a side-by-side comparison will show MAT's retained smaller than
+heaptrail's for any object reachable only via a weak/soft/phantom
+holder. **This is by design, not a bug.** If the difference matters
+for your investigation, the v1.1+ roadmap includes
+`--exclude-soft-weak` to rebuild the graph dropping outgoing edges
+from `java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses.
+
+### Memory and wall time
+
+Adds roughly 200 MiB working memory and 1–3 s wall time on a
+200 MiB Android dump (~3M objects, ~15M edges). Negligible on
+typical JVM dumps. Default off.
+
+### When to use
+
+- After `summary` shows a class with high instance count but low
+  shallow size — retained tells you whether each instance silently
+  anchors a deep subgraph.
+- When prioritizing leak-hunting work: a class with 35K instances at
+  88 bytes shallow looks small; if its retained is 350 MB, that's
+  the right starting point even if the shallow-size ranking buried
+  it. The "is this 35K-instance retention 35 MB or 350 MB?"
+  triage question.
+- During a `--paths-from-id` walk where you want to know how much
+  weight each hop carries (an upper bound on what freeing that
+  reference would reclaim).
+- To rank holder classes from `--find-referrers` by retained rather
+  than ref-count alone — sometimes 1 reference holds 8 MiB.
 
 ---
 

@@ -31,10 +31,9 @@ The parser is streaming and reads sequentially. Summary and diff modes complete 
 
 ### When to use [Eclipse MAT](https://www.eclipse.org/mat/) or [VisualVM](https://visualvm.github.io/)
 
-- **Retained heap / dominator analysis.** heaptrail v0.9.0 reports shallow sizes only; full Lengauer–Tarjan dominators with retained-size accounting are scheduled for v1.0.0.
 - **Interactive graph exploration.** Clicking through inbound/outbound references and pivoting on the fly is a UI capability and stays in MAT's column.
 - **OQL** for ad-hoc querying — heaptrail is a fixed-flag CLI by design.
-- **MAT's Leak Suspects** clustered narrative report (until heaptrail's equivalent lands post-v1.0.0).
+- **MAT's Leak Suspects** clustered narrative report (heaptrail's equivalent is on the v1.1+ roadmap).
 - **HTML reports for non-engineering audiences.** MAT's report exporter is well-suited for sharing with people who won't open a CLI.
 
 The two tools complement each other: `heaptrail` is the cheaper, scriptable, agent-friendly first pass; MAT remains the right tool when the question demands an interactive graph session.
@@ -74,6 +73,13 @@ reference and worked examples.
   Identifies SharedPreferences XML, JSON caches, log buffers, and
   image-magic-byte signatures without leaving heaptrail. Closes the gap
   between *who* holds an over-allocated array and *what* is in it.
+- **retained size** (`--retained-size`) — Lengauer–Tarjan dominator-tree
+  retained sizes augmenting `summary`, `--paths-from-id`, and
+  `--find-referrers`. Answers the wrapper-vs-subgraph question:
+  `ResolvedDisplayItem` is 88 bytes shallow but holds a
+  `ResolvedDisplayFieldSlots` + `ArtworkBundle` — for 35K instances,
+  shallow says 3 MB; retained tells you whether the *real* cost is
+  35 MB or 350 MB. Last MAT-grade datum heaptrail surfaces.
 
 ## Usage
 
@@ -253,6 +259,34 @@ for serialization candidates. With `--preview-bytes 200`, the inline
 `<?xml version="1.0"...home_catalog_snapshot...` would have identified
 it as the SharedPreferences XML blob in one command. Details in
 [USERGUIDE — `--preview-bytes`](USERGUIDE.md#--preview-bytes--content-preview).
+
+### `--retained-size` — dominator-tree retained sizes (v1.0.0)
+
+```bash
+heaptrail -i my.hprof --retained-size -t 20
+heaptrail -i my.hprof --paths-from-id <id> --retained-size
+heaptrail -i my.hprof --find-referrers <class> --retained-size
+```
+
+Computes per-instance retained bytes via Lengauer–Tarjan dominators.
+Re-sorts the summary class table by retained size, adds a `retained`
+column, and appends a "Largest retained instances" hot list of object
+ids. `--paths-from-id` annotates each hop with `(retained=<size>)`;
+`--find-referrers` adds a `class retained` column to holder rows.
+Default off. Adds ~250 MiB working memory and ~1–3 s wall time on a
+200 MiB Android dump.
+
+**Engineering motivation:** a class like `ResolvedDisplayItem` shows
+88 bytes shallow but holds a 12-element `ResolvedDisplayFieldSlots` +
+`ArtworkBundle`. For 35K instances, shallow says 3 MB; retained tells
+you whether the *real* cost is 35 MB or 350 MB. Same triage friction
+that motivated `--preview-bytes` at the *content* level — `--retained-size`
+solves it at the *prioritization* level.
+
+Includes weak/soft/phantom-reference edges by default
+(graph-theoretic dominator definition); selective exclusion is v1.1+
+via `--exclude-soft-weak`. Details in
+[USERGUIDE — `--retained-size`](USERGUIDE.md#--retained-size--dominator-tree-retained-sizes).
 
 ### `--json` — structured output for scripts
 

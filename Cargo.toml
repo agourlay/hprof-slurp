@@ -1,6 +1,6 @@
 [package]
 name = "heaptrail"
-version = "0.9.0"
+version = "1.0.0"
 authors = [
     "John Neerdael <john@neerdael.nl>",
     "Arnaud Gourlay <arnaud.gourlay@gmail.com>",
