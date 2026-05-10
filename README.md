@@ -17,7 +17,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, and (since v0.9.0) inline content previews so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string rather than just "a big char array." Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, and automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0) for the "what's wrong with this dump?" entry point. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -26,15 +26,15 @@ The parser reads sequentially. Summary and diff modes complete in a single pass;
 - **Agentic / LLM-driven investigation.** Structured terminal output (with `--json` for machine consumers) lets an agent run heaptrail, read the result, and decide on the next probe. A GUI tool can't sit inside that loop.
 - **Headless / CI workflows.** Single static binary, no JVM dependency, deterministic output that diffs cleanly between runs. Fits scheduled jobs, regression-detection pipelines, post-incident automation.
 - **Dumps larger than host RAM.** Default and investigation modes don't hold a full object graph in memory; multi-gigabyte captures run on a laptop. (`--retained-size` is the exception — dominator analysis requires a full graph.)
-- **Content-aware diagnosis.** Inline previews of large primitive arrays in summary, paths, and referrer output identify the *kind* of bug — a `SharedPreferences` XML blob or an inflated Gson string — which MAT's narrative output doesn't surface (you can click into a String in MAT, but Leak Suspects doesn't preview content).
+- **Content-aware diagnosis.** Inline previews of large primitive arrays in summary, paths, and referrer output identify the *kind* of bug — a `SharedPreferences` XML blob or an inflated Gson string — which MAT's narrative output doesn't surface (you can click into a String in MAT, but Leak Suspects doesn't preview content; heaptrail's `--leak-suspects` includes a content snippet inline per suspect).
 - **Retained-size triage.** Lengauer–Tarjan dominator-tree retained sizes augment `summary`, `--paths-from-id`, and `--find-referrers` — the wrapper-vs-subgraph question MAT answers, at the CLI in seconds rather than a GUI session.
+- **Automated suspect detection.** `--leak-suspects` ranks dominators by retained share, clusters by accumulating class, and emits a narrative report with path-to-root and content previews per suspect — the "what's wrong with this dump?" entry point that doesn't require knowing the suspect class up front. Pairs with `--exclude-soft-weak` to filter out `WeakReference`/`SoftReference`/`PhantomReference` noise from LeakCanary and the framework.
 - **Narrow, repeatable questions.** "Who holds class X?", "What changed between these two dumps?", "What dominates the heap by retained size?", "What are the top allocation sites?" — single-command answers in seconds, no load-and-explore session.
 
 ### When to use [Eclipse MAT](https://www.eclipse.org/mat/) or [VisualVM](https://visualvm.github.io/)
 
 - **Interactive graph exploration.** Clicking through inbound/outbound references and pivoting on the fly is a UI capability and stays in MAT's column.
 - **OQL** for ad-hoc querying — heaptrail is a fixed-flag CLI by design.
-- **MAT's Leak Suspects** clustered narrative report (heaptrail's equivalent is on the v1.1+ roadmap).
 - **HTML reports for non-engineering audiences.** MAT's report exporter is well-suited for sharing with people who won't open a CLI.
 
 The two tools complement each other: `heaptrail` is the cheaper, scriptable, agent-friendly first pass; MAT remains the right tool when the question demands an interactive graph session.
@@ -80,7 +80,30 @@ reference and worked examples.
   `ResolvedDisplayItem` is 88 bytes shallow but holds a
   `ResolvedDisplayFieldSlots` + `ArtworkBundle` — for 35K instances,
   shallow says 3 MB; retained tells you whether the *real* cost is
-  35 MB or 350 MB. Last MAT-grade datum heaptrail surfaces.
+  35 MB or 350 MB.
+- **leak suspects** (`--leak-suspects`) — auto-rank top dominators by
+  retained share, cluster dominated objects by class, emit narrative +
+  path-to-root + content-preview snippet per suspect. The "what's
+  wrong with this dump?" entry point — no need to know what class to
+  grep for first. Pair with `--exclude-soft-weak` for the recommended
+  leak-hunting workflow.
+- **reference-strength filter** (`--exclude-soft-weak`) — drop outgoing
+  edges from `java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses
+  across path walks and the retained-size graph build. The single most-
+  used MAT workflow on Android: cuts LeakCanary watchers and framework
+  `WeakReference` noise out of paths so the actual strong holder
+  surfaces.
+- **merged shortest paths** (`--merge-paths`) — fold paths-to-root for
+  every instance of a target class into one tree with branch counts.
+  When 47 leaked `MainActivity` instances share the same holder chain,
+  the common prefix tells you "it's the EventBus." Pairs with
+  `--target-glob` and `--retained-size` (graph-verified convergence
+  via dominator tree).
+- **bitmap-aware reporting** (`--bitmaps`) — top-N Bitmap instances by
+  pixel-byte size, with width × height × config and holder summary.
+  Handles both pre-O (Java-heap pixel data via `mBuffer`) and O+
+  (native pixel data sized via width × height × bpp). Bitmaps dominate
+  Android heaps; this surfaces them without leaving heaptrail.
 
 ## Usage
 
