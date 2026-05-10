@@ -37,6 +37,23 @@ pub struct RetainedAnalysis {
     pub top_instances: Vec<(u64, u64, u64)>,
 }
 
+/// Build the dominator-tree children list from `idom`. `dom_children[v]`
+/// is the list of nodes whose immediate dominator is `v`. Unreachable
+/// nodes (idom == u32::MAX) appear in no list.
+///
+/// Required by `--leak-suspects` (v1.1.0) for top-down traversal of a
+/// suspect's dominated subtree.
+pub fn dom_children(idom: &[u32]) -> Vec<Vec<u32>> {
+    let n = idom.len();
+    let mut children: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for (v, &d) in idom.iter().enumerate() {
+        if d != u32::MAX && (d as usize) < n {
+            children[d as usize].push(v as u32);
+        }
+    }
+    children
+}
+
 pub fn compute(graph: &ReferenceGraph, idom: &[u32], top_n: usize) -> RetainedAnalysis {
     let n = graph.node_count();
     if n == 0 {
@@ -171,6 +188,26 @@ mod tests {
             super_root,
             index_by_object_id: AHashMap::new(),
         }
+    }
+
+    #[test]
+    fn dom_children_reflects_idom_inversion() {
+        // super → 0 → 1, super → 0 → 2, super → 0 → 3 (linear under 0)
+        let g = graph_with_shallow(
+            4,
+            &[(0, 1), (0, 2), (0, 3)],
+            &[0],
+            &[10, 10, 10, 10],
+            &[1, 1, 1, 1],
+        );
+        let idom = lengauer_tarjan(&g);
+        let kids = dom_children(&idom);
+        let sr = g.super_root as usize;
+        assert_eq!(kids[sr], vec![0]);
+        let mut k0 = kids[0].clone();
+        k0.sort_unstable();
+        assert_eq!(k0, vec![1, 2, 3]);
+        assert!(kids[1].is_empty() && kids[2].is_empty() && kids[3].is_empty());
     }
 
     #[test]
