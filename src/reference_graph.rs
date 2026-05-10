@@ -67,16 +67,36 @@ impl ReferenceGraph {
     }
 }
 
+/// v1.1.0: builder options. `exclude_soft_weak` skips outgoing edges
+/// from any source node whose class is in
+/// `Pass1Index.reference_subclass_set` — mirrors MAT's default
+/// leak-hunting filter.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct BuildOptions {
+    pub exclude_soft_weak: bool,
+}
+
+/// v1.0.0 entry point — equivalent to `build_from_pass1_with` with
+/// default options. Kept for backward compatibility.
+pub fn build_from_pass1(
+    path: &str,
+    idx: &Pass1Index,
+    debug: bool,
+) -> Result<ReferenceGraph, HprofSlurpError> {
+    build_from_pass1_with(path, idx, debug, BuildOptions::default())
+}
+
 /// Streams `path` once with `retain_bodies=true`. Builds the full
 /// CSR graph in a single pass: nodes are accumulated as records
 /// arrive, edges (instance refs + object-array elements) are buffered
 /// keyed by source object id and resolved to node indices after the
 /// node set is finalized. Edges from the virtual super-root are added
 /// at the end from `Pass1Index` (GC roots + class statics).
-pub fn build_from_pass1(
+pub fn build_from_pass1_with(
     path: &str,
     idx: &Pass1Index,
     debug: bool,
+    opts: BuildOptions,
 ) -> Result<ReferenceGraph, HprofSlurpError> {
     let id_size = idx.id_size;
 
@@ -103,7 +123,9 @@ pub fn build_from_pass1(
                     node_ids.push(object_id);
                     node_class.push(ci);
                     node_shallow.push(size);
-                    if let Some(b) = body {
+                    let skip_source = opts.exclude_soft_weak
+                        && idx.reference_subclass_set.contains(&class_object_id);
+                    if !skip_source && let Some(b) = body {
                         extract_refs_into(idx, class_object_id, &b, object_id, &mut edge_buf);
                     }
                 }

@@ -108,10 +108,18 @@ pub struct Cli {
     /// retained), `--paths-from-id` hops, and `--find-referrers`
     /// holders. Adds ~250 MiB working memory and ~1–3 s wall time
     /// on a 200 MiB Android dump. Includes weak/soft/phantom-reference
-    /// edges (graph-theoretic dominator-tree definition); excluding
-    /// those is a v1.1+ flag. Default off.
+    /// edges (graph-theoretic dominator-tree definition); pair with
+    /// `--exclude-soft-weak` for MAT-style leak hunting. Default off.
     #[arg(long = "retained-size", default_value_t = false)]
     pub retained_size: bool,
+
+    /// Drop outgoing edges from java.lang.ref.{Soft,Weak,Phantom}Reference
+    /// subclasses across path walks and the retained-size graph build.
+    /// MAT's default leak-hunting filter; required on Android dumps
+    /// where LeakCanary watchers and framework weak-refs would
+    /// otherwise bury the real strong reference. Default off.
+    #[arg(long = "exclude-soft-weak", default_value_t = false)]
+    pub exclude_soft_weak: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +147,7 @@ pub enum Mode {
         preview_bytes: u32,
         list_arrays_min_bytes: u32,
         retained_size: bool,
+        exclude_soft_weak: bool,
     },
     FindReferrers {
         input_file: String,
@@ -150,6 +159,7 @@ pub enum Mode {
         json: bool,
         preview_bytes: u32,
         retained_size: bool,
+        exclude_soft_weak: bool,
     },
     Paths {
         input_file: String,
@@ -159,6 +169,7 @@ pub enum Mode {
         json: bool,
         preview_bytes: u32,
         retained_size: bool,
+        exclude_soft_weak: bool,
     },
     Diff {
         from: String,
@@ -240,6 +251,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             json: cli.json,
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
+            exclude_soft_weak: cli.exclude_soft_weak,
         });
     }
     if let Some(object_id) = cli.paths_from_id {
@@ -251,6 +263,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             json: cli.json,
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
+            exclude_soft_weak: cli.exclude_soft_weak,
         });
     }
     Ok(Mode::Summary {
@@ -262,6 +275,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         preview_bytes: cli.preview_bytes,
         list_arrays_min_bytes: cli.list_arrays_min_bytes,
         retained_size: cli.retained_size,
+        exclude_soft_weak: cli.exclude_soft_weak,
     })
 }
 

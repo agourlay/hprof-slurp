@@ -57,10 +57,24 @@ pub struct PathResult {
     /// run summary's --retained-size for class-level rollups).
     #[serde(skip)]
     pub retained_by_oid: Option<ahash::AHashMap<u64, u64>>,
+    /// v1.1.0 (--exclude-soft-weak): set when the walk terminated
+    /// because the only candidate holder was a Reference subclass and
+    /// the user asked to exclude weak holders. Surfaced as a
+    /// `[soft/weak/phantom — excluded]` annotation on the orphan line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminated_by_soft_weak: Option<()>,
 }
 
 pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
-    let (input_file, start_object_id, max_depth, debug, preview_bytes, retained_size) = match mode {
+    let (
+        input_file,
+        start_object_id,
+        max_depth,
+        debug,
+        preview_bytes,
+        retained_size,
+        exclude_soft_weak,
+    ) = match mode {
         Mode::Paths {
             input_file,
             object_id,
@@ -68,6 +82,7 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
             debug,
             preview_bytes,
             retained_size,
+            exclude_soft_weak,
             ..
         } => (
             input_file.as_str(),
@@ -76,6 +91,7 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
             *debug,
             *preview_bytes,
             *retained_size,
+            *exclude_soft_weak,
         ),
         _ => {
             return Err(HprofSlurpError::NotYetImplemented {
@@ -97,7 +113,12 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
     // hop. Cost is the same as summary's --retained-size: a second
     // retain_bodies pass + LT + DFS.
     let retained_by_oid: Option<ahash::AHashMap<u64, u64>> = if retained_size {
-        let graph = crate::reference_graph::build_from_pass1(input_file, &idx, debug)?;
+        let graph = crate::reference_graph::build_from_pass1_with(
+            input_file,
+            &idx,
+            debug,
+            crate::reference_graph::BuildOptions { exclude_soft_weak },
+        )?;
         let idom = crate::dominators::lengauer_tarjan(&graph);
         let analysis = crate::retained::compute(&graph, &idom, 0);
         let mut map: ahash::AHashMap<u64, u64> = ahash::AHashMap::with_capacity(graph.node_count());
@@ -120,6 +141,7 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
     let mut root_kind: Option<&'static str> = None;
     let mut root_thread_name: Option<String> = None;
     let mut root_frame: Option<crate::referrer::ResolvedFrame> = None;
+    let mut terminated_by_soft_weak: Option<()> = None;
 
     loop {
         if let Some(kind) = idx.gc_root_kind_by_id.get(&current).copied() {
@@ -173,8 +195,8 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
             max_depth_reached = true;
             break;
         }
-        match find_first_holder(input_file, &idx, current, debug)? {
-            Some(step) => {
+        match find_first_holder(input_file, &idx, current, debug, exclude_soft_weak)? {
+            HolderResult::Holder(step) => {
                 let next = step.holder_object_id;
                 steps.push(step);
                 if next == current {
@@ -184,7 +206,11 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
                 current = next;
                 depth += 1;
             }
-            None => break,
+            HolderResult::None => break,
+            HolderResult::WeakRejected => {
+                terminated_by_soft_weak = Some(());
+                break;
+            }
         }
     }
 
@@ -199,6 +225,7 @@ pub fn run(mode: &Mode) -> Result<PathResult, HprofSlurpError> {
         depth,
         array_previews,
         retained_by_oid,
+        terminated_by_soft_weak,
     })
 }
 
@@ -242,15 +269,28 @@ pub(crate) fn collect_primitive_array_previews(
 /// One streaming pass: scan every InstanceDump body and ObjectArrayDump
 /// element list for a reference to `target`. Returns the first hit (file
 /// order). `None` if no holder exists in the dump (orphan / unreachable).
+/// Outcome of a single-target holder scan. `WeakRejected` means we saw
+/// a candidate holder whose class is in the Reference subclass set and
+/// `--exclude-soft-weak` is on; the walker treats this as a path
+/// terminator with the `[soft/weak/phantom — excluded]` annotation.
+pub(crate) enum HolderResult {
+    Holder(PathStep),
+    None,
+    WeakRejected,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn find_first_holder(
     path: &str,
     idx: &Pass1Index,
     target: u64,
     debug: bool,
-) -> Result<Option<PathStep>, HprofSlurpError> {
+    exclude_soft_weak: bool,
+) -> Result<HolderResult, HprofSlurpError> {
     use std::cell::RefCell;
     let id_size = idx.id_size as usize;
     let found: RefCell<Option<PathStep>> = RefCell::new(None);
+    let weak_rejected: RefCell<bool> = RefCell::new(false);
 
     parse_records(path, debug, true, |rec| {
         if found.borrow().is_some() {
@@ -274,6 +314,12 @@ fn find_first_holder(
                         if fi.field_type == FieldType::Object {
                             let rid = read_id(&input[..id_size], id_size);
                             if rid == target {
+                                if exclude_soft_weak
+                                    && idx.reference_subclass_set.contains(&class_object_id)
+                                {
+                                    *weak_rejected.borrow_mut() = true;
+                                    return;
+                                }
                                 let holder_class = idx
                                     .class_name(class_object_id)
                                     .unwrap_or_else(|| format!("(class_id={class_object_id})"));
@@ -319,7 +365,11 @@ fn find_first_holder(
             }
         }
     })?;
-    Ok(found.into_inner())
+    Ok(match found.into_inner() {
+        Some(s) => HolderResult::Holder(s),
+        None if *weak_rejected.borrow() => HolderResult::WeakRejected,
+        None => HolderResult::None,
+    })
 }
 
 pub fn render_text(r: &PathResult) -> String {
@@ -391,6 +441,11 @@ pub fn render_text(r: &PathResult) -> String {
         }
     } else if r.max_depth_reached {
         let _ = writeln!(out, "  → stopped at --max-depth (chain may continue)");
+    } else if r.terminated_by_soft_weak.is_some() {
+        let _ = writeln!(
+            out,
+            "  → orphan [soft/weak/phantom — excluded]; re-run without --exclude-soft-weak to see the weak chain"
+        );
     } else {
         let _ = writeln!(out, "  → orphan: no holder found in dump");
     }
@@ -450,6 +505,7 @@ mod tests {
             json: false,
             preview_bytes: 0,
             retained_size: false,
+            exclude_soft_weak: false,
         }
     }
 
@@ -476,6 +532,7 @@ mod tests {
             depth: 0,
             array_previews: previews,
             retained_by_oid: None,
+            terminated_by_soft_weak: None,
         };
         let out = render_text(&r);
         assert!(out.contains("<?xml"), "expected preview, got:\n{out}");
@@ -499,6 +556,7 @@ mod tests {
             depth: 0,
             array_previews: ahash::AHashMap::new(),
             retained_by_oid: None,
+            terminated_by_soft_weak: None,
         };
         let out = render_text(&r);
         assert!(
@@ -532,6 +590,7 @@ mod tests {
             depth: 1,
             array_previews: ahash::AHashMap::new(),
             retained_by_oid: None,
+            terminated_by_soft_weak: None,
         };
         let out = render_text(&r);
         assert!(
@@ -553,6 +612,7 @@ mod tests {
             depth: 0,
             array_previews: ahash::AHashMap::new(),
             retained_by_oid: None,
+            terminated_by_soft_weak: None,
         };
         let out = render_text(&r);
         assert!(

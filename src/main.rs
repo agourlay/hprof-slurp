@@ -47,6 +47,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             preview_bytes,
             list_arrays_min_bytes,
             retained_size,
+            exclude_soft_weak,
         } => run_summary(
             &input_file,
             top,
@@ -56,6 +57,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             preview_bytes,
             list_arrays_min_bytes,
             retained_size,
+            exclude_soft_weak,
             now,
         ),
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
@@ -155,6 +157,7 @@ fn run_summary(
     preview_bytes: u32,
     list_arrays_min_bytes: u32,
     retained_size: bool,
+    exclude_soft_weak: bool,
     started: Instant,
 ) -> Result<(), HprofSlurpError> {
     let mut rendered_result = crate::slurp::slurp_file_with_modes(
@@ -164,6 +167,7 @@ fn run_summary(
         preview_bytes,
         list_arrays_min_bytes,
         retained_size,
+        exclude_soft_weak,
     )?;
     if json {
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);

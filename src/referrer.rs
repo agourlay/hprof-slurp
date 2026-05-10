@@ -197,34 +197,45 @@ pub struct ReferrerResult {
 }
 
 pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
-    let (input_file, target, hops, top, include_statics, debug, preview_bytes, retained_size) =
-        match mode {
-            Mode::FindReferrers {
-                input_file,
-                target,
-                hops,
-                top,
-                include_statics,
-                debug,
-                preview_bytes,
-                retained_size,
-                ..
-            } => (
-                input_file.as_str(),
-                target.clone(),
-                *hops,
-                *top,
-                *include_statics,
-                *debug,
-                *preview_bytes,
-                *retained_size,
-            ),
-            _ => {
-                return Err(HprofSlurpError::NotYetImplemented {
-                    what: "referrer::run only handles Mode::FindReferrers",
-                });
-            }
-        };
+    let (
+        input_file,
+        target,
+        hops,
+        top,
+        include_statics,
+        debug,
+        preview_bytes,
+        retained_size,
+        exclude_soft_weak,
+    ) = match mode {
+        Mode::FindReferrers {
+            input_file,
+            target,
+            hops,
+            top,
+            include_statics,
+            debug,
+            preview_bytes,
+            retained_size,
+            exclude_soft_weak,
+            ..
+        } => (
+            input_file.as_str(),
+            target.clone(),
+            *hops,
+            *top,
+            *include_statics,
+            *debug,
+            *preview_bytes,
+            *retained_size,
+            *exclude_soft_weak,
+        ),
+        _ => {
+            return Err(HprofSlurpError::NotYetImplemented {
+                what: "referrer::run only handles Mode::FindReferrers",
+            });
+        }
+    };
 
     let idx = pass1_index(input_file, debug)?;
     let array_previews: AHashMap<u64, crate::result_recorder::ArrayPreview> = if preview_bytes > 0 {
@@ -237,7 +248,12 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
     // retained sizes per class so the renderer can add a `class
     // retained` column to the holder tables.
     let class_retained_by_name: Option<AHashMap<String, u64>> = if retained_size {
-        let graph = crate::reference_graph::build_from_pass1(input_file, &idx, debug)?;
+        let graph = crate::reference_graph::build_from_pass1_with(
+            input_file,
+            &idx,
+            debug,
+            crate::reference_graph::BuildOptions { exclude_soft_weak },
+        )?;
         let idom = crate::dominators::lengauer_tarjan(&graph);
         let analysis = crate::retained::compute(&graph, &idom, 0);
         let mut by_name: AHashMap<String, u64> = AHashMap::new();
@@ -279,6 +295,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         &mut by_field_hop1,
         Some(&mut hop1_instance_holders),
         Some(&mut hop1_array_holders),
+        exclude_soft_weak,
     )?;
 
     // ---- pass 3: hop 2 (object-array holders held by something) ----
@@ -294,6 +311,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             &mut by_field_hop2,
             Some(&mut hop2_instance_holders),
             None,
+            exclude_soft_weak,
         )?;
     }
 
@@ -309,6 +327,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             &mut by_field_hop3,
             None,
             None,
+            exclude_soft_weak,
         )?;
     }
 
@@ -695,6 +714,7 @@ fn scan_holders(
     by_field: &mut AHashMap<(u64, Option<u64>), u64>,
     mut instance_holders_out: Option<&mut AHashSet<u64>>,
     mut array_holders_out: Option<&mut AHashSet<u64>>,
+    exclude_soft_weak: bool,
 ) -> Result<(), HprofSlurpError> {
     let id_size = idx.id_size as usize;
     parse_records(path, debug, true, |rec| {
@@ -706,6 +726,11 @@ fn scan_holders(
                     body: Some(body),
                     ..
                 } => {
+                    // v1.1.0: skip Reference subclass holders entirely
+                    // when --exclude-soft-weak is set.
+                    if exclude_soft_weak && idx.reference_subclass_set.contains(&class_object_id) {
+                        return;
+                    }
                     let layout = field_layout_cache
                         .entry(class_object_id)
                         .or_insert_with(|| flatten_fields(idx, class_object_id));
@@ -1000,6 +1025,7 @@ mod tests {
             json: false,
             preview_bytes: 0,
             retained_size: false,
+            exclude_soft_weak: false,
         }
     }
 

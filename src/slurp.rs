@@ -268,6 +268,7 @@ pub fn slurp_file_with_preview(
 /// populates `RenderedResult.class_retained_by_name` +
 /// `top_retained_instances`. Adds ~250 MiB working memory and
 /// ~1–3 s wall time on a 200 MiB Android dump.
+#[allow(clippy::too_many_arguments)]
 pub fn slurp_file_with_modes(
     file_path: &str,
     debug_mode: bool,
@@ -275,6 +276,7 @@ pub fn slurp_file_with_modes(
     preview_bytes: u32,
     list_arrays_min_bytes: u32,
     retained_size: bool,
+    exclude_soft_weak: bool,
 ) -> Result<RenderedResult, HprofSlurpError> {
     let mut rr = slurp_file_with_preview(
         file_path,
@@ -286,7 +288,12 @@ pub fn slurp_file_with_modes(
 
     if retained_size {
         let idx = crate::referrer::pass1_index(file_path, debug_mode)?;
-        let graph = crate::reference_graph::build_from_pass1(file_path, &idx, debug_mode)?;
+        let graph = crate::reference_graph::build_from_pass1_with(
+            file_path,
+            &idx,
+            debug_mode,
+            crate::reference_graph::BuildOptions { exclude_soft_weak },
+        )?;
         let idom = crate::dominators::lengauer_tarjan(&graph);
         // Top 50 hot list — UI shows top-N capped by --top, but a slightly
         // larger pool here gives the user some headroom if -t is bumped.
