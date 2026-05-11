@@ -106,23 +106,78 @@ pub enum GcRecord {
     RootMonitorUsed {
         object_id: u64,
     },
+    // ---- Android HPROF 1.0.3 extension roots (art/runtime/hprof/hprof.cc) ----
+    RootInternedString {
+        object_id: u64,
+    },
+    /// Deprecated in modern ART but still emitted by older Android builds.
+    RootFinalizing {
+        object_id: u64,
+    },
+    RootDebugger {
+        object_id: u64,
+    },
+    /// Deprecated in modern ART.
+    RootReferenceCleanup {
+        object_id: u64,
+    },
+    RootVmInternal {
+        object_id: u64,
+    },
+    RootJniMonitor {
+        object_id: u64,
+        thread_serial_number: u32,
+        stack_depth: u32,
+    },
+    /// Deprecated in modern ART.
+    Unreachable {
+        object_id: u64,
+    },
+    /// Annotates the heap segment that follows. `heap_type` is 1=ZYGOTE,
+    /// 2=APP, 3=SYSTEM, 4=IMAGE on Android. `heap_name_id` references a
+    /// utf8 record. heaptrail does not currently surface this; we parse it
+    /// to keep the record stream aligned.
+    HeapDumpInfo {
+        heap_type: u32,
+        heap_name_id: u64,
+    },
+    /// `am dumpheap` emits primitive arrays without their data on Android
+    /// when the system suppresses the body (e.g. zygote-shared arrays).
+    PrimitiveArrayNoDataDump {
+        object_id: u64,
+        stack_trace_serial_number: u32,
+        number_of_elements: u32,
+        element_type: FieldType,
+    },
     InstanceDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         class_object_id: u64,
         data_size: u32,
+        /// Raw instance field bytes, retained only in `retain_bodies` parser
+        /// mode (used by `--find-referrers` / `--paths-from-id`). `None` in
+        /// the default summary path so existing throughput is preserved.
+        body: Option<Box<[u8]>>,
     },
     ObjectArrayDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         array_class_id: u64,
+        /// Element object ids (`0` == null). Retained only in `retain_bodies`
+        /// parser mode. `None` in the default summary path.
+        elements: Option<Box<[u64]>>,
     },
     PrimitiveArrayDump {
         object_id: u64,
         stack_trace_serial_number: u32,
         number_of_elements: u32,
         element_type: FieldType,
+        /// Truncated raw bytes (first `preview_bytes_limit` per array).
+        /// Retained only when the parser is constructed with
+        /// `retain_primitive_bodies = true` (v0.9.0 feature B). `None` in
+        /// the default summary path so existing throughput is preserved.
+        body: Option<Box<[u8]>>,
     },
     ClassDump(Box<ClassDumpFields>), // rare enough to be boxed to avoid large variant cost
 }

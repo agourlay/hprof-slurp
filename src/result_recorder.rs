@@ -1,6 +1,8 @@
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::thread::JoinHandle;
 use std::{mem, thread};
@@ -13,17 +15,17 @@ use crate::parser::record::Record::{
 use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
 use crate::rendered_result::{ClassAllocationStats, RenderedResult};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 struct ClassInfo {
     super_class_object_id: u64,
-    instance_size: u32,
+    instance_field_types: Vec<FieldType>,
 }
 
 impl ClassInfo {
-    const fn new(super_class_object_id: u64, instance_size: u32) -> Self {
+    fn new(super_class_object_id: u64, instance_field_types: Vec<FieldType>) -> Self {
         Self {
             super_class_object_id,
-            instance_size,
+            instance_field_types,
         }
     }
 }
@@ -48,32 +50,51 @@ impl ClassInstanceCounter {
 #[derive(Debug, Copy, Clone)]
 struct ArrayCounter {
     number_of_arrays: u64,
-    max_size_seen: u32,
-    total_number_of_elements: u64,
+    max_size_bytes_seen: u64,
+    /// `object_id` of the array instance that produced [`max_size_bytes_seen`].
+    /// `0` is treated as "unset" (HPROF object ids are non-zero in practice).
+    max_size_object_id: u64,
+    total_size_bytes: u64,
 }
 
 impl ArrayCounter {
-    fn add_elements_from_array(&mut self, elements: u32) {
+    fn add_array(&mut self, size_bytes: u64, object_id: u64) {
         self.number_of_arrays += 1;
-        self.total_number_of_elements += u64::from(elements);
-        if elements > self.max_size_seen {
-            self.max_size_seen = elements;
+        if size_bytes > self.max_size_bytes_seen {
+            self.max_size_bytes_seen = size_bytes;
+            self.max_size_object_id = object_id;
         }
+        self.total_size_bytes += size_bytes;
     }
 
     const fn empty() -> Self {
         Self {
             number_of_arrays: 0,
-            total_number_of_elements: 0,
-            max_size_seen: 0,
+            max_size_bytes_seen: 0,
+            max_size_object_id: 0,
+            total_size_bytes: 0,
         }
     }
+}
+
+/// Truncated body of a single primitive array, captured for the
+/// `--preview-bytes` family of features (v0.9.0).
+#[derive(Debug, Clone)]
+pub struct ArrayPreview {
+    pub element_type: FieldType,
+    pub bytes: Box<[u8]>,
+    /// Full size of the array in bytes (not the truncated `bytes`).
+    pub total_bytes: u64,
 }
 
 pub struct ResultRecorder {
     // Recorder's params
     id_size: u32,
     list_strings: bool,
+    /// v0.9.0 — non-zero enables primitive-array preview capture.
+    preview_bytes: u32,
+    /// v0.9.0 — threshold for the `-l` standalone-array section.
+    list_arrays_min_bytes: u32,
     // Tag counters
     classes_unloaded: u32,
     stack_frames: u32,
@@ -83,6 +104,10 @@ pub struct ResultRecorder {
     heap_summaries: u32,
     heap_dumps: u32,
     allocation_sites: u32,
+    /// Captured AllocationSite records, retained from `Record::AllocationSites`.
+    /// Empty when the dump was not captured under allocation tracking.
+    /// (v0.8.0 feature C — drained into `RenderedResult.allocation_sites`.)
+    captured_allocation_sites: Vec<crate::parser::record::AllocationSite>,
     control_settings: u32,
     cpu_samples: u32,
     // GC tag counters
@@ -112,13 +137,39 @@ pub struct ResultRecorder {
     object_array_counters: AHashMap<u64, ArrayCounter>,
     stack_trace_by_serial_number: AHashMap<u32, StackTraceData>,
     stack_frame_by_id: AHashMap<u64, StackFrameData>,
+    /// `object_id -> truncated body` for the largest primitive array of
+    /// each element type. Only populated when `preview_bytes > 0`. Drained
+    /// into `RenderedResult.array_previews`.
+    array_previews: AHashMap<u64, ArrayPreview>,
+    /// Standalone large primitive arrays for the -l + --preview-bytes
+    /// extension. Captured only when `list_strings && preview_bytes > 0`
+    /// and `total_bytes >= list_arrays_min_bytes`. Only Byte/Char element
+    /// types are eligible (text-like primitives).
+    standalone_large_arrays: Vec<(u64, ArrayPreview)>,
+    /// Class ids referenced by InstanceDump / super-class chains / array
+    /// records but never registered via ClassDump or LoadClass. Modern
+    /// Android dumps (e.g. ART app heap segregation) routinely emit such
+    /// references. We collect them here for a single end-of-run warning
+    /// instead of panicking. Interior mutability so size computation can
+    /// remain `&self`.
+    missing_class_ids: RefCell<HashSet<u64>>,
 }
 
 impl ResultRecorder {
-    pub fn new(id_size: u32, list_strings: bool) -> Self {
+    /// v0.9.0: full constructor with explicit `preview_bytes` /
+    /// `list_arrays_min_bytes` for primitive-array preview capture.
+    /// Pass `0, 1024` for the default behavior (no preview retention).
+    pub fn with_preview(
+        id_size: u32,
+        list_strings: bool,
+        preview_bytes: u32,
+        list_arrays_min_bytes: u32,
+    ) -> Self {
         Self {
             id_size,
             list_strings,
+            preview_bytes,
+            list_arrays_min_bytes,
             classes_unloaded: 0,
             stack_frames: 0,
             stack_traces: 0,
@@ -127,6 +178,7 @@ impl ResultRecorder {
             heap_summaries: 0,
             heap_dumps: 0,
             allocation_sites: 0,
+            captured_allocation_sites: Vec::new(),
             control_settings: 0,
             cpu_samples: 0,
             heap_dump_segments_all_sub_records: 0,
@@ -153,16 +205,25 @@ impl ResultRecorder {
             object_array_counters: AHashMap::new(),
             stack_trace_by_serial_number: AHashMap::default(),
             stack_frame_by_id: AHashMap::default(),
+            array_previews: AHashMap::new(),
+            standalone_large_arrays: Vec::new(),
+            missing_class_ids: RefCell::new(HashSet::new()),
         }
     }
 
     fn get_class_name_string(&self, class_id: u64) -> String {
-        self.class_data_by_id
+        match self
+            .class_data_by_id
             .get(&class_id)
             .and_then(|data_index| self.class_data.get(*data_index))
             .and_then(|class_data| self.utf8_strings_by_id.get(&class_data.class_name_id))
-            .expect("class_id must have an UTF-8 string representation available")
-            .replace('/', ".")
+        {
+            Some(s) => s.replace('/', "."),
+            None => {
+                self.missing_class_ids.borrow_mut().insert(class_id);
+                format!("<unknown class #{class_id}>")
+            }
+        }
     }
 
     pub fn start(
@@ -193,6 +254,11 @@ impl ResultRecorder {
                             } else {
                                 None
                             },
+                            allocation_sites: mem::take(&mut self.captured_allocation_sites),
+                            allocation_sites_record_count: self.allocation_sites,
+                            array_previews: mem::take(&mut self.array_previews),
+                            class_retained_by_name: None,
+                            top_retained_instances: None,
                         };
                         send_result
                             .send(rendered_result)
@@ -231,7 +297,16 @@ impl ResultRecorder {
                 }
                 StartThread { .. } => self.start_threads += 1,
                 EndThread { .. } => self.end_threads += 1,
-                AllocationSites { .. } => self.allocation_sites += 1,
+                AllocationSites {
+                    allocation_sites, ..
+                } => {
+                    self.allocation_sites += 1;
+                    // Drain the boxed vec into our retained list. The
+                    // record is owned by us at this point so we can
+                    // mem::take its contents without cloning.
+                    self.captured_allocation_sites
+                        .extend(mem::take(allocation_sites.as_mut()));
+                }
                 HeapSummary { .. } => self.heap_summaries += 1,
                 ControlSettings { .. } => self.control_settings += 1,
                 CpuSamples { .. } => self.cpu_samples += 1,
@@ -278,26 +353,93 @@ impl ResultRecorder {
                             self.heap_dump_segments_gc_instance_dump += 1;
                         }
                         GcRecord::ObjectArrayDump {
+                            object_id,
                             number_of_elements,
                             array_class_id,
                             ..
                         } => {
+                            let size_bytes = object_array_size(self.id_size, *number_of_elements);
                             self.object_array_counters
                                 .entry(*array_class_id)
                                 .or_insert_with(ArrayCounter::empty)
-                                .add_elements_from_array(*number_of_elements);
+                                .add_array(size_bytes, *object_id);
 
                             self.heap_dump_segments_gc_object_array_dump += 1;
                         }
                         GcRecord::PrimitiveArrayDump {
+                            object_id,
                             number_of_elements,
                             element_type,
+                            body,
                             ..
                         } => {
+                            let size_bytes = primitive_array_size(
+                                self.id_size,
+                                *element_type,
+                                *number_of_elements,
+                            );
                             self.primitive_array_counters
                                 .entry(*element_type)
                                 .or_insert_with(ArrayCounter::empty)
-                                .add_elements_from_array(*number_of_elements);
+                                .add_array(size_bytes, *object_id);
+
+                            // v0.9.0 (feature B): capture truncated body
+                            // for the largest primitive array per class.
+                            // We key the preview under the same object_id
+                            // that `add_array` records as
+                            // `max_size_object_id` — the summary's
+                            // "Largest array instances" lookup uses that
+                            // exact id, so the preview always finds its
+                            // entry. Insertion is gated on this being
+                            // *the* current max (post-`add_array`), with a
+                            // contains_key short-circuit so we don't
+                            // re-clone if the same id arrives twice.
+                            if self.preview_bytes > 0
+                                && let Some(b) = body
+                            {
+                                let new_max_oid = self
+                                    .primitive_array_counters
+                                    .get(element_type)
+                                    .map(|ac| ac.max_size_object_id)
+                                    .unwrap_or(0);
+                                if new_max_oid == *object_id
+                                    && !self.array_previews.contains_key(object_id)
+                                {
+                                    // Drop any previous holder for this
+                                    // element type so we don't accumulate
+                                    // when a sequence of strictly larger
+                                    // arrays arrives.
+                                    self.array_previews
+                                        .retain(|_, v| v.element_type != *element_type);
+                                    self.array_previews.insert(
+                                        *object_id,
+                                        ArrayPreview {
+                                            element_type: *element_type,
+                                            bytes: b.clone(),
+                                            total_bytes: size_bytes,
+                                        },
+                                    );
+                                }
+                            }
+
+                            // v0.9.0 (feature B, -l extension): capture
+                            // every char[]/byte[] above the size threshold
+                            // for the standalone-large-arrays listing.
+                            if self.list_strings
+                                && self.preview_bytes > 0
+                                && size_bytes >= u64::from(self.list_arrays_min_bytes)
+                                && let Some(b) = body
+                                && matches!(*element_type, FieldType::Byte | FieldType::Char)
+                            {
+                                self.standalone_large_arrays.push((
+                                    *object_id,
+                                    ArrayPreview {
+                                        element_type: *element_type,
+                                        bytes: b.clone(),
+                                        total_bytes: size_bytes,
+                                    },
+                                ));
+                            }
 
                             self.heap_dump_segments_gc_primitive_array_dump += 1;
                         }
@@ -306,13 +448,42 @@ impl ResultRecorder {
                             self.classes_single_instance_size_by_id
                                 .entry(class_object_id)
                                 .or_insert_with(|| {
-                                    let instance_size = class_dump_fields.instance_size;
                                     let super_class_object_id =
                                         class_dump_fields.super_class_object_id;
-                                    ClassInfo::new(super_class_object_id, instance_size)
+                                    let instance_field_types =
+                                        mem::take(&mut class_dump_fields.instance_fields)
+                                            .into_iter()
+                                            .map(|field| field.field_type)
+                                            .collect();
+                                    ClassInfo::new(super_class_object_id, instance_field_types)
                                 });
 
                             self.heap_dump_segments_gc_class_dump += 1;
+                        }
+                        // Android HPROF 1.0.3 extension records. We parse them
+                        // for stream-alignment and root tracking, but the
+                        // summary path doesn't surface counts per extension
+                        // type yet. PrimitiveArrayNoDataDump is treated as a
+                        // zero-size primitive array (the body was suppressed
+                        // by the dumper, e.g. zygote-shared arrays).
+                        GcRecord::RootInternedString { .. }
+                        | GcRecord::RootFinalizing { .. }
+                        | GcRecord::RootDebugger { .. }
+                        | GcRecord::RootReferenceCleanup { .. }
+                        | GcRecord::RootVmInternal { .. }
+                        | GcRecord::RootJniMonitor { .. }
+                        | GcRecord::Unreachable { .. }
+                        | GcRecord::HeapDumpInfo { .. } => {}
+                        GcRecord::PrimitiveArrayNoDataDump {
+                            object_id,
+                            element_type,
+                            ..
+                        } => {
+                            self.primitive_array_counters
+                                .entry(*element_type)
+                                .or_insert_with(ArrayCounter::empty)
+                                .add_array(0, *object_id);
+                            self.heap_dump_segments_gc_primitive_array_dump += 1;
                         }
                     }
                 }
@@ -328,6 +499,47 @@ impl ResultRecorder {
             result.push_str(s);
             result.push('\n');
         }
+
+        // v0.9.0 (feature B, -l extension): standalone large arrays.
+        if !self.standalone_large_arrays.is_empty() {
+            use crate::preview::{PreviewKind, render_preview};
+            use crate::utils::pretty_bytes_size;
+
+            let mut sorted: Vec<&(u64, ArrayPreview)> =
+                self.standalone_large_arrays.iter().collect();
+            sorted.sort_by_key(|x| std::cmp::Reverse(x.1.total_bytes));
+
+            let _ = writeln!(
+                result,
+                "\nStandalone large arrays (>= {} bytes, sorted by size):",
+                self.list_arrays_min_bytes
+            );
+            for (oid, preview) in sorted.iter().take(50) {
+                let size = pretty_bytes_size(preview.total_bytes);
+                let kind_label = match preview.element_type {
+                    FieldType::Byte => "byte[]",
+                    FieldType::Char => "char[]",
+                    _ => "primitive[]",
+                };
+                let kind = render_preview(
+                    &preview.bytes,
+                    preview.element_type,
+                    preview.total_bytes as usize,
+                );
+                let preview_text = match kind {
+                    PreviewKind::Text { snippet, .. } => {
+                        let trimmed: String = snippet.chars().take(80).collect();
+                        format!("  {trimmed}")
+                    }
+                    PreviewKind::Hex { .. } => "  (binary)".to_string(),
+                };
+                let _ = writeln!(
+                    result,
+                    "  {size:>10}  object_id={oid:<14}  {kind_label:<8} {preview_text}"
+                );
+            }
+        }
+
         result
     }
 
@@ -415,96 +627,76 @@ impl ResultRecorder {
         thread_info
     }
 
-    fn aggregate_memory_usage(&self) -> Vec<ClassAllocationStats> {
-        // https://www.baeldung.com/java-memory-layout
-        // total_size = object_header + data
-        // on a 64-bit arch.
-        // object_header = mark(ref_size) + klass(4) + padding_gap(4) = 16 bytes
-        // data = instance_size + padding_next(??)
-        let object_header = self.id_size + 4 + 4;
+    fn calculate_instance_size(&self, class_id: u64) -> u64 {
+        u64::from(align_to_u32(
+            self.calculate_instance_size_recursive(class_id),
+            OBJECT_ALIGN,
+        ))
+    }
 
+    fn calculate_instance_size_recursive(&self, class_id: u64) -> u32 {
+        // Modern Android dumps occasionally reference class ids that
+        // were never emitted as ClassDump records (e.g. classes in a
+        // separate heap segment that was truncated, or boot-classpath
+        // entries elided by the dumper). Fall back to bare object
+        // header size so we keep producing output instead of panicking
+        // — the missing-class warning is emitted once after
+        // aggregation finishes.
+        let Some(class_info) = self.classes_single_instance_size_by_id.get(&class_id) else {
+            self.missing_class_ids.borrow_mut().insert(class_id);
+            return object_header_size(self.id_size);
+        };
+
+        if class_info.super_class_object_id == 0 {
+            return object_header_size(self.id_size);
+        }
+
+        let fields_size = class_info
+            .instance_field_types
+            .iter()
+            .map(|field_type| field_size(*field_type, self.id_size))
+            .sum::<u32>();
+        align_to_u32(
+            fields_size + self.calculate_instance_size_recursive(class_info.super_class_object_id),
+            self.id_size,
+        )
+    }
+
+    fn aggregate_memory_usage(&self) -> Vec<ClassAllocationStats> {
         let mut classes_dump_vec: Vec<_> = self
             .classes_all_instance_total_size_by_id
             .iter()
             .map(|(class_id, v)| {
                 let class_name = self.get_class_name_string(*class_id);
-                let mut size = 0;
-
-                let ClassInfo {
-                    super_class_object_id,
-                    instance_size,
-                } = self
-                    .classes_single_instance_size_by_id
-                    .get(class_id)
-                    .expect("class id must have a class definition");
-                let mut parent_class_id = *super_class_object_id;
-                size += instance_size;
-
-                // recursively add sizes from parent classes
-                while parent_class_id != 0 {
-                    let ClassInfo {
-                        super_class_object_id,
-                        instance_size,
-                    } = self
-                        .classes_single_instance_size_by_id
-                        .get(&parent_class_id)
-                        .expect("parent class id must have a class definition");
-                    size += instance_size;
-                    parent_class_id = *super_class_object_id;
-                }
-                // add object header
-                size += object_header;
-                // round up to 8-byte alignment
-                size += (8 - size % 8) % 8;
-                let total_size = u64::from(size) * v.number_of_instances;
+                let size = self.calculate_instance_size(*class_id);
+                let total_size = size * v.number_of_instances;
                 ClassAllocationStats::new(
                     class_name,
                     v.number_of_instances,
-                    u64::from(size), // all instances have the same size
+                    size, // all instances have the same size
                     total_size,
                 )
             })
             .collect();
 
-        // https://www.baeldung.com/java-memory-layout
-        // the array's `elements` size is already accounted for via `GcInstanceDump` for objects
-        // unlike primitives which are packed in the array itself
-        // array headers already aligned for 64-bit arch - no need for padding
-        // array_header = mark(ref_size) + klass(4) + array_length(4) = 16 bytes
-        // data_primitive = primitive_size * length + padding(??)
-        // data_object = ref_size * length (no padding because the ref size is already aligned!)
-        let ref_size = u64::from(self.id_size);
-        let array_header_size = ref_size + 4 + 4;
-
         let array_primitives_dump_vec =
             self.primitive_array_counters
                 .iter()
-                .map(|(field_type, &ac)| {
+                .map(|(field_type, ac)| {
                     let primitive_type = format!("{field_type:?}").to_lowercase();
                     let primitive_array_label = format!("{primitive_type}[]");
-                    let primitive_size = primitive_byte_size(*field_type);
 
-                    let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-                    let cost_of_all_values = primitive_size * ac.total_number_of_elements;
-                    // info lost at this point to compute the real padding for each array
-                    // assume mid-value of 4 bytes per array for an estimation
-                    let estimated_cost_of_all_padding = ac.number_of_arrays * 4;
-
-                    let cost_data_largest_array = primitive_size * u64::from(ac.max_size_seen);
-                    let largest_array_total = array_header_size + cost_data_largest_array;
-                    let cost_padding_largest_array = (8 - largest_array_total % 8) % 8;
                     ClassAllocationStats::new(
                         primitive_array_label,
                         ac.number_of_arrays,
-                        array_header_size + cost_data_largest_array + cost_padding_largest_array,
-                        cost_of_all_array_headers
-                            + cost_of_all_values
-                            + estimated_cost_of_all_padding,
+                        ac.max_size_bytes_seen,
+                        ac.total_size_bytes,
                     )
+                    .with_largest_object_id(ac.max_size_object_id)
                 });
 
         // For array of objects we are interested in the total size of the array headers and outgoing elements references
-        let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, &ac)| {
+        let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, ac)| {
             let raw_class_name = self.get_class_name_string(*class_id);
             let cleaned_class_name: String = if raw_class_name.starts_with("[[L") {
                 // remove '[[L' prefix and ';' suffix
@@ -519,15 +711,13 @@ impl ResultRecorder {
 
             let object_array_label = format!("{cleaned_class_name}[]");
 
-            let cost_of_all_refs = ref_size * ac.total_number_of_elements;
-            let cost_of_all_array_headers = array_header_size * ac.number_of_arrays;
-            let cost_of_largest_array_refs = ref_size * u64::from(ac.max_size_seen);
             ClassAllocationStats::new(
                 object_array_label,
                 ac.number_of_arrays,
-                array_header_size + cost_of_largest_array_refs,
-                cost_of_all_array_headers + cost_of_all_refs,
+                ac.max_size_bytes_seen,
+                ac.total_size_bytes,
             )
+            .with_largest_object_id(ac.max_size_object_id)
         });
 
         // Merge results
@@ -535,6 +725,18 @@ impl ResultRecorder {
         classes_dump_vec.extend(array_objects_dump_vec);
         // Sort by class name first for stability in test results :s
         classes_dump_vec.sort_unstable_by(|a, b| b.class_name.cmp(&a.class_name));
+
+        let missing = self.missing_class_ids.borrow();
+        if !missing.is_empty() {
+            eprintln!(
+                "warning: {} class id(s) referenced without a ClassDump/LoadClass record; \
+                 affected instances counted with bare object-header size only. \
+                 Common on modern Android dumps where some boot-classpath or zygote-shared \
+                 classes are elided.",
+                missing.len()
+            );
+        }
+
         classes_dump_vec
     }
 
@@ -597,7 +799,30 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_instance_dump,
         );
 
-        format!("{top_summary}\n{heap_summary}")
+        // Feature C (v0.8.0): always-on allocation-sites presence hint.
+        let alloc_sites_hint = if self.captured_allocation_sites.is_empty() {
+            "AllocationSites: not present (capture with `am profile start <pid>`)".to_string()
+        } else {
+            format!(
+                "AllocationSites: {} sites across {} records (run with --allocation-sites for stack traces)",
+                self.captured_allocation_sites.len(),
+                self.allocation_sites
+            )
+        };
+
+        format!("{top_summary}\n{heap_summary}\n{alloc_sites_hint}")
+    }
+}
+
+const OBJECT_ALIGN: u32 = 8;
+
+fn field_size(field_type: FieldType, id_size: u32) -> u32 {
+    match field_type {
+        FieldType::Object => id_size,
+        FieldType::Byte | FieldType::Bool => 1,
+        FieldType::Char | FieldType::Short => 2,
+        FieldType::Float | FieldType::Int => 4,
+        FieldType::Double | FieldType::Long => 8,
     }
 }
 
@@ -608,5 +833,206 @@ fn primitive_byte_size(field_type: FieldType) -> u64 {
         FieldType::Float | FieldType::Int => 4,
         FieldType::Double | FieldType::Long => 8,
         FieldType::Object => panic!("object type in primitive array"),
+    }
+}
+
+fn primitive_array_size(id_size: u32, field_type: FieldType, number_of_elements: u32) -> u64 {
+    let header_size = array_header_size(id_size);
+    let elements_size = primitive_byte_size(field_type) * u64::from(number_of_elements);
+    align_to_u64(header_size + elements_size, u64::from(OBJECT_ALIGN))
+}
+
+fn object_array_size(id_size: u32, number_of_elements: u32) -> u64 {
+    let header_size = array_header_size(id_size);
+    let elements_size = u64::from(id_size) * u64::from(number_of_elements);
+    align_to_u64(header_size + elements_size, u64::from(OBJECT_ALIGN))
+}
+
+fn object_header_size(id_size: u32) -> u32 {
+    match id_size {
+        4 => 8,
+        8 => 16,
+        x => panic!("unsupported id size {x}"),
+    }
+}
+
+fn array_header_size(id_size: u32) -> u64 {
+    match id_size {
+        4 => 12,
+        8 => 16,
+        x => panic!("unsupported id size {x}"),
+    }
+}
+
+fn align_to_u32(value: u32, alignment: u32) -> u32 {
+    value + (alignment - value % alignment) % alignment
+}
+
+fn align_to_u64(value: u64, alignment: u64) -> u64 {
+    value + (alignment - value % alignment) % alignment
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::gc_record::{ClassDumpFields, FieldInfo};
+
+    #[test]
+    fn object_header_size_matches_identifier_width() {
+        assert_eq!(object_header_size(4), 8);
+        assert_eq!(object_header_size(8), 16);
+    }
+
+    #[test]
+    fn array_header_size_matches_identifier_width() {
+        assert_eq!(array_header_size(4), 12);
+        assert_eq!(array_header_size(8), 16);
+    }
+
+    #[test]
+    fn instance_size_uses_mat_style_recursive_field_layout() {
+        let mut recorder = ResultRecorder::with_preview(4, false, 0, 1024);
+        let mut records = vec![
+            Record::Utf8String {
+                id: 10,
+                str: "java/lang/Object".into(),
+            },
+            Record::Utf8String {
+                id: 11,
+                str: "com/example/Child".into(),
+            },
+            Record::LoadClass(LoadClassData {
+                serial_number: 1,
+                class_object_id: 1,
+                stack_trace_serial_number: 0,
+                class_name_id: 10,
+            }),
+            Record::LoadClass(LoadClassData {
+                serial_number: 2,
+                class_object_id: 2,
+                stack_trace_serial_number: 0,
+                class_name_id: 11,
+            }),
+            Record::GcSegment(GcRecord::ClassDump(Box::new(ClassDumpFields::new(
+                1,
+                0,
+                0,
+                999,
+                vec![],
+                vec![],
+                vec![],
+            )))),
+            Record::GcSegment(GcRecord::ClassDump(Box::new(ClassDumpFields::new(
+                2,
+                0,
+                1,
+                999,
+                vec![],
+                vec![],
+                vec![
+                    FieldInfo {
+                        name_id: 20,
+                        field_type: FieldType::Object,
+                    },
+                    FieldInfo {
+                        name_id: 21,
+                        field_type: FieldType::Int,
+                    },
+                    FieldInfo {
+                        name_id: 22,
+                        field_type: FieldType::Byte,
+                    },
+                ],
+            )))),
+            Record::GcSegment(GcRecord::InstanceDump {
+                object_id: 30,
+                stack_trace_serial_number: 0,
+                class_object_id: 2,
+                data_size: 0,
+                body: None,
+            }),
+        ];
+
+        recorder.record_records(&mut records);
+        let memory_usage = recorder.aggregate_memory_usage();
+        let child = memory_usage
+            .iter()
+            .find(|stats| stats.class_name == "com.example.Child")
+            .expect("child stats should be present");
+
+        assert_eq!(child.largest_allocation_bytes, 24);
+        assert_eq!(child.allocation_size_bytes, 24);
+    }
+
+    #[test]
+    fn primitive_array_size_uses_exact_padding_per_array() {
+        let mut recorder = ResultRecorder::with_preview(4, false, 0, 1024);
+        let mut records = vec![
+            Record::GcSegment(GcRecord::PrimitiveArrayDump {
+                object_id: 1,
+                stack_trace_serial_number: 0,
+                number_of_elements: 1,
+                element_type: FieldType::Bool,
+                body: None,
+            }),
+            Record::GcSegment(GcRecord::PrimitiveArrayDump {
+                object_id: 2,
+                stack_trace_serial_number: 0,
+                number_of_elements: 2,
+                element_type: FieldType::Bool,
+                body: None,
+            }),
+        ];
+
+        recorder.record_records(&mut records);
+        let memory_usage = recorder.aggregate_memory_usage();
+        let bool_arrays = memory_usage
+            .iter()
+            .find(|stats| stats.class_name == "bool[]")
+            .expect("bool[] stats should be present");
+
+        assert_eq!(bool_arrays.largest_allocation_bytes, 16);
+        assert_eq!(bool_arrays.allocation_size_bytes, 32);
+    }
+
+    #[test]
+    fn object_array_size_uses_exact_padding_per_array() {
+        let mut recorder = ResultRecorder::with_preview(4, false, 0, 1024);
+        let mut records = vec![
+            Record::Utf8String {
+                id: 10,
+                str: "[Ljava/lang/Object;".into(),
+            },
+            Record::LoadClass(LoadClassData {
+                serial_number: 1,
+                class_object_id: 20,
+                stack_trace_serial_number: 0,
+                class_name_id: 10,
+            }),
+            Record::GcSegment(GcRecord::ObjectArrayDump {
+                object_id: 1,
+                stack_trace_serial_number: 0,
+                number_of_elements: 1,
+                array_class_id: 20,
+                elements: None,
+            }),
+            Record::GcSegment(GcRecord::ObjectArrayDump {
+                object_id: 2,
+                stack_trace_serial_number: 0,
+                number_of_elements: 2,
+                array_class_id: 20,
+                elements: None,
+            }),
+        ];
+
+        recorder.record_records(&mut records);
+        let memory_usage = recorder.aggregate_memory_usage();
+        let object_arrays = memory_usage
+            .iter()
+            .find(|stats| stats.class_name == "java.lang.Object[]")
+            .expect("object array stats should be present");
+
+        assert_eq!(object_arrays.largest_allocation_bytes, 24);
+        assert_eq!(object_arrays.allocation_size_bytes, 40);
     }
 }

@@ -16,5 +16,11 @@
 perf.data
 perf.data.old
 
-# Result files
-*.json
+# Result files (heaptrail's --json output sidecars; do NOT ignore plugin
+# manifests under .claude-plugin/ or plugins/)
+/heaptrail.json
+/heaptrail-*.json
+
+# Heap dump fixtures (large; never commit captured dumps)
+*.hprof
+docs/

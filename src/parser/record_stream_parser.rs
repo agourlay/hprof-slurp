@@ -21,13 +21,28 @@ pub struct HprofRecordStreamParser {
 }
 
 impl HprofRecordStreamParser {
-    pub const fn new(
+    /// Full mode-control entry. v0.9.0 adds `retain_primitive_bodies`
+    /// and `preview_bytes_limit` on top of the existing `retain_bodies`
+    /// flag, so callers can opt into primitive-array previews
+    /// independently of full reference-graph retention.
+    #[allow(clippy::too_many_arguments)] // each parser mode is a separate cost dimension; flattening is the point
+    pub const fn with_modes(
         debug_mode: bool,
+        id_size: u32,
         file_len: usize,
         processed_len: usize,
         initial_loop_buffer: Vec<u8>,
+        retain_bodies: bool,
+        retain_primitive_bodies: bool,
+        preview_bytes_limit: u32,
     ) -> Self {
-        let parser = HprofRecordParser::new(debug_mode);
+        let parser = HprofRecordParser::with_modes(
+            debug_mode,
+            id_size,
+            retain_bodies,
+            retain_primitive_bodies,
+            preview_bytes_limit,
+        );
         Self {
             parser,
             debug_mode,

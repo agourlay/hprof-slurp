@@ -1,19 +1,23 @@
 [package]
-name = "hprof-slurp"
-version = "0.6.3"
-authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
-description = "JVM heap dump hprof file analyzer"
-repository = "https://github.com/agourlay/hprof-slurp"
+name = "heaptrail"
+version = "1.1.1"
+authors = [
+    "John Neerdael <john@neerdael.nl>",
+    "Arnaud Gourlay <arnaud.gourlay@gmail.com>",
+]
+description = "Production-grade leak hunting at the CLI for JVM/Android hprof dumps: retained-size dominators, leak suspects, reference-strength filtering, content previews, bitmap mode, snapshot diff. LLM-friendly."
+repository = "https://github.com/johnneerdael/heaptrail"
+homepage = "https://github.com/johnneerdael/heaptrail"
 license = "Apache-2.0"
 readme = "README.md"
 categories = ["command-line-utilities"]
-keywords = ["java", "jvm", "heap-dump", "analyzer", "hprof"]
+keywords = ["heap-dump", "hprof", "android", "jvm", "memory-leak"]
 edition = "2024"
 
 [dependencies]
 nom = "8.0.0"
 indicatif = "0.18.4"
-clap = { version = "4.6.1", features = ["cargo"] }
+clap = { version = "4.6.1", features = ["cargo", "derive"] }
 indoc = "2.0.7"
 ahash = "0.8.12"
 thiserror = "2.0.18"
@@ -21,6 +25,7 @@ crossbeam-channel = "0.5.15"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 chrono = "0.4.44"
+globset = "0.4"
 
 [profile.release]
 lto = "fat"
