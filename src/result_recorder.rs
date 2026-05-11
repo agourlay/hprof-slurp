@@ -1,6 +1,8 @@
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::thread::JoinHandle;
 use std::{mem, thread};
@@ -144,6 +146,13 @@ pub struct ResultRecorder {
     /// and `total_bytes >= list_arrays_min_bytes`. Only Byte/Char element
     /// types are eligible (text-like primitives).
     standalone_large_arrays: Vec<(u64, ArrayPreview)>,
+    /// Class ids referenced by InstanceDump / super-class chains / array
+    /// records but never registered via ClassDump or LoadClass. Modern
+    /// Android dumps (e.g. ART app heap segregation) routinely emit such
+    /// references. We collect them here for a single end-of-run warning
+    /// instead of panicking. Interior mutability so size computation can
+    /// remain `&self`.
+    missing_class_ids: RefCell<HashSet<u64>>,
 }
 
 impl ResultRecorder {
@@ -198,16 +207,23 @@ impl ResultRecorder {
             stack_frame_by_id: AHashMap::default(),
             array_previews: AHashMap::new(),
             standalone_large_arrays: Vec::new(),
+            missing_class_ids: RefCell::new(HashSet::new()),
         }
     }
 
     fn get_class_name_string(&self, class_id: u64) -> String {
-        self.class_data_by_id
+        match self
+            .class_data_by_id
             .get(&class_id)
             .and_then(|data_index| self.class_data.get(*data_index))
             .and_then(|class_data| self.utf8_strings_by_id.get(&class_data.class_name_id))
-            .expect("class_id must have an UTF-8 string representation available")
-            .replace('/', ".")
+        {
+            Some(s) => s.replace('/', "."),
+            None => {
+                self.missing_class_ids.borrow_mut().insert(class_id);
+                format!("<unknown class #{class_id}>")
+            }
+        }
     }
 
     pub fn start(
@@ -619,10 +635,17 @@ impl ResultRecorder {
     }
 
     fn calculate_instance_size_recursive(&self, class_id: u64) -> u32 {
-        let class_info = self
-            .classes_single_instance_size_by_id
-            .get(&class_id)
-            .expect("class id must have a class definition");
+        // Modern Android dumps occasionally reference class ids that
+        // were never emitted as ClassDump records (e.g. classes in a
+        // separate heap segment that was truncated, or boot-classpath
+        // entries elided by the dumper). Fall back to bare object
+        // header size so we keep producing output instead of panicking
+        // — the missing-class warning is emitted once after
+        // aggregation finishes.
+        let Some(class_info) = self.classes_single_instance_size_by_id.get(&class_id) else {
+            self.missing_class_ids.borrow_mut().insert(class_id);
+            return object_header_size(self.id_size);
+        };
 
         if class_info.super_class_object_id == 0 {
             return object_header_size(self.id_size);
@@ -702,6 +725,18 @@ impl ResultRecorder {
         classes_dump_vec.extend(array_objects_dump_vec);
         // Sort by class name first for stability in test results :s
         classes_dump_vec.sort_unstable_by(|a, b| b.class_name.cmp(&a.class_name));
+
+        let missing = self.missing_class_ids.borrow();
+        if !missing.is_empty() {
+            eprintln!(
+                "warning: {} class id(s) referenced without a ClassDump/LoadClass record; \
+                 affected instances counted with bare object-header size only. \
+                 Common on modern Android dumps where some boot-classpath or zygote-shared \
+                 classes are elided.",
+                missing.len()
+            );
+        }
+
         classes_dump_vec
     }
 
