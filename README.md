@@ -17,7 +17,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, and automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0) for the "what's wrong with this dump?" entry point. Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, and automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0) for the "what's wrong with this dump?" entry point. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -382,6 +382,31 @@ native pixel data (sized via `width × height × bpp`).
 
 Append `--json` to any mode for a machine-parseable sidecar. Details in
 [USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
+
+## v1.1.1 — modern Android dump robustness
+
+v1.1.0 panicked with `class id must have a class definition` when an
+`InstanceDump` referenced a class id that was never emitted as a
+`ClassDump` / `LoadClass` record. Modern Android dumps (`am dumpheap` on
+recent ART builds, app-image / zygote-shared classes elided by the
+dumper) routinely do this — the affected dumps were unreadable in
+v1.1.0.
+
+v1.1.1 degrades gracefully instead:
+
+- unknown class ids are counted with bare object-header size (no field
+  reconstruction possible without the `ClassDump`);
+- their class name is rendered as `<unknown class #<id>>`;
+- a single end-of-run stderr line reports how many ids were affected,
+  so the operator knows the summary is a lower bound when those
+  classes happened to dominate the heap.
+
+All other modes (`--retained-size`, `--leak-suspects`,
+`--find-referrers`, `--paths-from-id`, `--diff-from`/`--diff-to`) work
+unchanged on the affected dumps — they index by object id and don't
+depend on per-class field reconstruction. Existing reference dumps
+(`JAVA_PROFILE_1.0.2`, `JAVA_PROFILE_1.0.3`) produce byte-identical
+output.
 
 ## GC churn analysis caveat
 

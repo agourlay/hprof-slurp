@@ -5,6 +5,14 @@ Every example below uses real output from a 235 MiB Android dump
 (`heap-phase4-jvm.hprof`, captured from a Modern Home / nexio.tv build) — not
 synthetic data.
 
+> **Need v1.1.1+.** v1.1.0 panicked with
+> `class id must have a class definition` on modern Android dumps that
+> reference elided boot-classpath / zygote-shared class ids (common on
+> recent ART builds — `am dumpheap` on Android 14+). v1.1.1 logs a
+> single warning and continues. If you hit the panic on a 1.1.0 install,
+> upgrade with
+> `cargo install --git https://github.com/johnneerdael/heaptrail --force`.
+
 ---
 
 ## 1. Capturing a heap dump on Android

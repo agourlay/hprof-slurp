@@ -13,7 +13,16 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.1.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.1.1+).
+
+> **v1.1.1 (modern Android dump fix):** v1.1.0 panicked with
+> `class id must have a class definition` on dumps that reference
+> elided boot-classpath / zygote-shared class ids (common on recent
+> ART builds — e.g. `am dumpheap` on Android 14+). v1.1.1 degrades
+> gracefully: unknown classes get bare object-header size and an
+> `<unknown class #id>` label, plus a single end-of-run stderr
+> warning. If a user reports that panic message, upgrade them with
+> `cargo install --git https://github.com/johnneerdael/heaptrail --force`.
 
 ## When to use
 
@@ -56,15 +65,18 @@ command -v cargo >/dev/null 2>&1 || {
 cargo install --git https://github.com/johnneerdael/heaptrail
 
 # Verify
-heaptrail --version    # should report 0.7.0 or newer
+heaptrail --version    # should report 1.1.1 or newer
 ```
 
-If `heaptrail` is found but version is `0.6.3` or older, **upgrade**:
+If `heaptrail` is found but version is older than `1.1.1`, **upgrade**:
 ```bash
 cargo install --git https://github.com/johnneerdael/heaptrail --force
 ```
 The 0.6.3 build (from crates.io) is summary-only and lacks the referrer
-tracing and diff modes you need for retainer queries.
+tracing and diff modes you need for retainer queries. Versions 0.7–1.1.0
+have the modern-Android `class id must have a class definition` panic
+fixed in 1.1.1 — recommend the upgrade whenever a user reports that
+crash.
 
 If `~/.cargo/bin` is not on PATH after install, instruct the user to add
 it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
@@ -525,6 +537,7 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
 | Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `heaptrail` accepts and displays dotted. Inner classes: `Outer$Inner`. |
+| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install --git https://github.com/johnneerdael/heaptrail --force` to get 1.1.1+, which logs a single warning and continues instead. |
 
 ## Performance reference
 
