@@ -10,9 +10,9 @@ fn command() -> Command {
         .author(crate_authors!("\n"))
         .about(crate_description!())
         .arg(
-            Arg::new("inputFile")
+            Arg::new("input-file")
                 .help("binary hprof input file")
-                .long("inputFile")
+                .long("input-file")
                 .short('i')
                 .num_args(1)
                 .required(true),
@@ -35,9 +35,9 @@ fn command() -> Command {
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("listStrings")
+            Arg::new("list-strings")
                 .help("list all Strings found")
-                .long("listStrings")
+                .long("list-strings")
                 .short('l')
                 .action(clap::ArgAction::SetTrue),
         )
@@ -53,7 +53,7 @@ pub fn get_args() -> Result<Args, HprofSlurpError> {
     let matches = command().get_matches();
 
     let input_file = matches
-        .get_one::<String>("inputFile")
+        .get_one::<String>("input-file")
         .expect("impossible")
         .trim();
     if !Path::new(&input_file).is_file() {
@@ -68,7 +68,7 @@ pub fn get_args() -> Result<Args, HprofSlurpError> {
     }
 
     let debug = matches.get_flag("debug");
-    let list_strings = matches.get_flag("listStrings");
+    let list_strings = matches.get_flag("list-strings");
     let json_output = matches.get_flag("json");
     let args = Args {
         file_path: input_file.to_string(),

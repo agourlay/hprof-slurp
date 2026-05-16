@@ -34,16 +34,16 @@ However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/ma
 ./hprof-slurp --help
 JVM heap dump hprof file analyzer
 
-Usage: hprof-slurp [OPTIONS] --inputFile <inputFile>
+Usage: hprof-slurp [OPTIONS] --input-file <input-file>
 
 Options:
-  -i, --inputFile <inputFile>  binary hprof input file
-  -t, --top <top>              the top results to display [default: 20]
-  -d, --debug                  debug info
-  -l, --listStrings            list all Strings found
-      --json                   additional JSON output in file
-  -h, --help                   Print help
-  -V, --version                Print version
+  -i, --input-file <input-file>  binary hprof input file
+  -t, --top <top>                the top results to display [default: 20]
+  -d, --debug                    debug info
+  -l, --list-strings             list all Strings found
+      --json                     additional JSON output in file
+  -h, --help                     Print help
+  -V, --version                  Print version
 ```
 
 ### Example table
