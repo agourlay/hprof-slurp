@@ -808,7 +808,6 @@ fn parse_cpu_samples(i: &[u8]) -> IResult<&[u8], Record> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::record::Record;
 
     #[test]
     fn parse_id_respects_32_bit_header_size() {
@@ -843,7 +842,7 @@ mod tests {
 
         assert!(rest.is_empty());
         match record {
-            Record::Utf8String { id, str } => {
+            Utf8String { id, str } => {
                 assert_eq!(id, 42);
                 assert_eq!(&*str, "abc");
             }
@@ -867,7 +866,7 @@ mod tests {
 
         assert!(rest.is_empty());
         match record {
-            Record::StackTrace(data) => {
+            StackTrace(data) => {
                 assert_eq!(data.serial_number, 1);
                 assert_eq!(data.thread_serial_number, 2);
                 assert_eq!(data.number_of_frames, 2);
