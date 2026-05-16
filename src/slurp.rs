@@ -159,6 +159,7 @@ mod tests {
     use std::fs;
 
     const FILE_PATH_32: &str = "test-heap-dumps/hprof-32.bin";
+    const FILE_PATH_RESULT_32: &str = "test-heap-dumps/hprof-32-result.txt";
 
     const FILE_PATH_64: &str = "test-heap-dumps/hprof-64.bin";
     const FILE_PATH_RESULT_64: &str = "test-heap-dumps/hprof-64-result.txt";
@@ -189,10 +190,7 @@ mod tests {
     fn supported_32_bits() {
         let result = slurp_file(FILE_PATH_32, false, false);
         assert!(result.is_ok());
-
-        let rendered_result = result.unwrap();
-        assert!(rendered_result.summary.contains("UTF-8 Strings:"));
-        assert!(!rendered_result.memory_usage.is_empty());
+        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_32);
     }
 
     #[test]
