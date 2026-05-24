@@ -136,6 +136,18 @@ writes a transcript with PID, foreground evidence, commands, dump size, and
 artifact paths. The helper leaves device files in `/data/local/tmp` so failed
 or partial captures remain inspectable.
 
+### Mapping files for obfuscated Android builds
+
+```bash
+heaptrail -i after.hprof --mapping app/build/outputs/mapping/universalRelease/mapping.txt --leak-suspects
+heaptrail -i after.hprof --auto-mapping --project-root ~/Scripts/nexio --package com.nexio.tv --serial 192.168.50.98:5555 --leak-suspects
+```
+
+`--mapping` applies an explicit R8/ProGuard mapping file. `--auto-mapping`
+matches the package version installed on the selected ADB device to local
+Gradle `output-metadata.json`, then uses the corresponding
+`app/build/outputs/mapping/<variant>/mapping.txt`.
+
 ### Example table
 
 ```bash

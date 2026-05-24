@@ -64,6 +64,33 @@ After pull, heaptrail runs a cheap summary pass and records whether
 the device-side `/data/local/tmp/*.hprof` by default, so failed or partial
 captures remain available for manual inspection.
 
+### Deobfuscating release-build heap reports
+
+Release Android heaps often contain names such as `d1.q2`, `zh.l1`, or `ai.m`.
+Use the R8 mapping generated for the exact installed build:
+
+```bash
+heaptrail -i after.hprof \
+  --mapping app/build/outputs/mapping/universalRelease/mapping.txt \
+  --leak-suspects --exclude-soft-weak --preview-bytes 200
+```
+
+For local Gradle builds, heaptrail can select the mapping by querying the device
+version and matching Gradle APK metadata:
+
+```bash
+heaptrail -i after.hprof \
+  --auto-mapping \
+  --project-root ~/Scripts/nexio \
+  --package com.nexio.tv \
+  --serial 192.168.50.98:5555 \
+  --leak-suspects
+```
+
+If multiple local outputs match, pass `--mapping` explicitly. The mapping must
+come from the same build as the installed app; using a stale mapping can produce
+plausible but wrong class names.
+
 ### Option B — Android Studio Profiler
 
 1. Run → Profile 'app'

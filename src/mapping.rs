@@ -157,9 +157,6 @@ impl Symbolicator {
             .unwrap_or_else(|| raw_field.to_string())
     }
 
-    pub fn maps_class(&self, raw: &str) -> bool {
-        self.class_name(raw) != raw
-    }
 }
 
 fn invalid(path: &Path, line: usize, message: &str) -> HprofSlurpError {
