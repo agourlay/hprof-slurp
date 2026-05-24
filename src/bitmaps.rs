@@ -57,11 +57,10 @@ pub fn run(mode: &crate::args::Mode) -> Result<BitmapReport, HprofSlurpError> {
     };
 
     let idx = crate::referrer::pass1_index(input_file, debug)?;
-    let bitmap_info = idx.bitmap_class_info.clone().ok_or_else(|| {
-        HprofSlurpError::NotYetImplemented {
-            what: "android.graphics.Bitmap not loaded in this dump — --bitmaps is for Android dumps only",
-        }
-    })?;
+    let bitmap_info = idx
+        .bitmap_class_info
+        .clone()
+        .ok_or(HprofSlurpError::BitmapClassNotLoaded)?;
 
     let mut entries = Vec::<BitmapEntry>::new();
     crate::slurp::parse_records(input_file, debug, true, |rec| {
