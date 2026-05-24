@@ -533,15 +533,14 @@ mod tests {
             args: &[String],
         ) -> Result<CommandOutput, HprofSlurpError> {
             self.calls.push(args.to_vec());
-            if args.iter().any(|arg| arg == "pull") {
-                if let Some(bytes) = self
+            if args.iter().any(|arg| arg == "pull")
+                && let Some(bytes) = self
                     .on_pull_write
                     .take()
                     .or_else(|| self.on_pull_writes.pop_front())
-                {
-                    let dest = args.last().expect("pull destination");
-                    std::fs::write(dest, bytes)?;
-                }
+            {
+                let dest = args.last().expect("pull destination");
+                std::fs::write(dest, bytes)?;
             }
             Ok(self.outputs.pop_front().expect("missing fake output"))
         }
