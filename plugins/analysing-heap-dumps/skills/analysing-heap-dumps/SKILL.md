@@ -83,6 +83,12 @@ Use these defaults unless the user explicitly asks for a raw/minimal command:
    mapping. On the Nexio dump it took ~0.52 s and collapsed 2,869 Media3
    targets into actionable owner/field rows such as
    `LoadControl$Parameters.timeline`, `playerId`, and `mediaPeriodId`.
+6. **For new Android captures, prefer `android-capture`.** Use it instead of
+   hand-written `adb` commands when capturing from a live device. It records
+   PID, focused-window evidence, exact commands, local file size,
+   AllocationSites presence, and mapping metadata when `--auto-mapping` is
+   enabled. That transcript is often as valuable as the dump when another
+   agent must reason about capture quality later.
 
 ## Step 0: Ensure heaptrail is installed
 
@@ -567,6 +573,52 @@ Given a fresh heap dump and a vague "memory looks bad" report:
 
 ## Capturing an Android heap dump
 
+Prefer the helper for new Android captures:
+
+```bash
+heaptrail android-capture \
+  --serial <adb-serial> \
+  --package com.example.myapp \
+  --out artifacts/heap-captures \
+  --foreground \
+  --auto-mapping \
+  --project-root <android-project-root>
+```
+
+Use `--foreground` for app-state-sensitive leaks so the transcript proves the
+focused package/window at capture time. Use `--auto-mapping` during capture
+when possible so the transcript records the selected mapping path, source, and
+hash. The resulting local `.hprof` path is the input for follow-up `heaptrail`
+analysis commands.
+
+Use `--allocation-sites` only when the user can recapture the workload and
+needs "where was this allocated?" stack traces:
+
+```bash
+heaptrail android-capture \
+  --package com.example.myapp \
+  --out artifacts/heap-captures \
+  --foreground \
+  --auto-mapping \
+  --project-root <android-project-root> \
+  --allocation-sites
+```
+
+AllocationSites cannot be recovered from an ordinary already-captured
+`am dumpheap` file. If summary says `AllocationSites: not present`, skip
+`--allocation-sites` analysis and use holders/paths/diffs instead. Allocation
+tracking can perturb runtime behavior, so use it for targeted reproductions
+rather than every baseline capture.
+
+There is no special bitmap capture flag. Capture the app after navigating to
+the image-heavy screen and waiting for images to load, then run mapped
+`--bitmaps` on the resulting HProf. Java HProf records live
+`android.graphics.Bitmap` objects; native pixel buffers are not directly
+contained in the dump, so pair bitmap output with `dumpsys meminfo` and
+`--native-context` when native/graphics pressure matters.
+
+Manual fallback when `android-capture` cannot be used:
+
 ```bash
 # Find the target process
 adb shell ps -A | grep com.example.myapp
@@ -574,6 +626,16 @@ adb shell ps -A | grep com.example.myapp
 # Capture (writes to device, then pull)
 adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
 adb pull /data/local/tmp/heap.hprof
+```
+
+Manual AllocationSites fallback:
+
+```bash
+adb shell am profile start <pid> /data/local/tmp/heaptrail-alloc.trace
+adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
+adb shell am profile stop <pid>
+adb pull /data/local/tmp/heap.hprof
+heaptrail -i heap.hprof --mapping mapping.txt --allocation-sites --top 20
 ```
 
 For two-snapshot diff:
@@ -601,6 +663,8 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 |------|---------|
 | Top-N classes and large array content | `heaptrail -i heap.hprof --mapping mapping.txt --preview-bytes 200 -t 20` |
 | Best Android vague-leak first pass | `heaptrail -i heap.hprof --mapping mapping.txt --leak-suspects --exclude-soft-weak --preview-bytes 200 --top 5` |
+| Repeatable Android capture | `heaptrail android-capture --package <app> --out artifacts/heap-captures --foreground --auto-mapping --project-root <dir>` |
+| Allocation-site capture | append `--allocation-sites` to `android-capture`, then analyze with mapped `--allocation-sites` |
 | Holders through Object[] | `heaptrail -i heap.hprof --mapping mapping.txt --find-referrers <class> --hops 2 --group-holders` |
 | Holders of one specific object | `heaptrail -i heap.hprof --mapping mapping.txt --find-referrers id:<u64> --hops 1 --preview-bytes 200` |
 | Chain to a GC root with impact | `heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id <u64> --retained-size --preview-bytes 200` |
@@ -622,6 +686,9 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Running `hprof-conv` | Modern Android hprof from `am dumpheap` is already the standard format. `hprof-conv` is only for legacy pre-ART Dalvik dumps. |
 | Stopping at `--hops 1` | Hop 1 reports `Object[][]` for any class held in a collection — uninformative. **Always run with `--hops 2`** for class targets. |
 | Running raw commands on release dumps | Obfuscated names hide the diagnosis. Always include `--mapping`/`--auto-mapping`; if output has names like `x7.k` or `p1.j`, rerun mapped. |
+| Hand-writing ADB capture when provenance matters | Use `heaptrail android-capture`; it writes a transcript with PID, focus evidence, commands, dump size, AllocationSites presence, and mapping metadata. |
+| Expecting AllocationSites from an ordinary dump | Allocation stack traces must be captured up front with allocation tracking, e.g. `android-capture --allocation-sites`. If summary says not present, use holders/paths/diffs. |
+| Looking for a bitmap capture mode | `--bitmaps` analyzes an HProf; it does not change capture. Navigate to the image-heavy screen, wait for images to load, capture normally, then run mapped `--bitmaps`. |
 | Running summary without preview | It identifies `byte[]`/`char[]` but not content. Use `--preview-bytes 200` by default on first-pass triage. |
 | Running pairwise diffs for playback captures | For 3+ ordered snapshots, `--diff-series` gives the whole timeline and monotonic growth candidates in one run. |
 | Scanning huge Media3 referrer output manually | Use `--target-glob 'androidx.media3.**' --group-holders` so owner families and holder fields surface first. |
