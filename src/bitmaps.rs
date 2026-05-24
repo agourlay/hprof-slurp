@@ -40,6 +40,10 @@ pub struct BitmapReport {
     pub total_pixel_bytes: u64,
 }
 
+impl BitmapReport {
+    pub fn symbolicate(&mut self, _symbolicator: &crate::mapping::Symbolicator) {}
+}
+
 pub fn run(mode: &crate::args::Mode) -> Result<BitmapReport, HprofSlurpError> {
     use crate::args::Mode;
     let (input_file, top, debug) = match mode {

@@ -31,6 +31,19 @@ pub struct AllocationSitesResult {
     pub top: Vec<ResolvedAllocSite>,
 }
 
+impl AllocationSitesResult {
+    pub fn symbolicate(&mut self, symbolicator: &crate::mapping::Symbolicator) {
+        for site in &mut self.top {
+            site.class_name = symbolicator.class_name(&site.class_name);
+            for frame in &mut site.stack_trace {
+                if let Some(class) = frame.class.as_mut() {
+                    *class = symbolicator.class_name(class);
+                }
+            }
+        }
+    }
+}
+
 pub fn run(mode: &Mode) -> Result<AllocationSitesResult, HprofSlurpError> {
     let (input_file, top, debug) = match mode {
         Mode::AllocationSites {

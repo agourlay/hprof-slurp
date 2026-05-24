@@ -196,6 +196,45 @@ pub struct ReferrerResult {
     pub class_retained_by_name: Option<AHashMap<String, u64>>,
 }
 
+impl ReferrerResult {
+    pub fn symbolicate(&mut self, symbolicator: &crate::mapping::Symbolicator) {
+        self.target_label = deobfuscate_target_label(&self.target_label, symbolicator);
+        for matched in &mut self.matched_classes {
+            matched.class_name = symbolicator.class_name(&matched.class_name);
+        }
+        for row in self
+            .hop1
+            .iter_mut()
+            .chain(self.hop2.iter_mut())
+            .chain(self.hop3.iter_mut())
+        {
+            let raw_holder = row.holder_class.clone();
+            if let Some(field) = row.field_name.as_mut() {
+                *field = symbolicator.field_name(&raw_holder, field);
+            }
+            row.holder_class = symbolicator.class_name(&row.holder_class);
+        }
+        if let Some(retained) = self.class_retained_by_name.take() {
+            let mut remapped = AHashMap::new();
+            for (class_name, bytes) in retained {
+                *remapped.entry(symbolicator.class_name(&class_name)).or_insert(0) += bytes;
+            }
+            self.class_retained_by_name = Some(remapped);
+        }
+    }
+}
+
+fn deobfuscate_target_label(
+    label: &str,
+    symbolicator: &crate::mapping::Symbolicator,
+) -> String {
+    if label.starts_with("id:") {
+        label.to_string()
+    } else {
+        symbolicator.class_name(label)
+    }
+}
+
 pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
     let (
         input_file,
@@ -1037,6 +1076,39 @@ mod tests {
 
         assert!(out.contains("preview: content: JSON"), "got:\n{out}");
         assert!(out.contains(r#"{"ok":true}"#), "got:\n{out}");
+    }
+
+    #[test]
+    fn symbolicate_referrer_entries_renames_holder_and_field() {
+        let symbolicator = crate::mapping::Symbolicator::parse_text(
+            std::path::Path::new("mapping.txt"),
+            "com.example.Holder -> a.b:\n    java.lang.String title -> c\n",
+        )
+        .unwrap();
+        let mut result = ReferrerResult {
+            target_label: "a.b".to_string(),
+            target_instance_count: 1,
+            matched_classes: vec![MatchedClass {
+                class_name: "a.b".to_string(),
+                instance_count: 1,
+            }],
+            hop1: vec![ReferrerEntry {
+                holder_class: "a.b".to_string(),
+                field_name: Some("c".to_string()),
+                ref_count: 3,
+            }],
+            hop2: vec![],
+            hop3: vec![],
+            array_previews: AHashMap::new(),
+            class_retained_by_name: None,
+        };
+
+        result.symbolicate(&symbolicator);
+
+        assert_eq!(result.target_label, "com.example.Holder");
+        assert_eq!(result.matched_classes[0].class_name, "com.example.Holder");
+        assert_eq!(result.hop1[0].holder_class, "com.example.Holder");
+        assert_eq!(result.hop1[0].field_name.as_deref(), Some("title"));
     }
 
     #[test]

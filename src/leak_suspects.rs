@@ -43,6 +43,16 @@ pub struct SuspectsReport {
     pub suspects: Vec<Suspect>,
 }
 
+impl SuspectsReport {
+    pub fn symbolicate(&mut self, symbolicator: &crate::mapping::Symbolicator) {
+        for suspect in &mut self.suspects {
+            suspect.dominator_class = symbolicator.class_name(&suspect.dominator_class);
+            suspect.accumulating_class = symbolicator.class_name(&suspect.accumulating_class);
+            suspect.path_to_root.symbolicate(symbolicator);
+        }
+    }
+}
+
 pub fn run(mode: &Mode) -> Result<SuspectsReport, HprofSlurpError> {
     let (input_file, top, threshold, exclude_soft_weak, preview_bytes, debug) = match mode {
         Mode::LeakSuspects {

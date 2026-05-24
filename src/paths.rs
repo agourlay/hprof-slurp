@@ -65,6 +65,23 @@ pub struct PathResult {
     pub terminated_by_soft_weak: Option<()>,
 }
 
+impl PathResult {
+    pub fn symbolicate(&mut self, symbolicator: &crate::mapping::Symbolicator) {
+        for step in &mut self.steps {
+            let raw_holder = step.holder_class.clone();
+            if let Some(field) = step.via_field.as_mut() {
+                *field = symbolicator.field_name(&raw_holder, field);
+            }
+            step.holder_class = symbolicator.class_name(&step.holder_class);
+        }
+        if let Some(frame) = self.root_frame.as_mut()
+            && let Some(class) = frame.class.as_mut()
+        {
+            *class = symbolicator.class_name(class);
+        }
+    }
+}
+
 /// Inputs to the per-instance path walker. `idx` is borrowed; the
 /// walker re-streams the dump on every call so callers like
 /// `merge_paths` (PR 6) pay file I/O proportional to the target count,
@@ -550,6 +567,39 @@ mod tests {
             "expected content label, got:\n{out}"
         );
         assert!(out.contains("<?xml"), "expected preview, got:\n{out}");
+    }
+
+    #[test]
+    fn symbolicate_path_steps_renames_holder_and_field() {
+        let symbolicator = crate::mapping::Symbolicator::parse_text(
+            std::path::Path::new("mapping.txt"),
+            "com.example.Holder -> a.b:\n    java.lang.String title -> c\n",
+        )
+        .unwrap();
+        let mut result = PathResult {
+            start_object_id: 1,
+            steps: vec![PathStep {
+                holder_object_id: 2,
+                holder_class: "a.b".to_string(),
+                via_field: Some("c".to_string()),
+                array_index: None,
+                held_object_id: 1,
+            }],
+            terminated_at_root: false,
+            root_kind: None,
+            root_thread_name: None,
+            root_frame: None,
+            max_depth_reached: true,
+            depth: 1,
+            array_previews: ahash::AHashMap::new(),
+            retained_by_oid: None,
+            terminated_by_soft_weak: None,
+        };
+
+        result.symbolicate(&symbolicator);
+
+        assert_eq!(result.steps[0].holder_class, "com.example.Holder");
+        assert_eq!(result.steps[0].via_field.as_deref(), Some("title"));
     }
 
     #[test]

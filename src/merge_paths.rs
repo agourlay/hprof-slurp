@@ -38,6 +38,24 @@ pub struct MergedReport {
     pub graph_verified: bool,
 }
 
+impl MergedReport {
+    pub fn symbolicate(&mut self, symbolicator: &crate::mapping::Symbolicator) {
+        self.target_label = symbolicator.class_name(&self.target_label);
+        symbolicate_hop(&mut self.root, symbolicator);
+    }
+}
+
+fn symbolicate_hop(hop: &mut MergedHop, symbolicator: &crate::mapping::Symbolicator) {
+    let raw_class = hop.source_class.clone();
+    if let Some(field) = hop.field_name.as_mut() {
+        *field = symbolicator.field_name(&raw_class, field);
+    }
+    hop.source_class = symbolicator.class_name(&hop.source_class);
+    for child in &mut hop.children {
+        symbolicate_hop(child, symbolicator);
+    }
+}
+
 pub fn run(mode: &Mode) -> Result<MergedReport, HprofSlurpError> {
     let (input_file, start_oid, max_depth, debug, exclude_soft_weak, retained_size) = match mode {
         Mode::Paths {

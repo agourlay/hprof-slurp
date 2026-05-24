@@ -154,7 +154,10 @@ fn run_bitmaps(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     };
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
-    let result = bitmaps::run(&mode)?;
+    let mut result = bitmaps::run(&mode)?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        result.symbolicate(&mapping.symbolicator);
+    }
     if json {
         write_json_file(&result, json_out, "heaptrail-bitmaps")?;
     }
@@ -170,7 +173,10 @@ fn run_leak_suspects(mode: Mode, started: Instant) -> Result<(), HprofSlurpError
     };
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
-    let result = leak_suspects::run(&mode)?;
+    let mut result = leak_suspects::run(&mode)?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        result.symbolicate(&mapping.symbolicator);
+    }
     if json {
         write_json_file(&result, json_out, "heaptrail-leak-suspects")?;
     }
@@ -186,7 +192,10 @@ fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpEr
     };
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
-    let result = allocation_sites::run(&mode)?;
+    let mut result = allocation_sites::run(&mode)?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        result.symbolicate(&mapping.symbolicator);
+    }
     if json {
         write_json_file(&result, json_out, "heaptrail-allocation-sites")?;
     }
@@ -202,7 +211,10 @@ fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpErro
     };
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
-    let result = referrer::run(&mode)?;
+    let mut result = referrer::run(&mode)?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        result.symbolicate(&mapping.symbolicator);
+    }
     if json {
         write_json_file(&result, json_out, "heaptrail-referrers")?;
     }
@@ -243,7 +255,10 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     if merge {
         let resolved_mapping = resolve_mapping_for_mode(&mode)?;
         print_mapping_notice(resolved_mapping.as_ref());
-        let result = merge_paths::run(&mode)?;
+        let mut result = merge_paths::run(&mode)?;
+        if let Some(mapping) = resolved_mapping.as_ref() {
+            result.symbolicate(&mapping.symbolicator);
+        }
         if json {
             write_json_file(&result, json_out, "heaptrail-merge-paths")?;
         }
@@ -253,7 +268,10 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     }
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
-    let result = paths::run(&mode)?;
+    let mut result = paths::run(&mode)?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        result.symbolicate(&mapping.symbolicator);
+    }
     if json {
         write_json_file(&result, json_out, "heaptrail-paths")?;
     }
