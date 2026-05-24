@@ -1,6 +1,6 @@
 ---
 name: analysing-heap-dumps
-description: Use when investigating .hprof files (Android or JVM heap dumps), deobfuscating Android release heap reports, diagnosing memory leaks, asking 'what holds class X / object id Y', measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, 'memory leak', 'retained size', 'heap is huge', 'find what is holding this object'. heaptrail is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
+description: Use when investigating .hprof files, Android or JVM heap dumps, obfuscated Android release heap reports, memory leaks, retained size, OutOfMemoryError, GC churn, playback memory growth, or questions like 'what holds class X / object id Y'. Triggers include `am dumpheap`, `jmap -dump`, Perfetto Java heap dumps, `.hprof`, 'heap is huge', and 'find what is holding this object'.
 ---
 
 # Analyzing heap dumps with heaptrail
@@ -9,9 +9,9 @@ description: Use when investigating .hprof files (Android or JVM heap dumps), de
 
 `heaptrail` is a streaming CLI for triaging Java/Android `.hprof` heap
 dumps. It is the right first reach for: **histogram, retainer chains,
-path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
-8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
-~1.5 GB/s.
+path-to-root, content preview, retained leak suspects, and snapshot diff**.
+It supports both 4-byte (Android) and 8-byte (JVM) identifier formats, and
+processes dumps **larger than RAM** at ~1.5 GB/s.
 
 **Source:** https://github.com/johnneerdael/heaptrail (master, version 1.3.0+).
 
@@ -54,6 +54,35 @@ calculation, after `heaptrail` has narrowed the question.
 dumps from `am dumpheap` are already the standard format `heaptrail`
 expects — `hprof-conv` is only needed for legacy Dalvik dumps from
 pre-ART devices.
+
+## Non-negotiable defaults
+
+Use these defaults unless the user explicitly asks for a raw/minimal command:
+
+1. **Always deobfuscate Android release dumps.** If `--mapping <PATH>` is
+   known, include it on every heaptrail command. If no mapping path is known
+   but an Android project/device is available, use
+   `--auto-mapping --project-root <DIR> --package <PACKAGE> [--serial <SERIAL>]`.
+   If neither is possible, state that raw class names may be obfuscated before
+   interpreting output. Do not silently analyze release dumps without mapping.
+2. **Use `--preview-bytes 200` on first-pass triage.** Primitive arrays are
+   often the memory story. Running summary without preview only gives
+   `byte[]`/`char[]`; preview identifies JSON, XML, protobuf-like binary,
+   image signatures, and log buffers immediately. On the Nexio 113 MiB dump,
+   mapped summary+preview took ~0.42 s and exposed a 117 KiB `char[]` as JSON.
+3. **For Android vague-leak triage, prefer retained suspects first.**
+   Run `--leak-suspects --exclude-soft-weak --preview-bytes 200 --top 5`
+   with mapping. It costs more than summary but gives retained dominators plus
+   paths. On the Nexio dump it took ~4.1 s and surfaced `FfmpegVideoDecoder`,
+   `DurableArtworkDecisionCache`, and Media3 renderer queues immediately.
+4. **For 3+ ordered captures, use `--diff-series`, not repeated pair diffs.**
+   It shows per-step deltas, first-to-last totals, and monotonic growth in one
+   report. Use `--diff-by bytes` for memory-growth investigations.
+5. **For Media3/playback/cache questions, use grouped holders immediately.**
+   Prefer `--target-glob 'androidx.media3.**' --hops 2 --group-holders` with
+   mapping. On the Nexio dump it took ~0.52 s and collapsed 2,869 Media3
+   targets into actionable owner/field rows such as
+   `LoadControl$Parameters.timeline`, `playerId`, and `mediaPeriodId`.
 
 ## Step 0: Ensure heaptrail is installed
 
@@ -115,10 +144,18 @@ Run `--auto-mapping` from the Android project root, or add
 reports; summary and diff JSON also include `obfuscated_class_name` when
 a row was renamed.
 
+**Mapping guardrail:** If output includes short names such as `x7.k`, `a3.t`,
+`p1.j`, `d1.q2`, `zh.l1`, or similar, stop and rerun with `--mapping` or
+`--auto-mapping`. On the Nexio dump, raw summary showed `x7.k`, `a3.t`, and
+`p1.j`; the mapped command resolved them to
+`com.google.gson.internal.LinkedTreeMap$Node`,
+`androidx.compose.ui.semantics.SemanticsNode`, and
+`androidx.compose.runtime.snapshots.SnapshotIdSet`.
+
 ### 1. `summary` (default) — what's in the heap?
 
 ```bash
-heaptrail -i heap.hprof -t 20
+heaptrail -i heap.hprof --mapping mapping.txt --preview-bytes 200 -t 20
 ```
 
 **What it tells you:** Top-N classes by total shallow size, instance count
@@ -126,19 +163,21 @@ per class, largest single instance per class, and a list of object ids
 for the largest array instances (these are the inputs you feed into
 `--paths-from-id` next).
 
-**Wall time:** ~150 ms on a 235 MB Android dump.
+**Wall time:** ~150 ms on a 235 MB Android dump; mapped preview summary was
+~0.42 s on the 113 MiB Nexio Android dump.
 
-**Use this first** to identify the dominant class(es) and any single huge
-allocation worth chasing.
+**Use this first** when the user asks for heap composition or you need object
+ids for follow-up commands. Keep `--preview-bytes 200` on by default so
+primitive arrays identify their content in the same run.
 
 ### 2. `--find-referrers <target>` — who's holding it?
 
 ```bash
 # Targeting a class FQ-name (every instance of that class)
-heaptrail -i heap.hprof --find-referrers java.util.ArrayList --hops 2 --top 30
+heaptrail -i heap.hprof --mapping mapping.txt --find-referrers java.util.ArrayList --hops 2 --top 30
 
 # Targeting a specific object id (for one giant instance)
-heaptrail -i heap.hprof --find-referrers id:1661812752 --hops 1
+heaptrail -i heap.hprof --mapping mapping.txt --find-referrers id:1661812752 --hops 1 --preview-bytes 200
 ```
 
 **What it tells you:** Direct + multi-hop holders (instance fields, array
@@ -149,8 +188,8 @@ to find referrers of every class matching a shell-style glob in one
 pass:
 
 ```bash
-heaptrail -i heap.hprof --target-glob 'com.example.**' --hops 2
-heaptrail -i heap.hprof --target-glob '**$Itr'           # all iterator inner classes
+heaptrail -i heap.hprof --mapping mapping.txt --target-glob 'com.example.**' --hops 2 --group-holders
+heaptrail -i heap.hprof --mapping mapping.txt --target-glob '**$Itr' --hops 2 --group-holders
 ```
 
 `*` stays within a package level; `**` crosses levels. Mutually
@@ -172,6 +211,11 @@ producing all these iterators?" — that's six exact-match
 
 **Wall time:** ~480 ms (hops 1) / ~730 ms (hops 2) on a 235 MB dump.
 
+**Group noisy tables by default:** add `--group-holders` when targeting a
+family (`--target-glob`) or playback/media/cache classes. It groups by owner
+family, holder class, and field, which is more useful to agents than scanning
+hundreds of individual holder rows.
+
 **Target syntax:** dotted FQ class names (`java.util.ArrayList`,
 `java.util.LinkedHashMap$LinkedHashMapEntry`); inner classes use `$`.
 Object ids are passed as `id:<u64>` or bare `<u64>`.
@@ -179,7 +223,7 @@ Object ids are passed as `id:<u64>` or bare `<u64>`.
 ### 3. `--paths-from-id <u64>` — chain to a GC root
 
 ```bash
-heaptrail -i heap.hprof --paths-from-id 1661812752 --max-depth 12
+heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id 1661812752 --max-depth 12 --preview-bytes 200
 ```
 
 **What it tells you:** A single chain of holders walking from `<id>` up
@@ -219,11 +263,16 @@ to a known position in a paged result, sparse cache, or backing
 
 **Wall time:** ~325 ms per hop (each hop is one streaming pass).
 
+**When prioritizing impact**, add `--retained-size` so the start id and hops
+show retained bytes. On the Nexio dump,
+`--paths-from-id 364390216 --retained-size --preview-bytes 200 --mapping ...`
+took ~0.87 s and showed the `FfmpegVideoDecoder` root retained 11.71 MiB.
+
 ### 4. `--diff-from <a> --diff-to <b>` — snapshot diff (churn signal)
 
 ```bash
-heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
-heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by bytes
+heaptrail --diff-from before.hprof --diff-to after.hprof --mapping mapping.txt --diff-by count --top 20
+heaptrail --diff-from before.hprof --diff-to after.hprof --mapping mapping.txt --diff-by bytes
 ```
 
 **What it tells you:** Per-class delta in instance count and shallow
@@ -232,10 +281,30 @@ static dumps can give: classes whose instance count grew most are
 allocation hot-paths. Sort by `count` (default) for short-lived
 allocations or `bytes` for size growth. Zero-delta classes are filtered.
 
+### 4b. `--diff-series <a> <b> <c>...` — ordered playback/state timeline (v1.3.0)
+
+```bash
+heaptrail --diff-series launch.hprof home.hprof play.hprof stop.hprof soak.hprof \
+  --mapping mapping.txt --diff-by bytes --top 30 \
+  --json --json-out reports/playback-series.json
+```
+
+**What it tells you:** adjacent step deltas, first-to-last totals, and
+monotonic growth candidates across 3+ snapshots. This is the right default
+when the user has ordered captures from playback, navigation, start/stop, or
+soak states. On the Nexio before/before/after validation series it took ~0.56 s
+and identified monotonic growth in `char[]`, `int[]`, `java.lang.Long`,
+`androidx.compose.runtime.snapshots.SnapshotIdSet`, and related Compose rows.
+
+Use `--native-context meminfo.txt` when the user also captured
+`adb shell dumpsys meminfo <package>`; it annotates text and JSON with Java
+Heap, Native Heap, Graphics, GL, and TOTAL PSS. It does not change Java heap
+diff calculations.
+
 ### 5. `--allocation-sites` — per-class allocation stack traces (v0.8.0)
 
 ```bash
-heaptrail -i heap.hprof --allocation-sites --top 20
+heaptrail -i heap.hprof --mapping mapping.txt --allocation-sites --top 20
 ```
 
 **What it tells you:** For dumps captured with allocation tracking
@@ -255,6 +324,10 @@ AllocationSites: not present (capture with `am profile start <pid>`)
 When the dump has no alloc-tracking data, `--allocation-sites` exits
 with the same hint as an error.
 
+**Use only when present:** first-pass summary prints `AllocationSites:`. On the
+Nexio dumps it was `not present`, so running `--allocation-sites` is lower value
+than leak suspects, diff-series, grouped holders, or paths.
+
 *Engineering use case:* a 72 MiB `char[]` whose holder chain
 terminated at a Gson serializer. `--allocation-sites` would have shown
 the exact `Moshi.fromJson` / `JsonAdapter` frame that allocated it,
@@ -272,10 +345,10 @@ Global flag (not its own mode — applies to summary, `--paths-from-id`,
 (`char[]`, `byte[]`, etc.) are previewed inline:
 
 ```bash
-heaptrail -i heap.hprof -t 5 --preview-bytes 200
-heaptrail -i heap.hprof --paths-from-id <u64> --preview-bytes 200
-heaptrail -i heap.hprof --find-referrers id:<u64> --preview-bytes 200
-heaptrail -i heap.hprof -l --preview-bytes 200
+heaptrail -i heap.hprof --mapping mapping.txt -t 20 --preview-bytes 200
+heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id <u64> --preview-bytes 200
+heaptrail -i heap.hprof --mapping mapping.txt --find-referrers id:<u64> --preview-bytes 200
+heaptrail -i heap.hprof --mapping mapping.txt -l --preview-bytes 200
 ```
 
 **What it tells you:** UTF-8 / UTF-16 BE / hex auto-detect of the
@@ -299,8 +372,9 @@ magic bytes all read at a glance.
 **Wall time / memory:** opt-in parser pass retains at most N bytes
 per primitive array. Memory bound: N × array-count. ~260 MiB peak on
 a 200 MiB Android dump with N=200; negligible on typical JVM dumps.
-Default 0 (off) — every existing CLI invocation produces byte-identical
-output unless `--preview-bytes` is set.
+Default 0 (off) for the CLI, but agents should usually opt in with 200 bytes
+on first-pass Android leak triage because it prevents a second command when
+large `byte[]`/`char[]` rows dominate.
 
 ### 7. `--retained-size` — dominator-tree retained sizes (v1.0.0, feature E)
 
@@ -311,9 +385,9 @@ hot list of `(object_id, class, retained_bytes)` follows;
 `--find-referrers` adds a `class retained` column to holder rows.
 
 ```bash
-heaptrail -i heap.hprof --retained-size -t 20
-heaptrail -i heap.hprof --paths-from-id <u64> --retained-size
-heaptrail -i heap.hprof --find-referrers <class-or-id> --retained-size
+heaptrail -i heap.hprof --mapping mapping.txt --retained-size --preview-bytes 200 -t 20
+heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id <u64> --retained-size --preview-bytes 200
+heaptrail -i heap.hprof --mapping mapping.txt --find-referrers <class-or-id> --retained-size
 ```
 
 **What it tells you:** the bytes that would actually be reclaimed if
@@ -349,8 +423,8 @@ walks and the retained-size graph build. Compatible with
 `--leak-suspects`.
 
 ```bash
-heaptrail -i heap.hprof --paths-from-id <id> --exclude-soft-weak
-heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak
+heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id <id> --exclude-soft-weak --preview-bytes 200
+heaptrail -i heap.hprof --mapping mapping.txt --leak-suspects --exclude-soft-weak --preview-bytes 200
 ```
 
 *Engineering use case:* on Android, LeakCanary's
@@ -375,8 +449,8 @@ subtree), content preview (when `--preview-bytes` is set), full
 path-to-root via `--paths-from-id`'s walker.
 
 ```bash
-heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200
-heaptrail -i heap.hprof --leak-suspects=0.10  # tighter threshold
+heaptrail -i heap.hprof --mapping mapping.txt --leak-suspects --exclude-soft-weak --preview-bytes 200 --top 5
+heaptrail -i heap.hprof --mapping mapping.txt --leak-suspects=0.10 --exclude-soft-weak --preview-bytes 200
 ```
 
 *Engineering use case:* the canonical "what's wrong with this
@@ -401,7 +475,7 @@ id's class and folds their paths-to-root into a single tree with
 `[Nx]` branch counts.
 
 ```bash
-heaptrail -i heap.hprof --paths-from-id <any-instance-of-target> \
+heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id <any-instance-of-target> \
     --merge-paths --retained-size
 ```
 
@@ -428,7 +502,7 @@ Independent of the dominator pipeline. Walks every
 bytes, and emits a top-N report.
 
 ```bash
-heaptrail -i heap.hprof --bitmaps -t 20
+heaptrail -i heap.hprof --mapping mapping.txt --bitmaps -t 20
 ```
 
 *Engineering use case:* bitmaps dominate Android heaps but are
@@ -438,10 +512,12 @@ ARGB_8888 bitmap held by a `RecyclerView.ViewHolder`. Handles both
 pre-O (Java-heap pixel data via `mBuffer`) and O+ (native pixel
 data sized via `width × height × bpp`).
 
-**Wall time / memory:** single instance scan filtered by Bitmap
-class id. Negligible cost; ~400 KiB working memory for ~5K
-bitmaps. Returns "android.graphics.Bitmap not loaded" error on
-non-Android dumps.
+**Wall time / memory:** single instance scan filtered by Bitmap class id.
+Negligible cost; ~400 KiB working memory for ~5K bitmaps. Use when summary,
+UI context, or the user points at bitmap/image pressure. On dumps where
+`android.graphics.Bitmap` was never loaded, it exits quickly with an actionable
+message; on the Nexio playback dumps this made it lower value than Media3,
+leak-suspects, and diff-series probes.
 
 ### `--json` for any mode
 
@@ -453,61 +529,41 @@ CI gates.
 
 Given a fresh heap dump and a vague "memory looks bad" report:
 
-1. **`summary`** → identify the dominant class. Note any large
-   `largest_object_id` entries. Also note the `AllocationSites:` hint
-   line — if the dump *was* captured under allocation tracking, jump to
-   step 6 first; it short-circuits the rest.
-2. **`--find-referrers <dominant-class> --hops 2`** → find the
-   collection / field that retains it. Hop 2 usually pinpoints the actual
-   holder (e.g. `ArrayList.elementData` in 28k ArrayLists). For families
-   of related classes (`*$Itr`, `com.example.model.*`), use
-   `--target-glob` instead — one pass instead of one per class.
-3. **`--find-referrers <holder-class> --hops 1 --json`** → pivot to
-   identify which field of the holder owns the over-allocation. JSON
-   output makes this easy to script.
-4. **`--paths-from-id <largest-object-id>`** → for any single giant
-   allocation, walk to its GC root to confirm whether it's leaked or
-   bounded. The terminator includes thread name + top frame for
-   thread-owned roots; array hops show the matched element index.
-5. (Optional) **`--diff-from before --diff-to after`** between two
-   captures of the same process to confirm whether the class is actively
-   growing under load.
-6. (When alloc-tracking was on) **`--allocation-sites --top 20`** →
-   jump straight from "this class is huge" to "this is the exact line
-   that allocated it." Most direct shortcut available; skips the
-   source-grep step entirely. Use as a *replacement* for steps 2–4
-   when the data is present.
-7. (Optional) **`--preview-bytes 200`** → append to any of the above
-   surfaces inline content for `char[]` / `byte[]` arrays. Use when a
-   chain leads to a giant primitive array and the holder identity
-   alone doesn't say what it contains (the canonical "is this big
-   `char[]` a SharedPreferences XML, a cached JSON blob, a log buffer,
-   or a decoded image?" disambiguation).
-8. (Optional) **`--retained-size`** → append to summary,
-   `--paths-from-id`, or `--find-referrers`. Re-sorts summary's class
-   table by dominator-tree retained bytes and adds a "Largest retained
-   instances" hot list; annotates path hops with `(retained=<size>)`;
-   adds a `class retained` column to find-referrers holder rows. Use
-   when a class with high instance count has low shallow size — wrapper
-   objects can anchor deep subgraphs whose retained cost is orders of
-   magnitude larger. The "is this 35K-instance retention 35 MB or
-   350 MB?" prioritization question.
-9. (v1.1.0, **recommended for Android first-pass**)
-   **`--leak-suspects --exclude-soft-weak --preview-bytes 200`** →
-   the "what's wrong with this dump?" entry point. Auto-ranks
-   dominators by retained share, picks the accumulating class per
-   suspect, walks the path to GC root, and emits a content snippet.
-   `--exclude-soft-weak` strips LeakCanary watchers and framework
-   `WeakReference` chains so the *strong* holder surfaces.
-10. (Optional) **`--merge-paths`** → modifier on `--paths-from-id`.
-    When N leaked instances of the same class share a holder chain,
-    folds the N paths into one tree with `[N×]` branch counts.
-    "47 MainActivity instances all share an EventBus holder" — one
-    command instead of 47.
-11. (Android-only) **`--bitmaps`** → top-N
-    `android.graphics.Bitmap` instances by pixel-byte size. Surfaces
-    bitmap leaks invisible to the class-name view (a 12 MiB `byte[]`
-    becomes "4096×4096 ARGB_8888 bitmap").
+0. **Resolve mapping first.** Use explicit `--mapping` if known; otherwise
+   try `--auto-mapping`. If neither is available, say the report may contain
+   obfuscated names and treat conclusions as provisional.
+1. **Android vague leak / OOM:** start with
+   `--leak-suspects --exclude-soft-weak --preview-bytes 200 --top 5`.
+   This answers "what dominates retained heap and what holds it?" in one
+   command. Then use `--paths-from-id <suspect-id> --retained-size` only when
+   a suspect path needs deeper confirmation.
+2. **Need composition / IDs:** run mapped
+   `summary --preview-bytes 200 -t 20`. Use this to collect dominant classes,
+   large primitive-array object ids, and the `AllocationSites:` presence hint.
+   Do not run a no-preview summary first; it usually forces a second command.
+3. **3+ ordered captures:** run mapped `--diff-series ... --diff-by bytes`.
+   Use monotonic growth candidates as the shortlist. If there are exactly two
+   captures, use `--diff-from/--diff-to --diff-by bytes`.
+4. **Playback / Media3 / cache ownership:** run mapped
+   `--target-glob 'androidx.media3.**' --hops 2 --group-holders`. For another
+   subsystem, replace the glob with that package family. Grouped rows are the
+   report agents should summarize first.
+5. **Dominant class holder question:** run mapped
+   `--find-referrers <class> --hops 2 --group-holders` for class families or
+   collection-heavy output. Hop 2 is the default because hop 1 often only says
+   `Object[]`.
+6. **Single giant primitive array:** run mapped
+   `--find-referrers id:<id> --hops 1 --preview-bytes 200`, then
+   `--paths-from-id <id> --preview-bytes 200 --retained-size` if the holder
+   path matters.
+7. **AllocationSites present:** run mapped `--allocation-sites --top 20` as a
+   replacement for holder/path guessing; it points at allocation stack traces.
+   If summary says `AllocationSites: not present`, skip it.
+8. **Many leaked instances of one class:** use
+   `--paths-from-id <any-instance> --merge-paths --retained-size` to fold shared
+   paths into one tree.
+9. **Bitmap/image pressure:** use `--bitmaps` only when the dump loaded
+   `android.graphics.Bitmap` or the user/context points at image memory.
 
 ## Capturing an Android heap dump
 
@@ -527,7 +583,14 @@ adb shell am dumpheap <pid> /data/local/tmp/before.hprof
 adb shell am dumpheap <pid> /data/local/tmp/after.hprof
 adb pull /data/local/tmp/before.hprof
 adb pull /data/local/tmp/after.hprof
-heaptrail --diff-from before.hprof --diff-to after.hprof
+heaptrail --diff-from before.hprof --diff-to after.hprof --mapping mapping.txt --diff-by bytes
+```
+
+For ordered playback/state captures, prefer a series:
+
+```bash
+heaptrail --diff-series launch.hprof home.hprof play.hprof stop.hprof soak.hprof \
+  --mapping mapping.txt --diff-by bytes --json --json-out playback-series.json
 ```
 
 For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
@@ -536,23 +599,20 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 
 | Goal | Command |
 |------|---------|
-| Top-N classes | `heaptrail -i heap.hprof -t 20` |
-| Direct holders of a class | `heaptrail -i heap.hprof --find-referrers <class> --hops 1` |
-| Holders through Object[] | `heaptrail -i heap.hprof --find-referrers <class> --hops 2` |
-| Holders of one specific object | `heaptrail -i heap.hprof --find-referrers id:<u64>` |
-| Chain to a GC root | `heaptrail -i heap.hprof --paths-from-id <u64>` |
-| Compare two snapshots | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
-| Glob targeting (family of classes) | `heaptrail -i heap.hprof --target-glob 'com.foo.**'` |
-| Allocation sites (when alloc-tracked) | `heaptrail -i heap.hprof --allocation-sites --top 20` |
-| Inline content preview for `char[]`/`byte[]` | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
-| Retained-size triage (wrapper-vs-subgraph) | append `--retained-size` to summary, paths, or find-referrers |
-| Filter weak/soft/phantom holders (Android default) | append `--exclude-soft-weak` to any retained-size or path-walk mode |
-| Automated leak-suspect identification | `heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200` |
-| Deobfuscate Android release heap | append `--mapping mapping.txt` or `--auto-mapping --package <app>` |
-| Fold N paths-to-root into one tree | append `--merge-paths` to `--paths-from-id <any-instance>` |
-| Bitmap pixel-byte accounting (Android) | `heaptrail -i heap.hprof --bitmaps -t 20` |
+| Top-N classes and large array content | `heaptrail -i heap.hprof --mapping mapping.txt --preview-bytes 200 -t 20` |
+| Best Android vague-leak first pass | `heaptrail -i heap.hprof --mapping mapping.txt --leak-suspects --exclude-soft-weak --preview-bytes 200 --top 5` |
+| Holders through Object[] | `heaptrail -i heap.hprof --mapping mapping.txt --find-referrers <class> --hops 2 --group-holders` |
+| Holders of one specific object | `heaptrail -i heap.hprof --mapping mapping.txt --find-referrers id:<u64> --hops 1 --preview-bytes 200` |
+| Chain to a GC root with impact | `heaptrail -i heap.hprof --mapping mapping.txt --paths-from-id <u64> --retained-size --preview-bytes 200` |
+| Compare two snapshots | `heaptrail --diff-from a.hprof --diff-to b.hprof --mapping mapping.txt --diff-by bytes` |
+| Compare playback/state series | `heaptrail --diff-series a.hprof b.hprof c.hprof --mapping mapping.txt --diff-by bytes` |
+| Glob targeting / subsystem family | `heaptrail -i heap.hprof --mapping mapping.txt --target-glob 'com.foo.**' --hops 2 --group-holders` |
+| Media3 playback ownership | `heaptrail -i heap.hprof --mapping mapping.txt --target-glob 'androidx.media3.**' --hops 2 --group-holders` |
+| Allocation sites (only when present) | `heaptrail -i heap.hprof --mapping mapping.txt --allocation-sites --top 20` |
+| Fold N paths-to-root into one tree | append `--merge-paths` to mapped `--paths-from-id <any-instance> --retained-size` |
+| Bitmap pixel-byte accounting (Android) | `heaptrail -i heap.hprof --mapping mapping.txt --bitmaps -t 20` |
 | JSON sidecar | append `--json` to any of the above |
-| List all UTF-8 strings | `heaptrail -i heap.hprof -l` |
+| List all UTF-8 strings/large arrays | `heaptrail -i heap.hprof --mapping mapping.txt -l --preview-bytes 200` |
 
 ## Common mistakes
 
@@ -561,6 +621,10 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Reaching for Eclipse MAT first | MAT loads the dump into RAM and is slow on multi-hundred-MB dumps. Use `heaptrail` for triage, MAT only if you need a full dominator tree. |
 | Running `hprof-conv` | Modern Android hprof from `am dumpheap` is already the standard format. `hprof-conv` is only for legacy pre-ART Dalvik dumps. |
 | Stopping at `--hops 1` | Hop 1 reports `Object[][]` for any class held in a collection — uninformative. **Always run with `--hops 2`** for class targets. |
+| Running raw commands on release dumps | Obfuscated names hide the diagnosis. Always include `--mapping`/`--auto-mapping`; if output has names like `x7.k` or `p1.j`, rerun mapped. |
+| Running summary without preview | It identifies `byte[]`/`char[]` but not content. Use `--preview-bytes 200` by default on first-pass triage. |
+| Running pairwise diffs for playback captures | For 3+ ordered snapshots, `--diff-series` gives the whole timeline and monotonic growth candidates in one run. |
+| Scanning huge Media3 referrer output manually | Use `--target-glob 'androidx.media3.**' --group-holders` so owner families and holder fields surface first. |
 | Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.3.0+ for playback diff-series and 1.2.0+ for Android release-build deobfuscation. |
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
@@ -579,6 +643,10 @@ Numbers from a 235 MB Android dump (32-bit ids):
 | `--find-referrers id:N` | 346 ms |
 | `--paths-from-id` (depth 9) | 2.93 s |
 | `--diff-from = --diff-to` | 320 ms (page-cache warm) |
+| mapped summary + `--preview-bytes 200` on Nexio 113 MiB dump | 0.42 s |
+| mapped `--diff-series` before/before/after on Nexio dumps | 0.56 s |
+| mapped Media3 `--target-glob ... --group-holders` on Nexio dump | 0.52 s |
+| mapped `--leak-suspects --exclude-soft-weak --preview-bytes 200` on Nexio dump | 4.1 s |
 
 Wall cost scales linearly with file size and number of streaming passes.
 `--paths-from-id` is the only mode where wall time grows with depth
@@ -586,14 +654,14 @@ Wall cost scales linearly with file size and number of streaming passes.
 
 ## What heaptrail doesn't do (yet)
 
-- **Allocation-site stack traces** from "Record memory allocations"
-  captures are parsed but not surfaced. Fall back to Android Studio's
-  profiler GUI for that view.
-- **Full retained-size / dominator tree** (Eclipse MAT's specialty).
-  `--find-referrers --hops N` covers most of the diagnostic value
-  without the cost.
-- **Class-name regex / wildcard** in `--find-referrers`. Targets are
-  exact FQ-name strings or numeric ids.
+- **Interactive graph browsing / OQL.** Use Eclipse MAT when the question needs
+  ad-hoc graph pivots rather than repeatable CLI probes.
+- **Native heap attribution.** `--native-context` records `dumpsys meminfo`
+  totals for correlation, but Java HProf cannot explain native allocations by
+  stack. Use Perfetto/Android Studio/native profilers for that.
+- **Allocation stacks unless captured.** `--allocation-sites` needs a dump
+  captured under allocation tracking; ordinary `am dumpheap` files usually say
+  `AllocationSites: not present`.
 
 ## Further reading
 
