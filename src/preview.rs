@@ -237,7 +237,9 @@ fn looks_like_json(s: &str) -> bool {
     }
     match bytes[0] {
         b'{' => bytes[1..].iter().any(|b| matches!(b, b'"' | b'}')),
-        b'[' => bytes[1..].iter().any(|b| matches!(b, b'{' | b'[' | b'"' | b']')),
+        b'[' => bytes[1..]
+            .iter()
+            .any(|b| matches!(b, b'{' | b'[' | b'"' | b']')),
         _ => false,
     }
 }
