@@ -61,7 +61,6 @@ impl JsonResult {
             top_largest_instances,
         }
     }
-
 }
 
 pub struct RenderedResult {

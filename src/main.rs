@@ -77,7 +77,12 @@ fn main_result() -> Result<(), HprofSlurpError> {
 
 fn json_output_path(explicit_path: Option<&str>, default_prefix: &str) -> String {
     explicit_path.map_or_else(
-        || format!("{default_prefix}-{}.json", chrono::Utc::now().timestamp_millis()),
+        || {
+            format!(
+                "{default_prefix}-{}.json",
+                chrono::Utc::now().timestamp_millis()
+            )
+        },
         str::to_string,
     )
 }
