@@ -123,6 +123,19 @@ Options:
   -V, --version                Print version
 ```
 
+### `android-capture` — capture and validate Android dumps
+
+```bash
+heaptrail android-capture --serial 192.168.50.98:5555 --package com.example.app --out artifacts/run
+heaptrail android-capture --package com.example.app --out artifacts/run --foreground --allocation-sites
+```
+
+Runs the ADB capture path, pulls the `.hprof`, validates that the local file is
+nonzero, runs a cheap summary pass to record AllocationSites availability, and
+writes a transcript with PID, foreground evidence, commands, dump size, and
+artifact paths. The helper leaves device files in `/data/local/tmp` so failed
+or partial captures remain inspectable.
+
 ### Example table
 
 ```bash

@@ -33,6 +33,37 @@ adb pull /data/local/tmp/heap.hprof
 uses 32-bit identifiers (Android default) — `heaptrail` handles both 32-bit
 and 64-bit identifier formats automatically.
 
+### Option A2 — heaptrail `android-capture` helper
+
+```bash
+heaptrail android-capture \
+  --serial 192.168.50.98:5555 \
+  --package com.example.myapp \
+  --out artifacts/heap-captures \
+  --foreground
+```
+
+The helper wraps the manual ADB flow when a repeatable capture transcript is
+more useful than hand-entered commands. It resolves the package PID with
+`pidof`, optionally brings the app foreground with `monkey -p <package> 1`,
+records focused-window evidence from `dumpsys window`, runs `am dumpheap`,
+pulls the resulting `.hprof`, rejects 0-byte local pulls, and writes a
+transcript beside the dump.
+
+Use `--allocation-sites` to attempt allocation tracking setup before the dump:
+
+```bash
+heaptrail android-capture \
+  --package com.example.myapp \
+  --out artifacts/heap-captures \
+  --allocation-sites
+```
+
+After pull, heaptrail runs a cheap summary pass and records whether
+`AllocationSites` data is present in the transcript. The helper does not delete
+the device-side `/data/local/tmp/*.hprof` by default, so failed or partial
+captures remain available for manual inspection.
+
 ### Option B — Android Studio Profiler
 
 1. Run → Profile 'app'
@@ -41,8 +72,7 @@ and 64-bit identifier formats automatically.
 
 If you tick **Record memory allocations** before capturing, the resulting hprof
 also contains `AllocationSites` records (per-call-site bytes/instances). These
-aren't surfaced in summary output today, but they're parsed correctly so the
-file is still consumable.
+can be summarized with `heaptrail -i heap.hprof --allocation-sites`.
 
 ### Option C — Perfetto
 
