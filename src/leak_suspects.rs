@@ -136,6 +136,7 @@ pub fn run(mode: &Mode) -> Result<SuspectsReport, HprofSlurpError> {
             retained_size: false,
             exclude_soft_weak,
             merge_paths: false,
+            mapping: crate::args::MappingOptions::default(),
         };
         let path_to_root = crate::paths::run(&path_mode)?;
 

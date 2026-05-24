@@ -170,6 +170,7 @@ mod tests {
             top: 30,
             json: false,
             json_out: None,
+            mapping: crate::args::MappingOptions::default(),
         };
         let entries = run(&mode).unwrap();
         assert!(

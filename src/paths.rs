@@ -515,6 +515,7 @@ mod tests {
             retained_size: false,
             exclude_soft_weak: false,
             merge_paths: false,
+            mapping: crate::args::MappingOptions::default(),
         }
     }
 

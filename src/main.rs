@@ -55,6 +55,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             list_arrays_min_bytes,
             retained_size,
             exclude_soft_weak,
+            mapping: _,
         } => run_summary(
             &input_file,
             top,
@@ -80,6 +81,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             out_dir,
             allocation_sites,
             foreground,
+            ..
         } => {
             let report = android_capture::run(android_capture::CaptureOptions {
                 serial,

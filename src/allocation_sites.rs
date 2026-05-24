@@ -145,6 +145,7 @@ mod tests {
             debug: false,
             json: false,
             json_out: None,
+            mapping: crate::args::MappingOptions::default(),
         };
         match run(&mode) {
             Err(HprofSlurpError::NoAllocationSites) => {}

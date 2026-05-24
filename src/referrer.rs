@@ -1016,6 +1016,7 @@ mod tests {
             preview_bytes: 0,
             retained_size: false,
             exclude_soft_weak: false,
+            mapping: crate::args::MappingOptions::default(),
         }
     }
 

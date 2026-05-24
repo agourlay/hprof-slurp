@@ -41,6 +41,26 @@ pub struct Cli {
     #[arg(long = "json-out", value_name = "PATH", requires = "json")]
     pub json_out: Option<String>,
 
+    /// R8/ProGuard mapping file used to deobfuscate class and holder field names.
+    #[arg(long = "mapping", value_name = "PATH", conflicts_with = "auto_mapping")]
+    pub mapping: Option<String>,
+
+    /// Discover the mapping file from a local Android Gradle project and an installed app version.
+    #[arg(long = "auto-mapping", value_name = "MODE", num_args = 0..=1, default_missing_value = "strict")]
+    pub auto_mapping: Option<AutoMappingMode>,
+
+    /// Android project root for --auto-mapping.
+    #[arg(long = "project-root", value_name = "DIR", requires = "auto_mapping")]
+    pub project_root: Option<String>,
+
+    /// Android package/application id for --auto-mapping.
+    #[arg(long = "package", value_name = "PACKAGE", requires = "auto_mapping")]
+    pub package: Option<String>,
+
+    /// adb serial/device id for --auto-mapping.
+    #[arg(long = "serial", value_name = "SERIAL")]
+    pub serial: Option<String>,
+
     /// Show first N bytes/chars of primitive arrays in summary, paths,
     /// find-referrers id:N, and (with -l) the standalone-array list.
     /// Default 0 (off); recommended 200. UTF-8 / UTF-16 BE auto-detect
@@ -179,12 +199,35 @@ pub struct AndroidCaptureArgs {
     /// Bring the package to foreground with `monkey -p <package> 1`.
     #[arg(long = "foreground", default_value_t = false)]
     pub foreground: bool,
+
+    /// Discover the matching R8 mapping from a local Android Gradle project.
+    #[arg(long = "auto-mapping", value_name = "MODE", num_args = 0..=1, default_missing_value = "strict")]
+    pub auto_mapping: Option<AutoMappingMode>,
+
+    /// Android project root for capture transcript mapping metadata.
+    #[arg(long = "project-root", value_name = "DIR", requires = "auto_mapping")]
+    pub project_root: Option<String>,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiffSort {
     Count,
     Bytes,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutoMappingMode {
+    Strict,
+    Optional,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MappingOptions {
+    pub mapping: Option<String>,
+    pub auto_mapping: Option<AutoMappingMode>,
+    pub project_root: Option<String>,
+    pub package: Option<String>,
+    pub serial: Option<String>,
 }
 
 /// Target source for `Mode::FindReferrers`. Either an exact FQ-name (or
@@ -208,6 +251,7 @@ pub enum Mode {
         list_arrays_min_bytes: u32,
         retained_size: bool,
         exclude_soft_weak: bool,
+        mapping: MappingOptions,
     },
     FindReferrers {
         input_file: String,
@@ -221,6 +265,7 @@ pub enum Mode {
         preview_bytes: u32,
         retained_size: bool,
         exclude_soft_weak: bool,
+        mapping: MappingOptions,
     },
     Paths {
         input_file: String,
@@ -233,6 +278,7 @@ pub enum Mode {
         retained_size: bool,
         exclude_soft_weak: bool,
         merge_paths: bool,
+        mapping: MappingOptions,
     },
     Diff {
         from: String,
@@ -241,6 +287,7 @@ pub enum Mode {
         top: usize,
         json: bool,
         json_out: Option<String>,
+        mapping: MappingOptions,
     },
     AllocationSites {
         input_file: String,
@@ -248,6 +295,7 @@ pub enum Mode {
         debug: bool,
         json: bool,
         json_out: Option<String>,
+        mapping: MappingOptions,
     },
     LeakSuspects {
         input_file: String,
@@ -258,6 +306,7 @@ pub enum Mode {
         debug: bool,
         json: bool,
         json_out: Option<String>,
+        mapping: MappingOptions,
     },
     Bitmaps {
         input_file: String,
@@ -265,6 +314,7 @@ pub enum Mode {
         debug: bool,
         json: bool,
         json_out: Option<String>,
+        mapping: MappingOptions,
     },
     AndroidCapture {
         serial: Option<String>,
@@ -272,6 +322,8 @@ pub enum Mode {
         out_dir: String,
         allocation_sites: bool,
         foreground: bool,
+        auto_mapping: Option<AutoMappingMode>,
+        project_root: Option<String>,
     },
 }
 
@@ -292,9 +344,13 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
                 out_dir: args.out,
                 allocation_sites: args.allocation_sites,
                 foreground: args.foreground,
+                auto_mapping: args.auto_mapping,
+                project_root: args.project_root,
             }),
         };
     }
+
+    let mapping = mapping_options(&cli);
 
     let referrers_set = cli.find_referrers.is_some() || cli.target_glob.is_some();
     let paths_set = cli.paths_from_id.is_some();
@@ -330,6 +386,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             top: cli.top,
             json: cli.json,
             json_out: cli.json_out.clone(),
+            mapping: mapping.clone(),
         });
     }
 
@@ -343,6 +400,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             debug: cli.debug,
             json: cli.json,
             json_out: cli.json_out.clone(),
+            mapping: mapping.clone(),
         });
     }
 
@@ -356,6 +414,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             debug: cli.debug,
             json: cli.json,
             json_out: cli.json_out.clone(),
+            mapping: mapping.clone(),
         });
     }
 
@@ -366,6 +425,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             debug: cli.debug,
             json: cli.json,
             json_out: cli.json_out.clone(),
+            mapping: mapping.clone(),
         });
     }
 
@@ -388,6 +448,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
             exclude_soft_weak: cli.exclude_soft_weak,
+            mapping: mapping.clone(),
         });
     }
     if let Some(object_id) = cli.paths_from_id {
@@ -402,6 +463,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
             exclude_soft_weak: cli.exclude_soft_weak,
+            mapping: mapping.clone(),
         });
     }
     Ok(Mode::Summary {
@@ -415,7 +477,18 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         list_arrays_min_bytes: cli.list_arrays_min_bytes,
         retained_size: cli.retained_size,
         exclude_soft_weak: cli.exclude_soft_weak,
+        mapping,
     })
+}
+
+fn mapping_options(cli: &Cli) -> MappingOptions {
+    MappingOptions {
+        mapping: cli.mapping.clone(),
+        auto_mapping: cli.auto_mapping,
+        project_root: cli.project_root.clone(),
+        package: cli.package.clone(),
+        serial: cli.serial.clone(),
+    }
 }
 
 fn check_file(p: &str) -> Result<(), HprofSlurpError> {
@@ -519,6 +592,83 @@ mod args_tests {
 
         assert!(cli.json);
         assert_eq!(cli.json_out.as_deref(), Some("reports/summary.json"));
+    }
+
+    #[test]
+    fn parses_manual_mapping_for_summary() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--mapping",
+            "app/build/outputs/mapping/universalRelease/mapping.txt",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            cli.mapping.as_deref(),
+            Some("app/build/outputs/mapping/universalRelease/mapping.txt")
+        );
+        assert!(cli.auto_mapping.is_none());
+    }
+
+    #[test]
+    fn parses_auto_mapping_options_for_analysis() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--auto-mapping",
+            "--project-root",
+            "/repo",
+            "--package",
+            "com.nexio.tv",
+            "--serial",
+            "device-1",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.auto_mapping, Some(AutoMappingMode::Strict));
+        assert_eq!(cli.project_root.as_deref(), Some("/repo"));
+        assert_eq!(cli.package.as_deref(), Some("com.nexio.tv"));
+        assert_eq!(cli.serial.as_deref(), Some("device-1"));
+    }
+
+    #[test]
+    fn parses_optional_auto_mapping() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--auto-mapping",
+            "optional",
+            "--project-root",
+            "/repo",
+            "--package",
+            "com.nexio.tv",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.auto_mapping, Some(AutoMappingMode::Optional));
+    }
+
+    #[test]
+    fn rejects_manual_and_auto_mapping_together() {
+        let err = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--mapping",
+            "mapping.txt",
+            "--auto-mapping",
+            "--project-root",
+            "/repo",
+            "--package",
+            "com.nexio.tv",
+        ])
+        .unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
@@ -716,6 +866,7 @@ mod args_tests {
                 out_dir,
                 allocation_sites,
                 foreground,
+                ..
             } => {
                 assert_eq!(serial, None);
                 assert_eq!(package, "com.example.app");
