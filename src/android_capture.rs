@@ -502,4 +502,22 @@ mod tests {
             "{calls}"
         );
     }
+
+    #[test]
+    fn extract_focus_lines_keeps_only_relevant_window_lines() {
+        let input = "\
+irrelevant
+mCurrentFocus=Window{ com.example/.MainActivity }
+mFocusedApp=ActivityRecord{ com.example/.MainActivity }
+topResumedActivity=ActivityRecord{ com.example/.MainActivity }
+other";
+
+        let actual = extract_focus_lines(input);
+
+        assert!(actual.contains("mCurrentFocus"));
+        assert!(actual.contains("mFocusedApp"));
+        assert!(actual.contains("topResumedActivity"));
+        assert!(!actual.contains("irrelevant"));
+        assert!(!actual.contains("other"));
+    }
 }

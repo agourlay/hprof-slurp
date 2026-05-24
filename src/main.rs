@@ -88,6 +88,11 @@ fn main_result() -> Result<(), HprofSlurpError> {
                 foreground,
             })?;
             println!("Captured heap dump: {}", report.local_hprof.display());
+            println!("Dump size: {} bytes", report.dump_size_bytes);
+            println!(
+                "AllocationSites present: {}",
+                report.allocation_sites_present
+            );
             println!("Transcript: {}", report.transcript.display());
             Ok(())
         }
