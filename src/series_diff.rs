@@ -40,6 +40,8 @@ pub struct DiffSeriesReport {
     pub steps: Vec<SeriesStep>,
     pub classes: Vec<SeriesClassRow>,
     pub monotonic_growth: Vec<SeriesClassRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_context: Option<crate::native_context::NativeContext>,
 }
 
 pub fn compute_from_rollups(
@@ -123,6 +125,7 @@ pub fn compute_from_rollups(
         steps,
         classes,
         monotonic_growth,
+        native_context: None,
     }
 }
 

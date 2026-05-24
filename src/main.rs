@@ -10,6 +10,7 @@ mod leak_suspects;
 mod mapping;
 mod mapping_discovery;
 mod merge_paths;
+mod native_context;
 mod parser;
 mod paths;
 mod prefetch_reader;
@@ -337,7 +338,7 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
 }
 
 fn run_diff_series(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let (inputs, by, top, json, json_out, _native_context) = match &mode {
+    let (inputs, by, top, json, json_out, native_context_path) = match &mode {
         Mode::DiffSeries {
             inputs,
             by,
@@ -360,6 +361,10 @@ fn run_diff_series(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> 
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
     let mut report = with_hprof_context("diff series input", series_diff::run(&inputs, by))?;
+    if let Some(path) = native_context_path {
+        let text = std::fs::read_to_string(path)?;
+        report.native_context = Some(native_context::parse_meminfo(&text));
+    }
     if let Some(mapping) = resolved_mapping.as_ref() {
         series_diff::symbolicate_report(&mut report, &mapping.symbolicator);
     }
@@ -367,6 +372,9 @@ fn run_diff_series(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> 
         write_json_file(&report, json_out, "heaptrail-diff-series")?;
     }
     print!("{}", series_diff::render_text(&report, top, by));
+    if let Some(ctx) = &report.native_context {
+        print!("{}", native_context::render_text(ctx));
+    }
     println!("\nFile successfully processed in {:?}", started.elapsed());
     Ok(())
 }
