@@ -29,6 +29,14 @@ pub enum HprofSlurpError {
         status: i32,
         stderr: String,
     },
+    #[error("mapping file not found: {path}")]
+    MappingFileNotFound { path: String },
+    #[error("invalid mapping file {path} at line {line}: {message}")]
+    InvalidMapping {
+        path: String,
+        line: usize,
+        message: String,
+    },
     #[error("no AllocationSites records in this dump (capture with `am profile start <pid>`)")]
     NoAllocationSites,
     #[error("invalid pointer size - the value should be either `4` or `8`")]

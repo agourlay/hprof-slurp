@@ -1,0 +1,197 @@
+use std::path::{Path, PathBuf};
+
+use ahash::AHashMap;
+
+use crate::errors::HprofSlurpError;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MappingInfo {
+    pub path: PathBuf,
+    pub pg_map_id: Option<String>,
+    pub pg_map_hash: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Symbolicator {
+    pub info: MappingInfo,
+    class_by_obfuscated: AHashMap<String, String>,
+    fields_by_obfuscated_class: AHashMap<String, AHashMap<String, String>>,
+}
+
+impl Symbolicator {
+    pub fn from_file(path: &Path) -> Result<Self, HprofSlurpError> {
+        if !path.is_file() {
+            return Err(HprofSlurpError::MappingFileNotFound {
+                path: path.display().to_string(),
+            });
+        }
+        let text = std::fs::read_to_string(path)?;
+        Self::parse_text(path, &text)
+    }
+
+    pub fn parse_text(path: &Path, text: &str) -> Result<Self, HprofSlurpError> {
+        let mut out = Self {
+            info: MappingInfo {
+                path: path.to_path_buf(),
+                pg_map_id: None,
+                pg_map_hash: None,
+            },
+            class_by_obfuscated: AHashMap::new(),
+            fields_by_obfuscated_class: AHashMap::new(),
+        };
+        let mut current_obfuscated_class: Option<String> = None;
+
+        for (idx, raw_line) in text.lines().enumerate() {
+            let line_no = idx + 1;
+            let line = raw_line.trim_end();
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(value) = trimmed.strip_prefix("# pg_map_id:") {
+                out.info.pg_map_id = Some(value.trim().to_string());
+                continue;
+            }
+            if let Some(value) = trimmed.strip_prefix("# pg_map_hash:") {
+                out.info.pg_map_hash = Some(value.trim().to_string());
+                continue;
+            }
+            if trimmed.starts_with('#') {
+                continue;
+            }
+
+            if !raw_line.starts_with(' ') && !raw_line.starts_with('\t') {
+                let Some((original, obfuscated_with_colon)) = trimmed.split_once(" -> ") else {
+                    return Err(invalid(path, line_no, "expected class mapping with ` -> `"));
+                };
+                let Some(obfuscated) = obfuscated_with_colon.strip_suffix(':') else {
+                    return Err(invalid(path, line_no, "class mapping must end with `:`"));
+                };
+                out.class_by_obfuscated
+                    .insert(obfuscated.to_string(), original.to_string());
+                current_obfuscated_class = Some(obfuscated.to_string());
+                continue;
+            }
+
+            let Some(class_name) = current_obfuscated_class.as_ref() else {
+                continue;
+            };
+            if trimmed.contains('(') {
+                continue;
+            }
+            let Some((left, obfuscated)) = trimmed.split_once(" -> ") else {
+                continue;
+            };
+            let Some(original_field) = left.split_whitespace().last() else {
+                continue;
+            };
+            out.fields_by_obfuscated_class
+                .entry(class_name.clone())
+                .or_default()
+                .insert(obfuscated.to_string(), original_field.to_string());
+        }
+
+        Ok(out)
+    }
+
+    pub fn class_name(&self, raw: &str) -> String {
+        let suffix = raw
+            .strip_suffix("[][]")
+            .map(|base| (base, "[][]"))
+            .or_else(|| raw.strip_suffix("[]").map(|base| (base, "[]")));
+        if let Some((base, suffix)) = suffix {
+            return self
+                .class_by_obfuscated
+                .get(base)
+                .map(|name| format!("{name}{suffix}"))
+                .unwrap_or_else(|| raw.to_string());
+        }
+        self.class_by_obfuscated
+            .get(raw)
+            .cloned()
+            .unwrap_or_else(|| raw.to_string())
+    }
+
+    pub fn field_name(&self, raw_holder_class: &str, raw_field: &str) -> String {
+        self.fields_by_obfuscated_class
+            .get(raw_holder_class)
+            .and_then(|fields| fields.get(raw_field))
+            .cloned()
+            .unwrap_or_else(|| raw_field.to_string())
+    }
+
+    pub fn maps_class(&self, raw: &str) -> bool {
+        self.class_name(raw) != raw
+    }
+}
+
+fn invalid(path: &Path, line: usize, message: &str) -> HprofSlurpError {
+    HprofSlurpError::InvalidMapping {
+        path: path.display().to_string(),
+        line,
+        message: message.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_class_field_and_r8_metadata() {
+        let text = r#"
+# compiler: R8
+# pg_map_id: abc123
+# pg_map_hash: SHA-256 deadbeef
+com.nexio.tv.domain.model.MetaPreview -> d1.q2:
+    java.lang.String title -> a
+    int count -> b
+    1:4:void render():12:15 -> c
+"#;
+
+        let parsed = Symbolicator::parse_text(Path::new("mapping.txt"), text).unwrap();
+
+        assert_eq!(parsed.info.pg_map_id.as_deref(), Some("abc123"));
+        assert_eq!(
+            parsed.info.pg_map_hash.as_deref(),
+            Some("SHA-256 deadbeef")
+        );
+        assert_eq!(
+            parsed.class_name("d1.q2"),
+            "com.nexio.tv.domain.model.MetaPreview"
+        );
+        assert_eq!(
+            parsed.class_name("d1.q2[]"),
+            "com.nexio.tv.domain.model.MetaPreview[]"
+        );
+        assert_eq!(
+            parsed.class_name("d1.q2[][]"),
+            "com.nexio.tv.domain.model.MetaPreview[][]"
+        );
+        assert_eq!(parsed.field_name("d1.q2", "a"), "title");
+        assert_eq!(parsed.field_name("d1.q2", "missing"), "missing");
+        assert_eq!(parsed.field_name("unknown.Class", "a"), "a");
+    }
+
+    #[test]
+    fn leaves_primitives_and_unknown_classes_unchanged() {
+        let parsed = Symbolicator::parse_text(
+            Path::new("mapping.txt"),
+            "com.example.Real -> a.b:\n    java.lang.String name -> c\n",
+        )
+        .unwrap();
+
+        assert_eq!(parsed.class_name("byte[]"), "byte[]");
+        assert_eq!(parsed.class_name("char[]"), "char[]");
+        assert_eq!(parsed.class_name("unknown.Name[]"), "unknown.Name[]");
+    }
+
+    #[test]
+    fn malformed_class_line_reports_line_number() {
+        let err = Symbolicator::parse_text(Path::new("mapping.txt"), "bad -> line\n").unwrap_err();
+        assert!(
+            err.to_string().contains("line 1"),
+            "unexpected error: {err}"
+        );
+    }
+}

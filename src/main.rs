@@ -6,6 +6,7 @@ mod diff;
 mod dominators;
 mod errors;
 mod leak_suspects;
+mod mapping;
 mod merge_paths;
 mod parser;
 mod paths;
