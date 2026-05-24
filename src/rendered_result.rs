@@ -1,9 +1,8 @@
-use std::{fmt::Write, fs::File, io::BufWriter};
+use std::fmt::Write;
 
-use chrono::Utc;
 use serde::Serialize;
 
-use crate::{errors::HprofSlurpError, utils::pretty_bytes_size};
+use crate::utils::pretty_bytes_size;
 
 #[derive(Serialize, Clone)]
 pub struct ClassAllocationStats {
@@ -63,15 +62,6 @@ impl JsonResult {
         }
     }
 
-    pub fn save_as_file(&self) -> Result<(), HprofSlurpError> {
-        let file_path = format!("heaptrail-{}.json", Utc::now().timestamp_millis());
-        let file = File::create(&file_path)?;
-        let writer = BufWriter::new(file);
-        // Serialize the struct directly to the file via the writer
-        serde_json::to_writer(writer, &self)?;
-        println!("Output JSON result file {file_path}");
-        Ok(())
-    }
 }
 
 pub struct RenderedResult {

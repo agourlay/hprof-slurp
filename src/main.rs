@@ -23,6 +23,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use rendered_result::JsonResult;
+use serde::Serialize;
 
 use crate::args::{Cli, Mode, resolve};
 use crate::errors::HprofSlurpError;
@@ -47,7 +48,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             debug,
             list_strings,
             json,
-            json_out: _,
+            json_out,
             preview_bytes,
             list_arrays_min_bytes,
             retained_size,
@@ -58,6 +59,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             debug,
             list_strings,
             json,
+            json_out,
             preview_bytes,
             list_arrays_min_bytes,
             retained_size,
@@ -73,20 +75,33 @@ fn main_result() -> Result<(), HprofSlurpError> {
     }
 }
 
+fn json_output_path(explicit_path: Option<&str>, default_prefix: &str) -> String {
+    explicit_path.map_or_else(
+        || format!("{default_prefix}-{}.json", chrono::Utc::now().timestamp_millis()),
+        str::to_string,
+    )
+}
+
+fn write_json_file<T: Serialize>(
+    value: &T,
+    explicit_path: Option<&str>,
+    default_prefix: &str,
+) -> Result<(), HprofSlurpError> {
+    let path = json_output_path(explicit_path, default_prefix);
+    let file = std::fs::File::create(&path)?;
+    serde_json::to_writer(std::io::BufWriter::new(file), value)?;
+    println!("Output JSON result file {path}");
+    Ok(())
+}
+
 fn run_bitmaps(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let json = match &mode {
-        Mode::Bitmaps { json, .. } => *json,
+    let (json, json_out) = match &mode {
+        Mode::Bitmaps { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
     let result = bitmaps::run(&mode)?;
     if json {
-        let path = format!(
-            "heaptrail-bitmaps-{}.json",
-            chrono::Utc::now().timestamp_millis()
-        );
-        let f = std::fs::File::create(&path)?;
-        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
-        println!("Output JSON result file {path}");
+        write_json_file(&result, json_out, "heaptrail-bitmaps")?;
     }
     print!("{}", bitmaps::render_text(&result));
     println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -94,19 +109,13 @@ fn run_bitmaps(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
 }
 
 fn run_leak_suspects(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let json = match &mode {
-        Mode::LeakSuspects { json, .. } => *json,
+    let (json, json_out) = match &mode {
+        Mode::LeakSuspects { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
     let result = leak_suspects::run(&mode)?;
     if json {
-        let path = format!(
-            "heaptrail-leak-suspects-{}.json",
-            chrono::Utc::now().timestamp_millis()
-        );
-        let f = std::fs::File::create(&path)?;
-        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
-        println!("Output JSON result file {path}");
+        write_json_file(&result, json_out, "heaptrail-leak-suspects")?;
     }
     print!("{}", leak_suspects::render_text(&result));
     println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -114,19 +123,13 @@ fn run_leak_suspects(mode: Mode, started: Instant) -> Result<(), HprofSlurpError
 }
 
 fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let json = match &mode {
-        Mode::AllocationSites { json, .. } => *json,
+    let (json, json_out) = match &mode {
+        Mode::AllocationSites { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
     let result = allocation_sites::run(&mode)?;
     if json {
-        let path = format!(
-            "heaptrail-allocation-sites-{}.json",
-            chrono::Utc::now().timestamp_millis()
-        );
-        let f = std::fs::File::create(&path)?;
-        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
-        println!("Output JSON result file {path}");
+        write_json_file(&result, json_out, "heaptrail-allocation-sites")?;
     }
     print!("{}", allocation_sites::render_text(&result));
     println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -134,19 +137,13 @@ fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpEr
 }
 
 fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let json = match &mode {
-        Mode::FindReferrers { json, .. } => *json,
+    let (json, json_out) = match &mode {
+        Mode::FindReferrers { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
     let result = referrer::run(&mode)?;
     if json {
-        let path = format!(
-            "heaptrail-referrers-{}.json",
-            chrono::Utc::now().timestamp_millis()
-        );
-        let f = std::fs::File::create(&path)?;
-        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
-        println!("Output JSON result file {path}");
+        write_json_file(&result, json_out, "heaptrail-referrers")?;
     }
     print!("{}", referrer::render_text(&result));
     println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -154,19 +151,13 @@ fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpErro
 }
 
 fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let json = match &mode {
-        Mode::Diff { json, .. } => *json,
+    let (json, json_out) = match &mode {
+        Mode::Diff { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
     let entries = diff::run(&mode)?;
     if json {
-        let path = format!(
-            "heaptrail-diff-{}.json",
-            chrono::Utc::now().timestamp_millis()
-        );
-        let f = std::fs::File::create(&path)?;
-        serde_json::to_writer(std::io::BufWriter::new(f), &entries)?;
-        println!("Output JSON result file {path}");
+        write_json_file(&entries, json_out, "heaptrail-diff")?;
     }
     print!("{}", diff::render_text(&entries));
     println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -174,22 +165,19 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
 }
 
 fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let (json, merge) = match &mode {
+    let (json, json_out, merge) = match &mode {
         Mode::Paths {
-            json, merge_paths, ..
-        } => (*json, *merge_paths),
+            json,
+            json_out,
+            merge_paths,
+            ..
+        } => (*json, json_out.as_deref(), *merge_paths),
         _ => unreachable!(),
     };
     if merge {
         let result = merge_paths::run(&mode)?;
         if json {
-            let path = format!(
-                "heaptrail-merge-paths-{}.json",
-                chrono::Utc::now().timestamp_millis()
-            );
-            let f = std::fs::File::create(&path)?;
-            serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
-            println!("Output JSON result file {path}");
+            write_json_file(&result, json_out, "heaptrail-merge-paths")?;
         }
         print!("{}", merge_paths::render_text(&result));
         println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -197,13 +185,7 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     }
     let result = paths::run(&mode)?;
     if json {
-        let path = format!(
-            "heaptrail-paths-{}.json",
-            chrono::Utc::now().timestamp_millis()
-        );
-        let f = std::fs::File::create(&path)?;
-        serde_json::to_writer(std::io::BufWriter::new(f), &result)?;
-        println!("Output JSON result file {path}");
+        write_json_file(&result, json_out, "heaptrail-paths")?;
     }
     print!("{}", paths::render_text(&result));
     println!("\nFile successfully processed in {:?}", started.elapsed());
@@ -217,6 +199,7 @@ fn run_summary(
     debug: bool,
     list_strings: bool,
     json: bool,
+    json_out: Option<String>,
     preview_bytes: u32,
     list_arrays_min_bytes: u32,
     retained_size: bool,
@@ -234,9 +217,27 @@ fn run_summary(
     )?;
     if json {
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);
-        json_result.save_as_file()?;
+        write_json_file(&json_result, json_out.as_deref(), "heaptrail")?;
     }
     print!("{}", rendered_result.serialize(top));
     println!("File successfully processed in {:?}", started.elapsed());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_output_path_uses_explicit_path_when_present() {
+        let actual = json_output_path(Some("reports/leaks.json"), "heaptrail-leak-suspects");
+        assert_eq!(actual, "reports/leaks.json");
+    }
+
+    #[test]
+    fn json_output_path_uses_timestamped_prefix_when_absent() {
+        let actual = json_output_path(None, "heaptrail-diff");
+        assert!(actual.starts_with("heaptrail-diff-"), "got {actual}");
+        assert!(actual.ends_with(".json"), "got {actual}");
+    }
 }
