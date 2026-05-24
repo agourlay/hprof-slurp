@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
 
+use crate::args::MappingOptions;
 use crate::errors::HprofSlurpError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +17,42 @@ pub struct Symbolicator {
     pub info: MappingInfo,
     class_by_obfuscated: AHashMap<String, String>,
     fields_by_obfuscated_class: AHashMap<String, AHashMap<String, String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedMapping {
+    pub symbolicator: Symbolicator,
+    pub source: MappingSource,
+}
+
+#[derive(Debug, Clone)]
+pub enum MappingSource {
+    Manual,
+    Auto {
+        package: String,
+        version_code: u64,
+        version_name: String,
+        variant_name: String,
+    },
+}
+
+impl ResolvedMapping {
+    pub fn notice(&self) -> String {
+        match &self.source {
+            MappingSource::Manual => {
+                format!("Using mapping: {}", self.symbolicator.info.path.display())
+            }
+            MappingSource::Auto {
+                package,
+                version_code,
+                version_name,
+                variant_name,
+            } => format!(
+                "Using mapping: {}\nMatched package {package} versionCode={version_code} versionName={version_name} variant={variant_name}",
+                self.symbolicator.info.path.display()
+            ),
+        }
+    }
 }
 
 impl Symbolicator {
@@ -133,6 +170,19 @@ fn invalid(path: &Path, line: usize, message: &str) -> HprofSlurpError {
     }
 }
 
+pub fn resolve_mapping(
+    options: &MappingOptions,
+) -> Result<Option<ResolvedMapping>, HprofSlurpError> {
+    if let Some(path) = &options.mapping {
+        let symbolicator = Symbolicator::from_file(Path::new(path))?;
+        return Ok(Some(ResolvedMapping {
+            symbolicator,
+            source: MappingSource::Manual,
+        }));
+    }
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +243,29 @@ com.nexio.tv.domain.model.MetaPreview -> d1.q2:
             err.to_string().contains("line 1"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn resolves_manual_mapping_from_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "heaptrail-mapping-test-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mapping.txt");
+        std::fs::write(&path, "com.example.Real -> a.b:\n").unwrap();
+
+        let resolved = resolve_mapping(&crate::args::MappingOptions {
+            mapping: Some(path.display().to_string()),
+            auto_mapping: None,
+            project_root: None,
+            package: None,
+            serial: None,
+        })
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(resolved.symbolicator.class_name("a.b"), "com.example.Real");
+        assert!(resolved.notice().contains("Using mapping:"));
     }
 }

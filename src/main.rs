@@ -24,10 +24,11 @@ mod utils;
 use std::time::Instant;
 
 use clap::Parser;
+use mapping::ResolvedMapping;
 use rendered_result::JsonResult;
 use serde::Serialize;
 
-use crate::args::{Cli, Mode, resolve};
+use crate::args::{Cli, MappingOptions, Mode, resolve};
 use crate::errors::HprofSlurpError;
 
 fn main() {
@@ -55,7 +56,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             list_arrays_min_bytes,
             retained_size,
             exclude_soft_weak,
-            mapping: _,
+            mapping,
         } => run_summary(
             &input_file,
             top,
@@ -67,6 +68,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             list_arrays_min_bytes,
             retained_size,
             exclude_soft_weak,
+            mapping,
             now,
         ),
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
@@ -102,6 +104,25 @@ fn main_result() -> Result<(), HprofSlurpError> {
     }
 }
 
+fn resolve_mapping_for_mode(mode: &Mode) -> Result<Option<ResolvedMapping>, HprofSlurpError> {
+    match mode {
+        Mode::Summary { mapping, .. }
+        | Mode::FindReferrers { mapping, .. }
+        | Mode::Paths { mapping, .. }
+        | Mode::Diff { mapping, .. }
+        | Mode::AllocationSites { mapping, .. }
+        | Mode::LeakSuspects { mapping, .. }
+        | Mode::Bitmaps { mapping, .. } => crate::mapping::resolve_mapping(mapping),
+        Mode::AndroidCapture { .. } => Ok(None),
+    }
+}
+
+fn print_mapping_notice(mapping: Option<&ResolvedMapping>) {
+    if let Some(mapping) = mapping {
+        println!("{}", mapping.notice());
+    }
+}
+
 fn json_output_path(explicit_path: Option<&str>, default_prefix: &str) -> String {
     explicit_path.map_or_else(
         || {
@@ -131,6 +152,8 @@ fn run_bitmaps(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
         Mode::Bitmaps { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let result = bitmaps::run(&mode)?;
     if json {
         write_json_file(&result, json_out, "heaptrail-bitmaps")?;
@@ -145,6 +168,8 @@ fn run_leak_suspects(mode: Mode, started: Instant) -> Result<(), HprofSlurpError
         Mode::LeakSuspects { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let result = leak_suspects::run(&mode)?;
     if json {
         write_json_file(&result, json_out, "heaptrail-leak-suspects")?;
@@ -159,6 +184,8 @@ fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpEr
         Mode::AllocationSites { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let result = allocation_sites::run(&mode)?;
     if json {
         write_json_file(&result, json_out, "heaptrail-allocation-sites")?;
@@ -173,6 +200,8 @@ fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpErro
         Mode::FindReferrers { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let result = referrer::run(&mode)?;
     if json {
         write_json_file(&result, json_out, "heaptrail-referrers")?;
@@ -187,6 +216,8 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
         Mode::Diff { json, json_out, .. } => (*json, json_out.as_deref()),
         _ => unreachable!(),
     };
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let entries = diff::run(&mode)?;
     if json {
         write_json_file(&entries, json_out, "heaptrail-diff")?;
@@ -207,6 +238,8 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
         _ => unreachable!(),
     };
     if merge {
+        let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+        print_mapping_notice(resolved_mapping.as_ref());
         let result = merge_paths::run(&mode)?;
         if json {
             write_json_file(&result, json_out, "heaptrail-merge-paths")?;
@@ -215,6 +248,8 @@ fn run_paths(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
         println!("\nFile successfully processed in {:?}", started.elapsed());
         return Ok(());
     }
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let result = paths::run(&mode)?;
     if json {
         write_json_file(&result, json_out, "heaptrail-paths")?;
@@ -236,8 +271,11 @@ fn run_summary(
     list_arrays_min_bytes: u32,
     retained_size: bool,
     exclude_soft_weak: bool,
+    mapping: MappingOptions,
     started: Instant,
 ) -> Result<(), HprofSlurpError> {
+    let resolved_mapping = crate::mapping::resolve_mapping(&mapping)?;
+    print_mapping_notice(resolved_mapping.as_ref());
     let mut rendered_result = crate::slurp::slurp_file_with_modes(
         input_file,
         debug,
