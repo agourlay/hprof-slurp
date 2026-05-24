@@ -2,7 +2,7 @@ use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::{
     ConflictingModes, InputFileNotFound, InvalidTopPositiveInt, MissingInputFile,
 };
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::Path;
 
 #[derive(Parser, Debug)]
@@ -12,6 +12,9 @@ use std::path::Path;
     about = "JVM/Android heap dump (hprof) analyzer"
 )]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Binary hprof input file. Required for summary, --find-referrers, and
     /// --paths-from-id modes. Not used in diff mode (see --diff-from/--diff-to).
     #[arg(short = 'i', long = "inputFile")]
@@ -149,6 +152,35 @@ pub struct Cli {
     pub bitmaps: bool,
 }
 
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Capture and validate an Android heap dump via adb.
+    AndroidCapture(AndroidCaptureArgs),
+}
+
+#[derive(clap::Args, Debug)]
+pub struct AndroidCaptureArgs {
+    /// adb serial/device id. When omitted, adb's default target is used.
+    #[arg(long = "serial", value_name = "SERIAL")]
+    pub serial: Option<String>,
+
+    /// Android application package name to capture.
+    #[arg(long = "package", value_name = "PACKAGE")]
+    pub package: String,
+
+    /// Local output directory for the pulled hprof and transcript.
+    #[arg(long = "out", value_name = "DIR")]
+    pub out: String,
+
+    /// Attempt allocation tracking setup before dump capture.
+    #[arg(long = "allocation-sites", default_value_t = false)]
+    pub allocation_sites: bool,
+
+    /// Bring the package to foreground with `monkey -p <package> 1`.
+    #[arg(long = "foreground", default_value_t = false)]
+    pub foreground: bool,
+}
+
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiffSort {
     Count,
@@ -234,6 +266,13 @@ pub enum Mode {
         json: bool,
         json_out: Option<String>,
     },
+    AndroidCapture {
+        serial: Option<String>,
+        package: String,
+        out_dir: String,
+        allocation_sites: bool,
+        foreground: bool,
+    },
 }
 
 /// Resolve the parsed CLI into a single concrete `Mode`. Enforces:
@@ -243,6 +282,18 @@ pub enum Mode {
 pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     if cli.top == 0 {
         return Err(InvalidTopPositiveInt);
+    }
+
+    if let Some(command) = cli.command {
+        return match command {
+            Command::AndroidCapture(args) => Ok(Mode::AndroidCapture {
+                serial: args.serial,
+                package: args.package,
+                out_dir: args.out,
+                allocation_sites: args.allocation_sites,
+                foreground: args.foreground,
+            }),
+        };
     }
 
     let referrers_set = cli.find_referrers.is_some() || cli.target_glob.is_some();
@@ -391,9 +442,59 @@ mod args_tests {
         let cli = Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "-t", "5"]).unwrap();
         assert_eq!(cli.input_file.as_deref(), Some("x.hprof"));
         assert_eq!(cli.top, 5);
+        assert!(cli.command.is_none());
         assert!(cli.find_referrers.is_none());
         assert!(cli.paths_from_id.is_none());
         assert!(cli.diff_from.is_none());
+    }
+
+    #[test]
+    fn parses_android_capture_subcommand() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "android-capture",
+            "--serial",
+            "192.168.50.98:5555",
+            "--package",
+            "com.nexio.tv",
+            "--out",
+            "artifacts/run",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Some(Command::AndroidCapture(args)) => {
+                assert_eq!(args.serial.as_deref(), Some("192.168.50.98:5555"));
+                assert_eq!(args.package, "com.nexio.tv");
+                assert_eq!(args.out, "artifacts/run");
+                assert!(!args.allocation_sites);
+                assert!(!args.foreground);
+            }
+            other => panic!("expected android-capture, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_android_capture_with_allocation_sites_and_foreground() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "android-capture",
+            "--package",
+            "com.example.app",
+            "--out",
+            "artifacts/run",
+            "--allocation-sites",
+            "--foreground",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Some(Command::AndroidCapture(args)) => {
+                assert!(args.allocation_sites);
+                assert!(args.foreground);
+            }
+            other => panic!("expected android-capture, got {other:?}"),
+        }
     }
 
     #[test]
@@ -593,6 +694,36 @@ mod args_tests {
                 assert_eq!(json_out.as_deref(), Some("reports/diff.json"));
             }
             other => panic!("expected Diff, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_picks_android_capture_without_input_file() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "android-capture",
+            "--package",
+            "com.example.app",
+            "--out",
+            "artifacts/run",
+        ])
+        .unwrap();
+
+        match resolve(cli).unwrap() {
+            Mode::AndroidCapture {
+                serial,
+                package,
+                out_dir,
+                allocation_sites,
+                foreground,
+            } => {
+                assert_eq!(serial, None);
+                assert_eq!(package, "com.example.app");
+                assert_eq!(out_dir, "artifacts/run");
+                assert!(!allocation_sites);
+                assert!(!foreground);
+            }
+            other => panic!("expected AndroidCapture, got {other:?}"),
         }
     }
 

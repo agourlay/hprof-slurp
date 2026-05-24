@@ -72,6 +72,9 @@ fn main_result() -> Result<(), HprofSlurpError> {
         mode @ Mode::AllocationSites { .. } => run_allocation_sites(mode, now),
         mode @ Mode::LeakSuspects { .. } => run_leak_suspects(mode, now),
         mode @ Mode::Bitmaps { .. } => run_bitmaps(mode, now),
+        Mode::AndroidCapture { .. } => Err(HprofSlurpError::NotYetImplemented {
+            what: "android-capture dispatch",
+        }),
     }
 }
 
