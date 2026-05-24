@@ -17,6 +17,8 @@ use crate::utils::pretty_bytes_size;
 #[derive(Serialize, Debug, Clone)]
 pub struct DiffEntry {
     pub class_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub obfuscated_class_name: Option<String>,
     pub count_a: u64,
     pub count_b: u64,
     pub delta_count: i64,
@@ -68,6 +70,7 @@ pub fn compute(
             let bytes_b = bv.map_or(0, |c| c.allocation_size_bytes);
             DiffEntry {
                 class_name: k.to_string(),
+                obfuscated_class_name: None,
                 count_a,
                 count_b,
                 delta_count: count_b as i64 - count_a as i64,
@@ -84,6 +87,19 @@ pub fn compute(
         DiffSort::Bytes => out.sort_by_key(|e| Reverse(e.delta_bytes)),
     }
     out
+}
+
+pub fn symbolicate_entries(
+    entries: &mut [DiffEntry],
+    symbolicator: &crate::mapping::Symbolicator,
+) {
+    for entry in entries {
+        let mapped = symbolicator.class_name(&entry.class_name);
+        if mapped != entry.class_name {
+            entry.obfuscated_class_name = Some(entry.class_name.clone());
+            entry.class_name = mapped;
+        }
+    }
 }
 
 pub fn render_text(entries: &[DiffEntry]) -> String {
@@ -159,6 +175,30 @@ mod tests {
         let b = vec![cs("Tiny", 100, 100), cs("Big", 2, 1_000_000)];
         let entries = compute(&a, &b, DiffSort::Bytes);
         assert_eq!(entries[0].class_name, "Big");
+    }
+
+    #[test]
+    fn symbolicate_diff_entries() {
+        let symbolicator = crate::mapping::Symbolicator::parse_text(
+            std::path::Path::new("mapping.txt"),
+            "com.example.Real -> a.b:\n",
+        )
+        .unwrap();
+        let mut entries = vec![DiffEntry {
+            class_name: "a.b".to_string(),
+            obfuscated_class_name: None,
+            count_a: 1,
+            count_b: 2,
+            delta_count: 1,
+            bytes_a: 10,
+            bytes_b: 20,
+            delta_bytes: 10,
+        }];
+
+        symbolicate_entries(&mut entries, &symbolicator);
+
+        assert_eq!(entries[0].class_name, "com.example.Real");
+        assert_eq!(entries[0].obfuscated_class_name.as_deref(), Some("a.b"));
     }
 
     #[test]

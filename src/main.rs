@@ -218,7 +218,10 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
     };
     let resolved_mapping = resolve_mapping_for_mode(&mode)?;
     print_mapping_notice(resolved_mapping.as_ref());
-    let entries = diff::run(&mode)?;
+    let mut entries = diff::run(&mode)?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        diff::symbolicate_entries(&mut entries, &mapping.symbolicator);
+    }
     if json {
         write_json_file(&entries, json_out, "heaptrail-diff")?;
     }
@@ -285,6 +288,9 @@ fn run_summary(
         retained_size,
         exclude_soft_weak,
     )?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        rendered_result.symbolicate(&mapping.symbolicator);
+    }
     if json {
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);
         write_json_file(&json_result, json_out.as_deref(), "heaptrail")?;

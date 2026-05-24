@@ -7,6 +7,8 @@ use crate::utils::pretty_bytes_size;
 #[derive(Serialize, Clone)]
 pub struct ClassAllocationStats {
     pub class_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub obfuscated_class_name: Option<String>,
     pub instance_count: u64,
     pub largest_allocation_bytes: u64,
     /// Object id of the largest single instance (arrays only). 0 = unset / not an
@@ -29,6 +31,7 @@ impl ClassAllocationStats {
     ) -> Self {
         Self {
             class_name,
+            obfuscated_class_name: None,
             instance_count,
             largest_allocation_bytes,
             largest_object_id: 0,
@@ -93,6 +96,29 @@ pub struct RenderedResult {
 }
 
 impl RenderedResult {
+    pub fn symbolicate(&mut self, symbolicator: &crate::mapping::Symbolicator) {
+        for row in &mut self.memory_usage {
+            let mapped = symbolicator.class_name(&row.class_name);
+            if mapped != row.class_name {
+                row.obfuscated_class_name = Some(row.class_name.clone());
+                row.class_name = mapped;
+            }
+        }
+        if let Some(retained) = self.class_retained_by_name.take() {
+            let mut remapped = ahash::AHashMap::new();
+            for (class_name, bytes) in retained {
+                let mapped = symbolicator.class_name(&class_name);
+                *remapped.entry(mapped).or_insert(0) += bytes;
+            }
+            self.class_retained_by_name = Some(remapped);
+        }
+        if let Some(top) = self.top_retained_instances.as_mut() {
+            for (_, class_name, _) in top {
+                *class_name = symbolicator.class_name(class_name);
+            }
+        }
+    }
+
     pub fn serialize(self, top: usize) -> String {
         let Self {
             summary,
@@ -509,5 +535,34 @@ mod tests {
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));
         assert!(!output.contains("instances allocated on the heap"));
+    }
+
+    #[test]
+    fn symbolicate_renames_summary_classes_and_keeps_raw_name() {
+        let symbolicator = crate::mapping::Symbolicator::parse_text(
+            std::path::Path::new("mapping.txt"),
+            "com.example.Real -> a.b:\n",
+        )
+        .unwrap();
+        let mut result = RenderedResult {
+            summary: String::new(),
+            thread_info: String::new(),
+            memory_usage: vec![ClassAllocationStats::new("a.b".to_string(), 2, 16, 32)],
+            duplicated_strings: None,
+            captured_strings: None,
+            allocation_sites: vec![],
+            allocation_sites_record_count: 0,
+            array_previews: ahash::AHashMap::new(),
+            class_retained_by_name: None,
+            top_retained_instances: None,
+        };
+
+        result.symbolicate(&symbolicator);
+
+        assert_eq!(result.memory_usage[0].class_name, "com.example.Real");
+        assert_eq!(
+            result.memory_usage[0].obfuscated_class_name.as_deref(),
+            Some("a.b")
+        );
     }
 }
