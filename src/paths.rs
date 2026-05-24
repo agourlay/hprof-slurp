@@ -544,6 +544,10 @@ mod tests {
             terminated_by_soft_weak: None,
         };
         let out = render_text(&r);
+        assert!(
+            out.contains("content: XML"),
+            "expected content label, got:\n{out}"
+        );
         assert!(out.contains("<?xml"), "expected preview, got:\n{out}");
     }
 

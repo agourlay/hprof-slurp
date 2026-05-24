@@ -1030,4 +1030,22 @@ mod tests {
         assert_eq!(object_arrays.largest_allocation_bytes, 24);
         assert_eq!(object_arrays.allocation_size_bytes, 40);
     }
+
+    #[test]
+    fn standalone_large_arrays_include_content_label() {
+        let mut recorder = ResultRecorder::with_preview(4, true, 64, 4);
+        recorder.standalone_large_arrays.push((
+            42,
+            ArrayPreview {
+                element_type: FieldType::Byte,
+                bytes: br#"{"ok":true}"#.as_slice().into(),
+                total_bytes: 11,
+            },
+        ));
+
+        let output = recorder.render_captured_strings();
+
+        assert!(output.contains("content: JSON"), "got:\n{output}");
+        assert!(output.contains(r#"{"ok":true}"#), "got:\n{output}");
+    }
 }

@@ -1020,6 +1020,25 @@ mod tests {
     }
 
     #[test]
+    fn render_target_preview_includes_content_label() {
+        let mut previews = AHashMap::new();
+        previews.insert(
+            42,
+            crate::result_recorder::ArrayPreview {
+                element_type: FieldType::Byte,
+                bytes: br#"{"ok":true}"#.as_slice().into(),
+                total_bytes: 11,
+            },
+        );
+
+        let mut out = String::new();
+        render_target_preview(&mut out, "id:42", &previews);
+
+        assert!(out.contains("preview: content: JSON"), "got:\n{out}");
+        assert!(out.contains(r#"{"ok":true}"#), "got:\n{out}");
+    }
+
+    #[test]
     fn glob_resolution_finds_multiple_matching_classes() {
         let idx = pass1_index("test-heap-dumps/hprof-64.bin", false).unwrap();
         let target = crate::args::ReferrersTarget::Glob("java.util.*".to_string());
