@@ -177,13 +177,7 @@ pub fn resolve_mapping(
         }));
     }
     if let Some(mode) = options.auto_mapping {
-        let project_root =
-            options
-                .project_root
-                .as_deref()
-                .ok_or_else(|| HprofSlurpError::MappingDiscovery {
-                    message: "--auto-mapping requires --project-root".to_string(),
-                })?;
+        let project_root = auto_mapping_project_root(options)?;
         let package =
             options
                 .package
@@ -196,7 +190,7 @@ pub fn resolve_mapping(
             package,
         )
         .and_then(|device| {
-            crate::mapping_discovery::find_local_mapping(Path::new(project_root), package, &device)
+            crate::mapping_discovery::find_local_mapping(&project_root, package, &device)
         }) {
             Ok(discovered) => discovered,
             Err(err) if mode == crate::args::AutoMappingMode::Optional => {
@@ -217,6 +211,16 @@ pub fn resolve_mapping(
         }));
     }
     Ok(None)
+}
+
+fn auto_mapping_project_root(options: &MappingOptions) -> Result<PathBuf, HprofSlurpError> {
+    options
+        .project_root
+        .as_deref()
+        .map(PathBuf::from)
+        .map(Ok)
+        .unwrap_or_else(std::env::current_dir)
+        .map_err(HprofSlurpError::from)
 }
 
 #[cfg(test)]
@@ -267,6 +271,31 @@ com.nexio.tv.domain.model.MetaPreview -> d1.q2:
         assert_eq!(parsed.class_name("byte[]"), "byte[]");
         assert_eq!(parsed.class_name("char[]"), "char[]");
         assert_eq!(parsed.class_name("unknown.Name[]"), "unknown.Name[]");
+    }
+
+    #[test]
+    fn auto_mapping_project_root_defaults_to_current_dir() {
+        let options = MappingOptions {
+            auto_mapping: Some(crate::args::AutoMappingMode::Strict),
+            ..MappingOptions::default()
+        };
+
+        let root = auto_mapping_project_root(&options).unwrap();
+
+        assert_eq!(root, std::env::current_dir().unwrap());
+    }
+
+    #[test]
+    fn auto_mapping_project_root_prefers_explicit_option() {
+        let options = MappingOptions {
+            project_root: Some("/tmp/nexio".to_string()),
+            auto_mapping: Some(crate::args::AutoMappingMode::Strict),
+            ..MappingOptions::default()
+        };
+
+        let root = auto_mapping_project_root(&options).unwrap();
+
+        assert_eq!(root, PathBuf::from("/tmp/nexio"));
     }
 
     #[test]

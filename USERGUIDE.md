@@ -81,15 +81,16 @@ version and matching Gradle APK metadata:
 ```bash
 heaptrail -i after.hprof \
   --auto-mapping \
-  --project-root ~/Scripts/nexio \
   --package com.nexio.tv \
   --serial 192.168.50.98:5555 \
   --leak-suspects
 ```
 
-If multiple local outputs match, pass `--mapping` explicitly. The mapping must
-come from the same build as the installed app; using a stale mapping can produce
-plausible but wrong class names.
+Run this from the Android project root, or pass `--project-root ~/Scripts/nexio`
+from another directory. If multiple local outputs match, heaptrail prefers a
+single `universal` variant; otherwise pass `--mapping` explicitly. The mapping
+must come from the same build as the installed app; using a stale mapping can
+produce plausible but wrong class names.
 
 ### Option B — Android Studio Profiler
 
