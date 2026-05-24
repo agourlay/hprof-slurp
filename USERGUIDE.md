@@ -136,6 +136,7 @@ a JVM dump captured this way.
 | What holds a specific giant object? | `heaptrail -i heap.hprof --find-referrers id:<u64>` |
 | Walk an object up to a GC root | `heaptrail -i heap.hprof --paths-from-id <u64>` |
 | Compare two snapshots (churn) | `heaptrail --diff-from a.hprof --diff-to b.hprof` |
+| Compare a playback/state timeline | `heaptrail --diff-series launch.hprof home.hprof play.hprof stop.hprof` |
 | Pipe to `jq` / dashboards | append `--json` to any of the above |
 | **Show what a giant `char[]`/`byte[]` actually contains** | append `--preview-bytes 200` to summary, paths, find-referrers, or `-l` |
 | **Retained-size triage** ("is 35K instances actually 35 MB or 350 MB?") | append `--retained-size` to summary, paths-from-id, or find-referrers |
@@ -145,8 +146,10 @@ Common flags:
 - `-t N` / `--top N` — top-N rows shown (default 20).
 - `--hops 1\|2\|3` — referrer chain depth (default 2).
 - `--include-statics` — include class statics as candidate referrers (default true).
+- `--group-holders` — group referrer rows by owner family, holder class, and field label.
 - `--max-depth N` — bail on path walk after N hops (default 12).
 - `--diff-by count\|bytes` — sort diff by Δinstance-count (default) or Δshallow-bytes.
+- `--native-context PATH` — attach Android `dumpsys meminfo` totals to `--diff-series`.
 - `-l` / `--listStrings` — dump every UTF-8 string in summary mode.
 - `--preview-bytes N` — opt-in content preview for primitive arrays (v0.9.0).
 - `--list-arrays-min-bytes N` — threshold for the `-l --preview-bytes`
@@ -154,8 +157,9 @@ Common flags:
 - `-d` / `--debug` — verbose record-tag tracing.
 - `--json` — also write a structured JSON sidecar file.
 
-Mutually exclusive: pick **one** of `--find-referrers`, `--paths-from-id`, or
-`--diff-from`/`--diff-to`. With none of those, you get the summary.
+Mutually exclusive: pick **one** of `--find-referrers`, `--target-glob`,
+`--paths-from-id`, `--diff-from`/`--diff-to`, or `--diff-series`. With none of
+those, you get the summary.
 
 ---
 
@@ -467,6 +471,49 @@ heaptrail --diff-from heap-phase4-jvm.hprof --diff-to heap-phase4-jvm.hprof
 
 (Real wall time on the 235 MiB dump: 320 ms — both files share the OS page
 cache after the first read.)
+
+---
+
+### Playback timeline workflow with `--diff-series`
+
+For media apps, leaks often attach to state transitions rather than a single
+before/after pair. Capture ordered snapshots around explicit states:
+
+1. launch
+2. home loaded
+3. playback started
+4. playback stopped
+5. soak
+
+Then run:
+
+```bash
+heaptrail --diff-series launch.hprof home.hprof play.hprof stop.hprof soak.hprof \
+  --diff-by bytes --top 30 --json --json-out reports/playback-series.json
+```
+
+The report prints adjacent step deltas, first-to-last totals, and monotonic
+growth candidates. Use monotonic growth candidates as the shortlist for
+referrer and path probes.
+
+For Media3/decoder ownership, collapse the holder table:
+
+```bash
+heaptrail -i play.hprof --target-glob 'androidx.media3.**' --hops 2 --group-holders
+```
+
+When native pressure may matter, capture `adb shell dumpsys meminfo <package>`
+beside the HProf series and attach it:
+
+```bash
+heaptrail --diff-series launch.hprof play.hprof soak.hprof \
+  --native-context meminfo.txt \
+  --json --json-out reports/playback-series.json
+```
+
+`--native-context` does not change Java heap calculations; it only adds a
+bounded Java Heap / Native Heap / Graphics / GL / TOTAL PSS block to text and
+JSON for correlation.
 
 ---
 
@@ -1254,6 +1301,7 @@ JSON file naming:
 | `--find-referrers` | `heaptrail-referrers-<ts>.json` (timestamped) |
 | `--paths-from-id` | `heaptrail-paths-<ts>.json` |
 | `--diff-from`/`--diff-to` | `heaptrail-diff-<ts>.json` |
+| `--diff-series` | `heaptrail-diff-series-<ts>.json` |
 
 When `--json-out <path>` is present, all modes write exactly that path instead
 of the generated filename.

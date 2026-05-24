@@ -4,7 +4,8 @@
 [![Crates.io](https://img.shields.io/crates/v/heaptrail.svg)](https://crates.io/crates/heaptrail)
 
 `heaptrail` is a JVM/Android heap dump analyzer with referrer tracing,
-path-to-root walking, and snapshot diff. Forked from
+path-to-root walking, snapshot diff, and playback timeline diff-series
+reports. Forked from
 [agourlay/hprof-slurp](https://github.com/agourlay/hprof-slurp), which
 contributes the streaming parser foundation; this fork adds the
 investigation modes documented below.
@@ -17,7 +18,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines, grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -65,6 +66,14 @@ reference and worked examples.
 - **snapshot diff** (`--diff-from` / `--diff-to`) — per-class delta in instance
   count and shallow bytes between two captures (the strongest churn signal a
   pair of static dumps can give you).
+- **diff series** (`--diff-series`) — compare 3+ snapshots in capture order,
+  showing per-step deltas, first-to-last deltas, and monotonic growth
+  candidates for playback/state-transition debugging.
+- **grouped holders** (`--group-holders`) — group referrer rows by owner
+  family, holder class, and field label to reduce noisy playback/cache
+  ownership tables.
+- **native context** (`--native-context`) — annotate diff-series reports with
+  a bounded Android `dumpsys meminfo` summary when available.
 - **glob targeting** (`--target-glob`) — find referrers of every class
   matching a shell-style pattern in one pass.
 - **allocation sites** (`--allocation-sites`) — when the dump was captured
@@ -128,6 +137,7 @@ Options:
       --paths-from-id <ID>      Trace holder chain toward a GC root
       --diff-from <PATH>        Baseline hprof for diff
       --diff-to <PATH>          Comparison hprof for diff
+      --diff-series <PATH>...   Ordered HProf snapshots for series diff
       --leak-suspects [<THRESHOLD>]
       --retained-size
       --exclude-soft-weak
@@ -276,6 +286,22 @@ heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count
 Per-class delta in instance count and shallow bytes between two captures —
 the strongest churn signal a pair of static dumps can give you. Details in
 [USERGUIDE §6](USERGUIDE.md#6---diff-from----diff-to--snapshot-diff).
+
+### `--diff-series` — playback timeline diff
+
+```bash
+heaptrail --diff-series launch.hprof home.hprof play.hprof stop.hprof soak.hprof \
+  --diff-by bytes \
+  --json \
+  --json-out reports/playback-series.json
+
+heaptrail -i play.hprof --target-glob 'androidx.media3.**' --hops 2 --group-holders
+```
+
+Use this when a leak is tied to app state transitions rather than one
+before/after pair. The report shows each adjacent step, first-to-last totals,
+and monotonic growth candidates. Pair it with `--group-holders` to collapse
+large Media3/cache referrer tables into owner-family summaries.
 
 ### `--target-glob` — pattern targeting
 
