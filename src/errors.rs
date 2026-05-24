@@ -47,6 +47,13 @@ pub enum HprofSlurpError {
     InvalidHeaderSize,
     #[error("invalid Hprof file - {message:?}")]
     InvalidHprofFile { message: String },
+    #[error("input hprof is 0 bytes: {path}")]
+    EmptyHprofInput { path: String },
+    #[error("input hprof appears truncated: {path} ({source})")]
+    TruncatedHprofInput {
+        path: String,
+        source: std::io::Error,
+    },
     #[error("CLI argument error ({0})")]
     ClapError(#[from] clap::Error),
     #[error("standard I/O error ({0})")]
