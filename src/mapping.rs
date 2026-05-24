@@ -180,6 +180,46 @@ pub fn resolve_mapping(
             source: MappingSource::Manual,
         }));
     }
+    if let Some(mode) = options.auto_mapping {
+        let project_root =
+            options
+                .project_root
+                .as_deref()
+                .ok_or_else(|| HprofSlurpError::MappingDiscovery {
+                    message: "--auto-mapping requires --project-root".to_string(),
+                })?;
+        let package =
+            options
+                .package
+                .as_deref()
+                .ok_or_else(|| HprofSlurpError::MappingDiscovery {
+                    message: "--auto-mapping requires --package".to_string(),
+                })?;
+        let discovered = match crate::mapping_discovery::query_device_version(
+            options.serial.as_deref(),
+            package,
+        )
+        .and_then(|device| {
+            crate::mapping_discovery::find_local_mapping(Path::new(project_root), package, &device)
+        }) {
+            Ok(discovered) => discovered,
+            Err(err) if mode == crate::args::AutoMappingMode::Optional => {
+                eprintln!("warning: {err}");
+                return Ok(None);
+            }
+            Err(err) => return Err(err),
+        };
+        let symbolicator = Symbolicator::from_file(&discovered.mapping_path)?;
+        return Ok(Some(ResolvedMapping {
+            symbolicator,
+            source: MappingSource::Auto {
+                package: discovered.package,
+                version_code: discovered.version_code,
+                version_name: discovered.version_name,
+                variant_name: discovered.variant_name,
+            },
+        }));
+    }
     Ok(None)
 }
 

@@ -37,6 +37,8 @@ pub enum HprofSlurpError {
         line: usize,
         message: String,
     },
+    #[error("mapping discovery failed: {message}")]
+    MappingDiscovery { message: String },
     #[error("no AllocationSites records in this dump (capture with `am profile start <pid>`)")]
     NoAllocationSites,
     #[error("invalid pointer size - the value should be either `4` or `8`")]
