@@ -210,7 +210,9 @@ impl RenderedResult {
                         preview.total_bytes as usize,
                     );
                     match kind {
-                        PreviewKind::Text { snippet, truncated } => {
+                        PreviewKind::Text {
+                            snippet, truncated, ..
+                        } => {
                             let trimmed: String = snippet.chars().take(140).collect();
                             let suffix = if truncated || snippet.chars().count() > 140 {
                                 "..."
@@ -220,7 +222,9 @@ impl RenderedResult {
                             writeln!(analysis, "             {trimmed}{suffix}")
                                 .expect("Could not write to analysis");
                         }
-                        PreviewKind::Hex { lines, total_bytes } => {
+                        PreviewKind::Hex {
+                            lines, total_bytes, ..
+                        } => {
                             writeln!(analysis, "             (binary, {total_bytes} bytes total)")
                                 .expect("Could not write to analysis");
                             for line in lines.iter().take(2) {

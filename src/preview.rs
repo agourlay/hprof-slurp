@@ -8,17 +8,68 @@
 
 use crate::parser::gc_record::FieldType;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentLabel {
+    Json,
+    Xml,
+    Utf8Text,
+    Utf16Text,
+    PngImage,
+    JpegImage,
+    GifImage,
+    WebpImage,
+    Gzip,
+    Zip,
+    ProtobufLike,
+    RepeatedFill,
+    UnknownBinary,
+}
+
+impl ContentLabel {
+    pub const fn display(self) -> &'static str {
+        match self {
+            Self::Json => "JSON",
+            Self::Xml => "XML",
+            Self::Utf8Text => "UTF-8 text",
+            Self::Utf16Text => "UTF-16 text",
+            Self::PngImage => "PNG image",
+            Self::JpegImage => "JPEG image",
+            Self::GifImage => "GIF image",
+            Self::WebpImage => "WebP image",
+            Self::Gzip => "gzip compressed",
+            Self::Zip => "ZIP archive",
+            Self::ProtobufLike => "protobuf-like binary",
+            Self::RepeatedFill => "binary/repeated-fill",
+            Self::UnknownBinary => "unknown binary",
+        }
+    }
+}
+
 /// Result of a preview render. The two arms are formatted differently
 /// by callers (text gets indented as a quote; hex gets a code block).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreviewKind {
     /// Decoded text snippet, control chars escaped, possibly truncated.
-    Text { snippet: String, truncated: bool },
+    Text {
+        label: ContentLabel,
+        snippet: String,
+        truncated: bool,
+    },
     /// Hexdump-style block, one line per 16 bytes.
     Hex {
+        label: ContentLabel,
         lines: Vec<String>,
         total_bytes: usize,
     },
+}
+
+impl PreviewKind {
+    pub const fn content_label(&self) -> ContentLabel {
+        match self {
+            Self::Text { label, .. } | Self::Hex { label, .. } => *label,
+        }
+    }
 }
 
 /// Render `bytes` as a preview. `element_type` selects the decoder:
@@ -51,7 +102,9 @@ fn render_utf16_be(bytes: &[u8], total_size_bytes: usize) -> PreviewKind {
     }
     let decoded = String::from_utf16_lossy(&chars);
     if is_text_like(&decoded) {
+        let label = classify_text(&decoded, ContentLabel::Utf16Text);
         PreviewKind::Text {
+            label,
             snippet: escape_for_preview(&decoded),
             truncated: bytes.len() < total_size_bytes,
         }
@@ -61,16 +114,34 @@ fn render_utf16_be(bytes: &[u8], total_size_bytes: usize) -> PreviewKind {
 }
 
 fn render_byte_array(bytes: &[u8], total_size_bytes: usize) -> PreviewKind {
+    let binary_label = classify_binary(bytes);
+    if matches!(
+        binary_label,
+        ContentLabel::PngImage
+            | ContentLabel::JpegImage
+            | ContentLabel::GifImage
+            | ContentLabel::WebpImage
+            | ContentLabel::Gzip
+            | ContentLabel::Zip
+    ) {
+        return render_hex(bytes, total_size_bytes);
+    }
+
     match std::str::from_utf8(bytes) {
-        Ok(s) if is_text_like(s) => PreviewKind::Text {
-            snippet: escape_for_preview(s),
-            truncated: bytes.len() < total_size_bytes,
-        },
+        Ok(s) if is_text_like(s) => {
+            let label = classify_text(s, ContentLabel::Utf8Text);
+            PreviewKind::Text {
+                label,
+                snippet: escape_for_preview(s),
+                truncated: bytes.len() < total_size_bytes,
+            }
+        }
         _ => render_hex(bytes, total_size_bytes),
     }
 }
 
 fn render_hex(bytes: &[u8], total_size_bytes: usize) -> PreviewKind {
+    let label = classify_binary(bytes);
     let mut lines: Vec<String> = Vec::new();
     for (i, chunk) in bytes.chunks(16).enumerate() {
         let offset = i * 16;
@@ -101,9 +172,91 @@ fn render_hex(bytes: &[u8], total_size_bytes: usize) -> PreviewKind {
         ));
     }
     PreviewKind::Hex {
+        label,
         lines,
         total_bytes: total_size_bytes,
     }
+}
+
+fn classify_text(s: &str, fallback: ContentLabel) -> ContentLabel {
+    let trimmed = s.trim_start();
+    if looks_like_json(trimmed) {
+        ContentLabel::Json
+    } else if looks_like_xml(trimmed) {
+        ContentLabel::Xml
+    } else {
+        fallback
+    }
+}
+
+fn looks_like_json(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 {
+        return false;
+    }
+    match bytes[0] {
+        b'{' => bytes[1..].iter().any(|b| matches!(b, b'"' | b'}')),
+        b'[' => bytes[1..].iter().any(|b| matches!(b, b'{' | b'[' | b'"' | b']')),
+        _ => false,
+    }
+}
+
+fn looks_like_xml(s: &str) -> bool {
+    if s.starts_with("<?xml") {
+        return true;
+    }
+    let Some(rest) = s.strip_prefix('<') else {
+        return false;
+    };
+    matches!(
+        rest.as_bytes().first(),
+        Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b':')
+    )
+}
+
+fn classify_binary(bytes: &[u8]) -> ContentLabel {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        ContentLabel::PngImage
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        ContentLabel::JpegImage
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        ContentLabel::GifImage
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        ContentLabel::WebpImage
+    } else if bytes.starts_with(&[0x1f, 0x8b]) {
+        ContentLabel::Gzip
+    } else if bytes.starts_with(&[0x50, 0x4b, 0x03, 0x04])
+        || bytes.starts_with(&[0x50, 0x4b, 0x05, 0x06])
+        || bytes.starts_with(&[0x50, 0x4b, 0x07, 0x08])
+    {
+        ContentLabel::Zip
+    } else if looks_repeated(bytes) {
+        ContentLabel::RepeatedFill
+    } else if looks_protobuf_like(bytes) {
+        ContentLabel::ProtobufLike
+    } else {
+        ContentLabel::UnknownBinary
+    }
+}
+
+fn looks_repeated(bytes: &[u8]) -> bool {
+    bytes.len() >= 16
+        && (bytes.windows(2).all(|w| w[0] == w[1])
+            || bytes
+                .chunks_exact(2)
+                .map(|c| [c[0], c[1]])
+                .all(|p| p == [bytes[0], bytes[1]]))
+}
+
+fn looks_protobuf_like(bytes: &[u8]) -> bool {
+    if bytes.len() < 8 {
+        return false;
+    }
+    let plausible_tags = bytes
+        .iter()
+        .filter(|&&b| b != 0 && b < 0x80 && (b & 0x07) <= 5 && (b >> 3) > 0)
+        .count();
+    plausible_tags * 4 >= bytes.len()
 }
 
 /// Heuristic: ≥90% of chars are printable ASCII, common whitespace, or
@@ -155,7 +308,9 @@ mod tests {
         let bytes = b"<?xml version=\"1.0\"?>\n<root>";
         let p = render_preview(bytes, FieldType::Byte, bytes.len());
         match p {
-            PreviewKind::Text { snippet, truncated } => {
+            PreviewKind::Text {
+                snippet, truncated, ..
+            } => {
                 assert!(snippet.contains("<?xml"), "got: {snippet}");
                 assert!(
                     snippet.contains("\\n"),
@@ -172,7 +327,9 @@ mod tests {
         let bytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]; // PNG header
         let p = render_preview(&bytes, FieldType::Byte, bytes.len());
         match p {
-            PreviewKind::Hex { lines, total_bytes } => {
+            PreviewKind::Hex {
+                lines, total_bytes, ..
+            } => {
                 assert_eq!(total_bytes, 8);
                 assert_eq!(lines.len(), 1);
                 assert!(lines[0].contains("89 50 4e 47"), "got: {}", lines[0]);
@@ -222,5 +379,87 @@ mod tests {
         // 5 bytes is invalid UTF-16; should not panic, drops the last byte.
         let bytes = [0x00, 0x48, 0x00, 0x69, 0xff];
         let _ = render_preview(&bytes, FieldType::Char, bytes.len());
+    }
+
+    #[test]
+    fn classifies_json_text() {
+        let bytes = br#"{"items":[1,2],"ok":true}"#;
+        let p = render_preview(bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::Json);
+    }
+
+    #[test]
+    fn classifies_xml_text() {
+        let bytes = b"<?xml version=\"1.0\"?><root/>";
+        let p = render_preview(bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::Xml);
+    }
+
+    #[test]
+    fn classifies_utf8_text() {
+        let bytes = b"plain readable text";
+        let p = render_preview(bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::Utf8Text);
+    }
+
+    #[test]
+    fn classifies_utf16_text() {
+        let bytes = [0x00, 0x48, 0x00, 0x69];
+        let p = render_preview(&bytes, FieldType::Char, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::Utf16Text);
+    }
+
+    #[test]
+    fn classifies_png_signature() {
+        let bytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+        let p = render_preview(&bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::PngImage);
+    }
+
+    #[test]
+    fn classifies_jpeg_signature() {
+        let bytes = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10];
+        let p = render_preview(&bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::JpegImage);
+    }
+
+    #[test]
+    fn classifies_gif_signature() {
+        let p = render_preview(b"GIF89a", FieldType::Byte, 6);
+        assert_eq!(p.content_label(), ContentLabel::GifImage);
+    }
+
+    #[test]
+    fn classifies_webp_signature() {
+        let p = render_preview(b"RIFF\x24\x00\x00\x00WEBP", FieldType::Byte, 12);
+        assert_eq!(p.content_label(), ContentLabel::WebpImage);
+    }
+
+    #[test]
+    fn classifies_gzip_signature() {
+        let bytes = [0x1f, 0x8b, 0x08, 0x00];
+        let p = render_preview(&bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::Gzip);
+    }
+
+    #[test]
+    fn classifies_zip_signature() {
+        let bytes = [0x50, 0x4b, 0x03, 0x04];
+        let p = render_preview(&bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::Zip);
+    }
+
+    #[test]
+    fn classifies_repeated_fill_binary() {
+        let bytes = [0xaa; 32];
+        let p = render_preview(&bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::RepeatedFill);
+    }
+
+    #[test]
+    fn classifies_unknown_binary_when_no_signature_matches() {
+        let bytes = [0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87];
+        let p = render_preview(&bytes, FieldType::Byte, bytes.len());
+        assert_eq!(p.content_label(), ContentLabel::UnknownBinary);
     }
 }

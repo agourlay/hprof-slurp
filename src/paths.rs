@@ -492,7 +492,9 @@ fn render_preview_block(out: &mut String, preview: &crate::result_recorder::Arra
         preview.total_bytes as usize,
     );
     match kind {
-        PreviewKind::Text { snippet, truncated } => {
+        PreviewKind::Text {
+            snippet, truncated, ..
+        } => {
             let trimmed: String = snippet.chars().take(140).collect();
             let suffix = if truncated || snippet.chars().count() > 140 {
                 "..."
@@ -501,7 +503,9 @@ fn render_preview_block(out: &mut String, preview: &crate::result_recorder::Arra
             };
             let _ = writeln!(out, "         {trimmed}{suffix}");
         }
-        PreviewKind::Hex { lines, total_bytes } => {
+        PreviewKind::Hex {
+            lines, total_bytes, ..
+        } => {
             let _ = writeln!(out, "         (binary, {total_bytes} bytes total)");
             for line in lines.iter().take(2) {
                 let _ = writeln!(out, "         {line}");

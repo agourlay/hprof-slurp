@@ -928,7 +928,9 @@ fn render_target_preview(
             preview.total_bytes as usize,
         );
         match kind {
-            PreviewKind::Text { snippet, truncated } => {
+            PreviewKind::Text {
+                snippet, truncated, ..
+            } => {
                 let trimmed: String = snippet.chars().take(140).collect();
                 let suffix = if truncated || snippet.chars().count() > 140 {
                     "..."
@@ -937,7 +939,9 @@ fn render_target_preview(
                 };
                 let _ = writeln!(out, "  preview: {trimmed}{suffix}");
             }
-            PreviewKind::Hex { lines, total_bytes } => {
+            PreviewKind::Hex {
+                lines, total_bytes, ..
+            } => {
                 let _ = writeln!(out, "  preview: (binary, {total_bytes} bytes total)");
                 for line in lines.iter().take(2) {
                     let _ = writeln!(out, "    {line}");
