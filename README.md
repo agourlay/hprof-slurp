@@ -18,7 +18,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines, grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines (v1.3.0), grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -466,6 +466,20 @@ heaptrail --diff-from before.hprof --diff-to after.hprof --json --json-out repor
 
 Details in [USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
 
+## v1.3.0 — playback debugging foundation
+
+v1.3.0 adds focused primitives for media/playback leak investigations:
+
+- `--diff-series <PATH>...` compares 3+ ordered snapshots, prints adjacent
+  step deltas, first-to-last totals, and monotonic growth candidates.
+- `--group-holders` groups referrer rows by owner family, holder class, and
+  field label so Media3/cache holder tables are easier to scan.
+- `--paths-from-id` now surfaces raw root metadata such as thread serial and
+  frame index when thread name/frame records are missing from the dump.
+- `--native-context <PATH>` annotates diff-series text and JSON with bounded
+  Android `dumpsys meminfo` PSS totals for Java heap, native heap, graphics,
+  GL, and total memory.
+
 ## v1.2.0 — Android release-build deobfuscation
 
 v1.2.0 adds first-class R8/ProGuard mapping support for obfuscated Android
@@ -622,7 +636,7 @@ Each tagged release attaches binaries for six targets, no `cargo` needed:
 Download from
 [johnneerdael/heaptrail/releases](https://github.com/johnneerdael/heaptrail/releases),
 extract, and place on your `PATH`. The latest release is
-[heaptrail v1.2.0](https://github.com/johnneerdael/heaptrail/releases/latest).
+[heaptrail v1.3.0](https://github.com/johnneerdael/heaptrail/releases/latest).
 
 (The legacy summary-only binaries from
 [agourlay/hprof-slurp/releases](https://github.com/agourlay/hprof-slurp/releases)

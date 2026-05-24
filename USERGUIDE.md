@@ -5,8 +5,10 @@ Every example below uses real output from a 235 MiB Android dump
 (`heap-phase4-jvm.hprof`, captured from a Modern Home / nexio.tv build) — not
 synthetic data.
 
-> **Need v1.2.0+ for release-build deobfuscation.** v1.2.0 adds
-> `--mapping` and `--auto-mapping` for R8/ProGuard-obfuscated Android heaps.
+> **Need v1.3.0+ for playback/debugging timelines.** v1.3.0 adds
+> `--diff-series`, `--group-holders`, root metadata fallback, and
+> `--native-context`. v1.2.0 adds `--mapping` and `--auto-mapping` for
+> R8/ProGuard-obfuscated Android heaps.
 > v1.1.0 panicked with
 > `class id must have a class definition` on modern Android dumps that
 > reference elided boot-classpath / zygote-shared class ids (common on

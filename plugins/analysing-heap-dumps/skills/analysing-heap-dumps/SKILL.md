@@ -13,7 +13,12 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.2.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.3.0+).
+
+> **v1.3.0 (playback debugging foundation):** use `--diff-series` for 3+
+> ordered snapshots, `--group-holders` to collapse noisy Media3/cache holder
+> tables, `--native-context` to attach `dumpsys meminfo`, and
+> `--paths-from-id` root metadata fallback when thread names/frames are absent.
 
 > **v1.2.0 (Android release-build deobfuscation):** use `--mapping` with the
 > exact R8/ProGuard mapping file for the installed build, or `--auto-mapping`
@@ -71,14 +76,15 @@ command -v cargo >/dev/null 2>&1 || {
 cargo install heaptrail
 
 # Verify
-heaptrail --version    # should report 1.2.0 or newer
+heaptrail --version    # should report 1.3.0 or newer
 ```
 
-If `heaptrail` is found but version is older than `1.2.0`, **upgrade**:
+If `heaptrail` is found but version is older than `1.3.0`, **upgrade**:
 ```bash
 cargo install heaptrail --force
 ```
-Versions older than 1.2.0 lack release-build deobfuscation. Versions
+Versions older than 1.3.0 lack playback diff-series and grouped holder
+summaries. Versions older than 1.2.0 lack release-build deobfuscation. Versions
 0.7–1.1.0 also have the modern-Android
 `class id must have a class definition` panic fixed in 1.1.1 — recommend
 an upgrade whenever a user reports that crash.
@@ -87,11 +93,12 @@ If `~/.cargo/bin` is not on PATH after install, instruct the user to add
 it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
 `~/.zshrc`; fish: `fish_add_path ~/.cargo/bin`).
 
-## The five operating modes
+## Operating modes
 
-`heaptrail` has one default mode (summary) and three opt-in modes
-selected by mutually-exclusive flags. Pick exactly one of:
-`--find-referrers`, `--paths-from-id`, or `--diff-from`/`--diff-to`.
+`heaptrail` has one default mode (summary) and several opt-in modes selected
+by mutually-exclusive flags. Pick exactly one of: `--find-referrers`,
+`--target-glob`, `--paths-from-id`, `--diff-from`/`--diff-to`,
+`--diff-series`, `--allocation-sites`, `--leak-suspects`, or `--bitmaps`.
 
 ### Android release-build deobfuscation
 
@@ -554,11 +561,11 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Reaching for Eclipse MAT first | MAT loads the dump into RAM and is slow on multi-hundred-MB dumps. Use `heaptrail` for triage, MAT only if you need a full dominator tree. |
 | Running `hprof-conv` | Modern Android hprof from `am dumpheap` is already the standard format. `hprof-conv` is only for legacy pre-ART Dalvik dumps. |
 | Stopping at `--hops 1` | Hop 1 reports `Object[][]` for any class held in a collection — uninformative. **Always run with `--hops 2`** for class targets. |
-| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.2.0+ for Android release-build deobfuscation. |
+| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.3.0+ for playback diff-series and 1.2.0+ for Android release-build deobfuscation. |
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
 | Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `heaptrail` accepts and displays dotted. Inner classes: `Outer$Inner`. |
-| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.2.0+, which logs a single warning and continues instead. |
+| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.3.0+, which logs a single warning and continues instead. |
 
 ## Performance reference
 

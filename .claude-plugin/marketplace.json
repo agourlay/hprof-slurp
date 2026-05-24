@@ -12,7 +12,7 @@
       "name": "analysing-heap-dumps",
       "source": "./plugins/analysing-heap-dumps",
       "description": "Investigate .hprof files (Android or JVM heap dumps), deobfuscate Android release heaps with R8 mappings, diagnose memory leaks, find holders, measure GC churn, or chase OutOfMemoryError. Wraps heaptrail with auto-install instructions.",
-      "version": "1.2.0"
+      "version": "1.3.0"
     }
   ]
 }
