@@ -50,6 +50,19 @@ pub struct ResolvedFrame {
 
 /// Pointer recorded when the indexer sees a thread-owned GC root. Used by
 /// `paths::run` to resolve the chain terminator's thread name + top frame.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct RootMetadata {
+    pub object_id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_serial: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack_trace_serial: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_index: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_object_id: Option<u64>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ThreadFrameRef {
     pub thread_serial: u32,
@@ -103,6 +116,7 @@ pub struct Pass1Index {
     /// `paths` walker doesn't need to re-scan to find which thread owns a
     /// terminating root.
     pub root_thread_meta_by_id: AHashMap<u64, ThreadFrameRef>,
+    pub root_metadata_by_id: AHashMap<u64, RootMetadata>,
     pub id_size: u32,
     // ---- v1.1.0 derivations (populated post-build by reference_classes::derive) ----
     /// Transitive subclasses of `java.lang.ref.{Soft,Weak,Phantom}Reference`.
@@ -648,10 +662,21 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
             GcRecord::RootJniGlobal { object_id, .. } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootJniGlobal");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootJniLocal {
                 object_id,
                 thread_serial_number,
+                frame_number_in_stack_trace,
                 ..
             } => {
                 idx.gc_root_ids.insert(object_id);
@@ -661,6 +686,16 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
                     ThreadFrameRef {
                         thread_serial: thread_serial_number,
                         frame_idx: None,
+                    },
+                );
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: Some(thread_serial_number),
+                        stack_trace_serial: None,
+                        frame_index: Some(frame_number_in_stack_trace),
+                        thread_object_id: None,
                     },
                 );
             }
@@ -678,60 +713,189 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
                         frame_idx: Some(frame_number_in_stack_trace),
                     },
                 );
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: Some(thread_serial_number),
+                        stack_trace_serial: None,
+                        frame_index: Some(frame_number_in_stack_trace),
+                        thread_object_id: None,
+                    },
+                );
             }
-            GcRecord::RootNativeStack { object_id, .. } => {
+            GcRecord::RootNativeStack {
+                object_id,
+                thread_serial_number,
+            } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootNativeStack");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: Some(thread_serial_number),
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootStickyClass { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootStickyClass");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
-            GcRecord::RootThreadBlock { object_id, .. } => {
+            GcRecord::RootThreadBlock {
+                object_id,
+                thread_serial_number,
+            } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootThreadBlock");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: Some(thread_serial_number),
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootMonitorUsed { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootMonitorUsed");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootUnknown { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootUnknown");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootThreadObject {
-                thread_object_id, ..
+                thread_object_id,
+                thread_sequence_number,
+                stack_sequence_number,
             } => {
                 idx.gc_root_ids.insert(thread_object_id);
                 idx.gc_root_kind_by_id
                     .insert(thread_object_id, "RootThreadObject");
+                idx.root_metadata_by_id.insert(
+                    thread_object_id,
+                    RootMetadata {
+                        object_id: thread_object_id,
+                        thread_serial: Some(thread_sequence_number),
+                        stack_trace_serial: Some(stack_sequence_number),
+                        frame_index: None,
+                        thread_object_id: Some(thread_object_id),
+                    },
+                );
             }
             // Android HPROF 1.0.3 extension roots
             GcRecord::RootInternedString { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id
                     .insert(object_id, "RootInternedString");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootFinalizing { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootFinalizing");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootDebugger { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootDebugger");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootReferenceCleanup { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id
                     .insert(object_id, "RootReferenceCleanup");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootVmInternal { object_id } => {
                 idx.gc_root_ids.insert(object_id);
                 idx.gc_root_kind_by_id.insert(object_id, "RootVmInternal");
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: None,
+                        stack_trace_serial: None,
+                        frame_index: None,
+                        thread_object_id: None,
+                    },
+                );
             }
             GcRecord::RootJniMonitor {
                 object_id,
                 thread_serial_number,
+                stack_depth,
                 ..
             } => {
                 idx.gc_root_ids.insert(object_id);
@@ -741,6 +905,16 @@ pub(crate) fn pass1_index(path: &str, debug: bool) -> Result<Pass1Index, HprofSl
                     ThreadFrameRef {
                         thread_serial: thread_serial_number,
                         frame_idx: None,
+                    },
+                );
+                idx.root_metadata_by_id.insert(
+                    object_id,
+                    RootMetadata {
+                        object_id,
+                        thread_serial: Some(thread_serial_number),
+                        stack_trace_serial: None,
+                        frame_index: Some(stack_depth),
+                        thread_object_id: None,
                     },
                 );
             }

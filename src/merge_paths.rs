@@ -242,6 +242,7 @@ mod tests {
             root_kind: None,
             root_thread_name: None,
             root_frame: None,
+            root_metadata: None,
             max_depth_reached: false,
             depth: 0,
             array_previews: ahash::AHashMap::new(),

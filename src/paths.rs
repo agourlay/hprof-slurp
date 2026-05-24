@@ -43,6 +43,8 @@ pub struct PathResult {
     pub root_thread_name: Option<String>,
     /// Top frame at the terminator (only for `RootJavaFrame`).
     pub root_frame: Option<crate::referrer::ResolvedFrame>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_metadata: Option<crate::referrer::RootMetadata>,
     pub max_depth_reached: bool,
     pub depth: u8,
     /// Preview bodies (when --preview-bytes > 0) keyed by object_id.
@@ -111,12 +113,14 @@ pub fn compute_path_for_object(inp: &PathWalkInputs) -> Result<PathResult, Hprof
     let mut root_kind: Option<&'static str> = None;
     let mut root_thread_name: Option<String> = None;
     let mut root_frame: Option<crate::referrer::ResolvedFrame> = None;
+    let mut root_metadata: Option<crate::referrer::RootMetadata> = None;
     let mut terminated_by_soft_weak: Option<()> = None;
 
     loop {
         if let Some(kind) = idx.gc_root_kind_by_id.get(&current).copied() {
             terminated_at_root = true;
             root_kind = Some(kind);
+            root_metadata = idx.root_metadata_by_id.get(&current).copied();
             let meta = idx
                 .root_thread_meta_by_id
                 .get(&current)
@@ -178,6 +182,7 @@ pub fn compute_path_for_object(inp: &PathWalkInputs) -> Result<PathResult, Hprof
         root_kind,
         root_thread_name,
         root_frame,
+        root_metadata,
         max_depth_reached,
         depth,
         array_previews: ahash::AHashMap::new(),
@@ -459,7 +464,25 @@ pub fn render_text(r: &PathResult) -> String {
         ) {
             // Thread root, but no metadata — be explicit so users know it's
             // a dump-content gap, not a heaptrail bug.
-            let _ = writeln!(out, "        (thread metadata not in dump)");
+            if let Some(meta) = r.root_metadata {
+                let _ = write!(out, "        root metadata:");
+                if let Some(thread_serial) = meta.thread_serial {
+                    let _ = write!(out, " thread_serial={thread_serial}");
+                }
+                if let Some(stack_trace_serial) = meta.stack_trace_serial {
+                    let _ = write!(out, " stack_trace_serial={stack_trace_serial}");
+                }
+                if let Some(frame_index) = meta.frame_index {
+                    let _ = write!(out, " frame_index={frame_index}");
+                }
+                if let Some(thread_object_id) = meta.thread_object_id {
+                    let _ = write!(out, " thread_object_id={thread_object_id}");
+                }
+                let _ = writeln!(out);
+                let _ = writeln!(out, "        (thread name/frame metadata not in dump)");
+            } else {
+                let _ = writeln!(out, "        (thread metadata not in dump)");
+            }
         }
         if let Some(f) = &r.root_frame {
             let qualified = match &f.class {
@@ -555,6 +578,7 @@ mod tests {
             root_kind: None,
             root_thread_name: None,
             root_frame: None,
+            root_metadata: None,
             max_depth_reached: false,
             depth: 0,
             array_previews: previews,
@@ -589,6 +613,7 @@ mod tests {
             root_kind: None,
             root_thread_name: None,
             root_frame: None,
+            root_metadata: None,
             max_depth_reached: true,
             depth: 1,
             array_previews: ahash::AHashMap::new(),
@@ -616,6 +641,7 @@ mod tests {
                 file: Some("SharedPreferencesImpl.java".to_string()),
                 line: 478,
             }),
+            root_metadata: None,
             max_depth_reached: false,
             depth: 0,
             array_previews: ahash::AHashMap::new(),
@@ -650,6 +676,7 @@ mod tests {
             root_kind: None,
             root_thread_name: None,
             root_frame: None,
+            root_metadata: None,
             max_depth_reached: false,
             depth: 1,
             array_previews: ahash::AHashMap::new(),
@@ -672,6 +699,7 @@ mod tests {
             root_kind: Some("RootJavaFrame"),
             root_thread_name: None,
             root_frame: None,
+            root_metadata: None,
             max_depth_reached: false,
             depth: 0,
             array_previews: ahash::AHashMap::new(),
@@ -682,6 +710,40 @@ mod tests {
         assert!(
             out.contains("(thread metadata not in dump)"),
             "expected gap line, got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn render_text_shows_root_metadata_when_thread_name_missing() {
+        let r = PathResult {
+            start_object_id: 100,
+            steps: vec![],
+            terminated_at_root: true,
+            root_kind: Some("RootJavaFrame"),
+            root_thread_name: None,
+            root_frame: None,
+            root_metadata: Some(crate::referrer::RootMetadata {
+                object_id: 100,
+                thread_serial: Some(7),
+                stack_trace_serial: Some(9),
+                frame_index: Some(2),
+                thread_object_id: None,
+            }),
+            max_depth_reached: false,
+            depth: 0,
+            array_previews: ahash::AHashMap::new(),
+            retained_by_oid: None,
+            terminated_by_soft_weak: None,
+        };
+
+        let out = render_text(&r);
+
+        assert!(out.contains("thread_serial=7"), "got:\n{out}");
+        assert!(out.contains("stack_trace_serial=9"), "got:\n{out}");
+        assert!(out.contains("frame_index=2"), "got:\n{out}");
+        assert!(
+            out.contains("thread name/frame metadata not in dump"),
+            "got:\n{out}"
         );
     }
 
