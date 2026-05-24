@@ -88,6 +88,7 @@ pub fn run_with_runner<R: CommandRunner>(
 
     let timestamp = Utc::now().format("%Y%m%d-%H%M%S").to_string();
     let base_name = format!("{}-{}.hprof", sanitize_package(&options.package), timestamp);
+    let device_hprof = format!("/data/local/tmp/{base_name}");
     let local_hprof = options.out_dir.join(&base_name);
     let transcript_path = options.out_dir.join(format!(
         "{}-{}-transcript.txt",
@@ -95,14 +96,78 @@ pub fn run_with_runner<R: CommandRunner>(
         timestamp
     ));
 
+    if options.foreground {
+        adb_checked(
+            &options.serial,
+            runner,
+            &["shell", "monkey", "-p", &options.package, "1"],
+            &mut transcript,
+        )?;
+    }
+
+    let focus_output = adb_checked(
+        &options.serial,
+        runner,
+        &["shell", "dumpsys", "window"],
+        &mut transcript,
+    )?;
+    let foreground_evidence = extract_focus_lines(&focus_output.stdout);
+
+    if options.allocation_sites {
+        adb_checked(
+            &options.serial,
+            runner,
+            &[
+                "shell",
+                "am",
+                "profile",
+                "start",
+                &pid,
+                "/data/local/tmp/heaptrail-alloc.trace",
+            ],
+            &mut transcript,
+        )?;
+    }
+
+    adb_checked(
+        &options.serial,
+        runner,
+        &["shell", "am", "dumpheap", &pid, &device_hprof],
+        &mut transcript,
+    )?;
+    adb_checked(
+        &options.serial,
+        runner,
+        &["pull", &device_hprof, local_hprof.to_string_lossy().as_ref()],
+        &mut transcript,
+    )?;
+
+    let dump_size_bytes = std::fs::metadata(&local_hprof)?.len();
+    if dump_size_bytes == 0 {
+        write_transcript(
+            &transcript_path,
+            &options,
+            &pid,
+            &foreground_evidence,
+            &local_hprof,
+            dump_size_bytes,
+            false,
+            &transcript,
+        )?;
+        return Err(HprofSlurpError::AndroidCapture {
+            message: format!("captured hprof is 0 bytes: {}", local_hprof.display()),
+        });
+    }
+
+    let allocation_sites_present = allocation_sites_present(&local_hprof)?;
     write_transcript(
         &transcript_path,
         &options,
         &pid,
-        "",
+        &foreground_evidence,
         &local_hprof,
-        0,
-        false,
+        dump_size_bytes,
+        allocation_sites_present,
         &transcript,
     )?;
 
@@ -114,8 +179,8 @@ pub fn run_with_runner<R: CommandRunner>(
         allocation_sites_requested: options.allocation_sites,
         local_hprof,
         transcript: transcript_path,
-        dump_size_bytes: 0,
-        allocation_sites_present: false,
+        dump_size_bytes,
+        allocation_sites_present,
     })
 }
 
@@ -165,6 +230,31 @@ fn sanitize_package(package: &str) -> String {
             }
         })
         .collect()
+}
+
+fn extract_focus_lines(dumpsys_window: &str) -> String {
+    dumpsys_window
+        .lines()
+        .filter(|line| {
+            line.contains("mCurrentFocus")
+                || line.contains("mFocusedApp")
+                || line.contains("topResumedActivity")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn allocation_sites_present(path: &Path) -> Result<bool, HprofSlurpError> {
+    let rendered = crate::slurp::slurp_file_with_modes(
+        path.to_string_lossy().as_ref(),
+        false,
+        false,
+        0,
+        1024,
+        false,
+        false,
+    )?;
+    Ok(!rendered.allocation_sites.is_empty() || rendered.allocation_sites_record_count > 0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -227,6 +317,7 @@ mod tests {
     struct FakeRunner {
         calls: Vec<Vec<String>>,
         outputs: VecDeque<CommandOutput>,
+        on_pull_write: Option<Vec<u8>>,
     }
 
     impl FakeRunner {
@@ -246,6 +337,12 @@ mod tests {
             args: &[String],
         ) -> Result<CommandOutput, HprofSlurpError> {
             self.calls.push(args.to_vec());
+            if args.iter().any(|arg| arg == "pull")
+                && let Some(bytes) = self.on_pull_write.take()
+            {
+                let dest = args.last().expect("pull destination");
+                std::fs::write(dest, bytes)?;
+            }
             Ok(self.outputs.pop_front().expect("missing fake output"))
         }
     }
@@ -280,5 +377,129 @@ mod tests {
             }
             other => panic!("expected AdbCommandFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn successful_capture_pulls_nonzero_dump_and_writes_transcript() {
+        let dir = std::env::temp_dir().join(format!(
+            "heaptrail-capture-success-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut runner = FakeRunner::default();
+        runner.push(0, "1234\n", "");
+        runner.push(
+            0,
+            "mCurrentFocus=Window{ com.example.app/.MainActivity }\n",
+            "",
+        );
+        runner.push(0, "", "");
+        runner.push(0, "", "");
+
+        let fixture = std::fs::read("test-heap-dumps/hprof-64.bin").unwrap();
+        runner.on_pull_write = Some(fixture);
+
+        let report = run_with_runner(
+            CaptureOptions {
+                serial: Some("device-1".to_string()),
+                package: "com.example.app".to_string(),
+                out_dir: dir.clone(),
+                allocation_sites: false,
+                foreground: false,
+            },
+            &mut runner,
+        )
+        .unwrap();
+
+        assert_eq!(report.pid, "1234");
+        assert!(report.dump_size_bytes > 0);
+        assert!(report.local_hprof.is_file());
+        assert!(report.transcript.is_file());
+        let transcript = std::fs::read_to_string(report.transcript).unwrap();
+        assert!(transcript.contains("mCurrentFocus"));
+        assert!(transcript.contains("allocation_sites_present: false"));
+    }
+
+    #[test]
+    fn zero_byte_capture_fails_with_transcript() {
+        let dir = std::env::temp_dir().join(format!(
+            "heaptrail-capture-zero-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut runner = FakeRunner::default();
+        runner.push(0, "1234\n", "");
+        runner.push(
+            0,
+            "mFocusedApp=ActivityRecord{ com.example.app/.MainActivity }\n",
+            "",
+        );
+        runner.push(0, "", "");
+        runner.push(0, "", "");
+        runner.on_pull_write = Some(Vec::new());
+
+        let err = run_with_runner(
+            CaptureOptions {
+                serial: None,
+                package: "com.example.app".to_string(),
+                out_dir: dir,
+                allocation_sites: false,
+                foreground: false,
+            },
+            &mut runner,
+        )
+        .unwrap_err();
+
+        match err {
+            HprofSlurpError::AndroidCapture { message } => {
+                assert!(message.contains("0 bytes"), "got: {message}");
+            }
+            other => panic!("expected AndroidCapture, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn foreground_and_allocation_tracking_commands_are_recorded() {
+        let dir = std::env::temp_dir().join(format!(
+            "heaptrail-capture-alloc-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut runner = FakeRunner::default();
+        runner.push(0, "1234\n", "");
+        runner.push(0, "", "");
+        runner.push(0, "topResumedActivity=com.example.app/.MainActivity\n", "");
+        runner.push(0, "", "");
+        runner.push(0, "", "");
+        runner.push(0, "", "");
+        runner.on_pull_write = Some(std::fs::read("test-heap-dumps/hprof-64.bin").unwrap());
+
+        let _ = run_with_runner(
+            CaptureOptions {
+                serial: None,
+                package: "com.example.app".to_string(),
+                out_dir: dir,
+                allocation_sites: true,
+                foreground: true,
+            },
+            &mut runner,
+        )
+        .unwrap();
+
+        let calls = runner
+            .calls
+            .iter()
+            .map(|args| args.join(" "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(calls.contains("shell monkey -p com.example.app 1"), "{calls}");
+        assert!(
+            calls.contains("shell am profile start 1234 /data/local/tmp/heaptrail-alloc.trace"),
+            "{calls}"
+        );
+        assert!(
+            calls.contains("shell am dumpheap 1234 /data/local/tmp/"),
+            "{calls}"
+        );
     }
 }
