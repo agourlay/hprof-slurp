@@ -91,29 +91,36 @@ pub fn find_local_mapping(
             });
         }
     }
-    match matches.len() {
+    let mut existing_matches = matches
+        .into_iter()
+        .filter(|found| found.mapping_path.is_file())
+        .collect::<Vec<_>>();
+    match existing_matches.len() {
         0 => Err(discovery_err(
-            "no Gradle output metadata matched installed app version",
+            "no Gradle output metadata matched installed app version with an existing mapping file",
         )),
-        1 => {
-            let found = matches.remove(0);
-            if !found.mapping_path.is_file() {
-                return Err(discovery_err(&format!(
-                    "matched {} but expected mapping file is missing: {}",
-                    found.metadata_path.display(),
-                    found.mapping_path.display()
-                )));
-            }
-            Ok(found)
-        }
-        _ => Err(discovery_err(&format!(
-            "multiple Gradle outputs matched installed app version; use --mapping explicitly: {}",
-            matches
+        1 => Ok(existing_matches.remove(0)),
+        _ => {
+            let universal_matches = existing_matches
                 .iter()
-                .map(|m| m.mapping_path.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ))),
+                .filter(|m| m.variant_name.to_ascii_lowercase().contains("universal"))
+                .collect::<Vec<_>>();
+            if universal_matches.len() == 1 {
+                let universal = universal_matches[0].mapping_path.clone();
+                return Ok(existing_matches
+                    .into_iter()
+                    .find(|m| m.mapping_path == universal)
+                    .expect("selected universal mapping exists in matches"));
+            }
+            Err(discovery_err(&format!(
+                "multiple Gradle outputs matched installed app version; use --mapping explicitly: {}",
+                existing_matches
+                    .iter()
+                    .map(|m| m.mapping_path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )))
+        }
     }
 }
 
@@ -209,6 +216,58 @@ Packages:
             }"#,
         )
         .unwrap();
+
+        let result = find_local_mapping(
+            &root,
+            "com.nexio.tv",
+            &DeviceVersion {
+                version_code: 77,
+                version_name: "0.59".to_string(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.variant_name, "universalRelease");
+        assert!(
+            result
+                .mapping_path
+                .ends_with("app/build/outputs/mapping/universalRelease/mapping.txt")
+        );
+    }
+
+    #[test]
+    fn prefers_universal_mapping_when_multiple_outputs_match() {
+        let root = std::env::temp_dir().join(format!(
+            "heaptrail-discovery-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        for (apk_variant, mapping_variant) in [
+            ("armv7/release", "armv7Release"),
+            ("universal/release", "universalRelease"),
+        ] {
+            let apk_dir = root.join("app/build/outputs/apk").join(apk_variant);
+            let mapping_dir = root.join("app/build/outputs/mapping").join(mapping_variant);
+            std::fs::create_dir_all(&apk_dir).unwrap();
+            std::fs::create_dir_all(&mapping_dir).unwrap();
+            std::fs::write(
+                mapping_dir.join("mapping.txt"),
+                format!("com.example.{mapping_variant} -> a.b:\n"),
+            )
+            .unwrap();
+            std::fs::write(
+                apk_dir.join("output-metadata.json"),
+                format!(
+                    r#"{{
+                      "applicationId": "com.nexio.tv",
+                      "variantName": "{mapping_variant}",
+                      "elements": [
+                        {{"versionCode": 77, "versionName": "0.59", "outputFile": "nexio-release.apk"}}
+                      ]
+                    }}"#
+                ),
+            )
+            .unwrap();
+        }
 
         let result = find_local_mapping(
             &root,
