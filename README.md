@@ -378,10 +378,22 @@ Android heaps but are invisible to the class-name view — a 12 MiB
 Handles both pre-O Java-heap pixel data (via `mBuffer`) and O+
 native pixel data (sized via `width × height × bpp`).
 
+If `android.graphics.Bitmap` is not loaded in the dump, heaptrail exits with an
+actionable message instead of implying the dump is not Android. This can happen
+on Android screens that have not used Bitmap-backed images.
+
 ### `--json` — structured output for scripts
 
-Append `--json` to any mode for a machine-parseable sidecar. Details in
-[USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
+Append `--json` to any mode for a machine-parseable sidecar. By default,
+heaptrail keeps its existing generated filename behavior. For stable CI or
+agent artifacts, add `--json-out <path>`:
+
+```bash
+heaptrail -i my.hprof --leak-suspects --exclude-soft-weak --json --json-out reports/leaks.json
+heaptrail --diff-from before.hprof --diff-to after.hprof --json --json-out reports/diff.json
+```
+
+Details in [USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
 
 ## v1.1.1 — modern Android dump robustness
 

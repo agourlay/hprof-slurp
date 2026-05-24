@@ -868,6 +868,10 @@ by pixel size with location (Java-heap or native).
 heaptrail -i my.hprof --bitmaps -t 20
 ```
 
+If `android.graphics.Bitmap` is not loaded in the dump, heaptrail exits with an
+actionable message instead of implying the dump is not Android. This can happen
+on Android screens that have not used Bitmap-backed images.
+
 Output:
 
 ```
@@ -1148,17 +1152,30 @@ This is also the way to feed the data into `jq`, dashboards, or CI gates:
 
 ```bash
 heaptrail -i heap.hprof --json -t 5
-jq '.top_allocated_classes[0]' heaptrail.json
+jq '.top_allocated_classes[0]' heaptrail-<ts>.json
 ```
+
+For stable automation paths, pass `--json-out <path>` with `--json`:
+
+```bash
+heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak --json --json-out reports/leaks.json
+heaptrail --diff-from before.hprof --diff-to after.hprof --json --json-out reports/diff.json
+```
+
+`--json-out` requires `--json`. Parent directories must already exist; heaptrail
+reports the normal file-creation error if they do not.
 
 JSON file naming:
 
 | Mode | Filename |
 |------|----------|
-| summary | `heaptrail.json` (overwritten each run) |
+| summary | `heaptrail-<ts>.json` |
 | `--find-referrers` | `heaptrail-referrers-<ts>.json` (timestamped) |
 | `--paths-from-id` | `heaptrail-paths-<ts>.json` |
 | `--diff-from`/`--diff-to` | `heaptrail-diff-<ts>.json` |
+
+When `--json-out <path>` is present, all modes write exactly that path instead
+of the generated filename.
 
 ---
 
