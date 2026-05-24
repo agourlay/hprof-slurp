@@ -4,7 +4,9 @@ use std::cmp::Reverse;
 
 use crate::args::DiffSort;
 use crate::diff::DiffEntry;
+use crate::errors::HprofSlurpError;
 use crate::rendered_result::ClassAllocationStats;
+use crate::utils::pretty_bytes_size;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct SeriesSnapshot {
@@ -124,6 +126,101 @@ pub fn compute_from_rollups(
     }
 }
 
+pub fn run(inputs: &[String], by: DiffSort) -> Result<DiffSeriesReport, HprofSlurpError> {
+    let mut rollups = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let result = crate::slurp::slurp_file(input, false, false)?;
+        rollups.push(result.memory_usage);
+    }
+    Ok(compute_from_rollups(inputs, &rollups, by))
+}
+
+pub fn symbolicate_report(
+    report: &mut DiffSeriesReport,
+    symbolicator: &crate::mapping::Symbolicator,
+) {
+    for row in &mut report.classes {
+        symbolicate_row(row, symbolicator);
+    }
+    for row in &mut report.monotonic_growth {
+        symbolicate_row(row, symbolicator);
+    }
+    for step in &mut report.steps {
+        crate::diff::symbolicate_entries(&mut step.deltas, symbolicator);
+    }
+}
+
+fn symbolicate_row(row: &mut SeriesClassRow, symbolicator: &crate::mapping::Symbolicator) {
+    let mapped = symbolicator.class_name(&row.class_name);
+    if mapped != row.class_name {
+        row.obfuscated_class_name = Some(row.class_name.clone());
+        row.class_name = mapped;
+    }
+}
+
+pub fn render_text(report: &DiffSeriesReport, top: usize, by: DiffSort) -> String {
+    use std::fmt::Write;
+
+    let mut out = String::new();
+    let _ = writeln!(out, "\nDiff series snapshots:");
+    for snapshot in &report.snapshots {
+        let _ = writeln!(
+            out,
+            "  [{}] {} - {} classes, {} shallow",
+            snapshot.index,
+            snapshot.path,
+            snapshot.class_count,
+            pretty_bytes_size(snapshot.total_shallow_bytes)
+        );
+    }
+
+    for step in &report.steps {
+        let _ = writeln!(
+            out,
+            "\nStep {} -> {} top {} deltas:",
+            step.from_index, step.to_index, top
+        );
+        let limited = step.deltas.iter().take(top).cloned().collect::<Vec<_>>();
+        out.push_str(&crate::diff::render_text(&limited));
+    }
+
+    let _ = writeln!(out, "\nTotal first -> last top {top} deltas:");
+    for row in report.classes.iter().take(top) {
+        render_series_row(&mut out, row, by);
+    }
+
+    let _ = writeln!(out, "\nMonotonic growth candidates (top {top}):");
+    if report.monotonic_growth.is_empty() {
+        let _ = writeln!(out, "  none");
+    } else {
+        for row in report.monotonic_growth.iter().take(top) {
+            render_series_row(&mut out, row, by);
+        }
+    }
+    out
+}
+
+fn render_series_row(out: &mut String, row: &SeriesClassRow, by: DiffSort) {
+    use std::fmt::Write;
+
+    match by {
+        DiffSort::Count => {
+            let _ = writeln!(
+                out,
+                "  {:+10} count  {:>10} bytes  {}",
+                row.total_delta_count, row.total_delta_bytes, row.class_name
+            );
+        }
+        DiffSort::Bytes => {
+            let _ = writeln!(
+                out,
+                "  {:+10} bytes  {:>10} count  {}",
+                row.total_delta_bytes, row.total_delta_count, row.class_name
+            );
+        }
+    }
+}
+
 fn is_monotonic_growth(row: &SeriesClassRow, by: DiffSort) -> bool {
     let values = match by {
         DiffSort::Count => &row.counts,
@@ -135,8 +232,12 @@ fn is_monotonic_growth(row: &SeriesClassRow, by: DiffSort) -> bool {
 
 fn sort_class_rows(rows: &mut [SeriesClassRow], by: DiffSort) {
     match by {
-        DiffSort::Count => rows.sort_by_key(|r| Reverse(r.total_delta_count)),
-        DiffSort::Bytes => rows.sort_by_key(|r| Reverse(r.total_delta_bytes)),
+        DiffSort::Count => {
+            rows.sort_by_key(|r| (Reverse(r.total_delta_count), r.class_name.clone()));
+        }
+        DiffSort::Bytes => {
+            rows.sort_by_key(|r| (Reverse(r.total_delta_bytes), r.class_name.clone()));
+        }
     }
 }
 

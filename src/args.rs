@@ -41,6 +41,10 @@ pub struct Cli {
     #[arg(long = "json-out", value_name = "PATH", requires = "json")]
     pub json_out: Option<String>,
 
+    /// Optional Android dumpsys meminfo text to annotate diff-series reports.
+    #[arg(long = "native-context", value_name = "PATH")]
+    pub native_context: Option<String>,
+
     /// R8/ProGuard mapping file used to deobfuscate class and holder field names.
     #[arg(long = "mapping", value_name = "PATH", conflicts_with = "auto_mapping")]
     pub mapping: Option<String>,
@@ -119,6 +123,10 @@ pub struct Cli {
     /// Comparison (newer) hprof for diff.
     #[arg(long = "diff-to", value_name = "PATH")]
     pub diff_to: Option<String>,
+
+    /// Ordered HProf snapshots for series diff. Requires at least 3 files.
+    #[arg(long = "diff-series", value_name = "PATH", num_args = 1..)]
+    pub diff_series: Vec<String>,
 
     /// Diff sort key (count = delta instances, bytes = delta shallow size).
     #[arg(long = "diff-by", default_value = "count")]
@@ -289,6 +297,15 @@ pub enum Mode {
         json_out: Option<String>,
         mapping: MappingOptions,
     },
+    DiffSeries {
+        inputs: Vec<String>,
+        by: DiffSort,
+        top: usize,
+        json: bool,
+        json_out: Option<String>,
+        mapping: MappingOptions,
+        native_context: Option<String>,
+    },
     AllocationSites {
         input_file: String,
         top: usize,
@@ -355,6 +372,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     let referrers_set = cli.find_referrers.is_some() || cli.target_glob.is_some();
     let paths_set = cli.paths_from_id.is_some();
     let diff_set = cli.diff_from.is_some() || cli.diff_to.is_some();
+    let diff_series_set = !cli.diff_series.is_empty();
     let alloc_sites_set = cli.allocation_sites;
     let leak_suspects_set = cli.leak_suspects.is_some();
     let bitmaps_set = cli.bitmaps;
@@ -363,6 +381,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         referrers_set,
         paths_set,
         diff_set,
+        diff_series_set,
         alloc_sites_set,
         leak_suspects_set,
         bitmaps_set,
@@ -372,6 +391,26 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     .count();
     if mode_count > 1 {
         return Err(ConflictingModes);
+    }
+
+    if diff_series_set {
+        if cli.diff_series.len() < 3 {
+            return Err(HprofSlurpError::InvalidHprofFile {
+                message: "--diff-series requires at least 3 HProf files".to_string(),
+            });
+        }
+        for input in &cli.diff_series {
+            check_file(input)?;
+        }
+        return Ok(Mode::DiffSeries {
+            inputs: cli.diff_series,
+            by: cli.diff_by,
+            top: cli.top,
+            json: cli.json,
+            json_out: cli.json_out.clone(),
+            mapping: mapping.clone(),
+            native_context: cli.native_context.clone(),
+        });
     }
 
     if diff_set {
@@ -761,6 +800,59 @@ mod args_tests {
         assert_eq!(cli.diff_from.as_deref(), Some("a.hprof"));
         assert_eq!(cli.diff_to.as_deref(), Some("b.hprof"));
         assert_eq!(cli.diff_by, DiffSort::Bytes);
+    }
+
+    #[test]
+    fn parses_diff_series_mode() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "--diff-series",
+            "launch.hprof",
+            "play.hprof",
+            "soak.hprof",
+            "--diff-by",
+            "bytes",
+            "--json",
+            "--json-out",
+            "reports/series.json",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            cli.diff_series,
+            vec!["launch.hprof", "play.hprof", "soak.hprof"]
+        );
+        assert_eq!(cli.diff_by, DiffSort::Bytes);
+        assert_eq!(cli.json_out.as_deref(), Some("reports/series.json"));
+    }
+
+    #[test]
+    fn parses_native_context_for_diff_series() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "--diff-series",
+            "a.hprof",
+            "b.hprof",
+            "c.hprof",
+            "--native-context",
+            "meminfo.txt",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.native_context.as_deref(), Some("meminfo.txt"));
+    }
+
+    #[test]
+    fn diff_series_requires_three_inputs() {
+        let cli =
+            Cli::try_parse_from(["heaptrail", "--diff-series", "a.hprof", "b.hprof"]).unwrap();
+        let err = resolve(cli).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("--diff-series requires at least 3 HProf files"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

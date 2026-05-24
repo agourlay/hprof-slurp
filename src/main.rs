@@ -76,6 +76,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
         mode @ Mode::FindReferrers { .. } => run_find_referrers(mode, now),
         mode @ Mode::Paths { .. } => run_paths(mode, now),
         mode @ Mode::Diff { .. } => run_diff(mode, now),
+        mode @ Mode::DiffSeries { .. } => run_diff_series(mode, now),
         mode @ Mode::AllocationSites { .. } => run_allocation_sites(mode, now),
         mode @ Mode::LeakSuspects { .. } => run_leak_suspects(mode, now),
         mode @ Mode::Bitmaps { .. } => run_bitmaps(mode, now),
@@ -125,6 +126,7 @@ fn resolve_mapping_for_mode(mode: &Mode) -> Result<Option<ResolvedMapping>, Hpro
         | Mode::FindReferrers { mapping, .. }
         | Mode::Paths { mapping, .. }
         | Mode::Diff { mapping, .. }
+        | Mode::DiffSeries { mapping, .. }
         | Mode::AllocationSites { mapping, .. }
         | Mode::LeakSuspects { mapping, .. }
         | Mode::Bitmaps { mapping, .. } => crate::mapping::resolve_mapping(mapping),
@@ -160,6 +162,12 @@ fn validate_mode_inputs(mode: &Mode) -> Result<(), HprofSlurpError> {
             validate_hprof_input(from)?;
             validate_hprof_input(to)
         }
+        Mode::DiffSeries { inputs, .. } => {
+            for input in inputs {
+                validate_hprof_input(input)?;
+            }
+            Ok(())
+        }
         Mode::AndroidCapture { .. } => Ok(()),
     }
 }
@@ -172,7 +180,7 @@ fn mode_hprof_label(mode: &Mode) -> &str {
         | Mode::AllocationSites { input_file, .. }
         | Mode::LeakSuspects { input_file, .. }
         | Mode::Bitmaps { input_file, .. } => input_file.as_str(),
-        Mode::Diff { .. } => "diff input",
+        Mode::Diff { .. } | Mode::DiffSeries { .. } => "diff input",
         Mode::AndroidCapture { .. } => "android capture",
     }
 }
@@ -314,6 +322,41 @@ fn run_diff(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
         write_json_file(&entries, json_out, "heaptrail-diff")?;
     }
     print!("{}", diff::render_text(&entries));
+    println!("\nFile successfully processed in {:?}", started.elapsed());
+    Ok(())
+}
+
+fn run_diff_series(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
+    let (inputs, by, top, json, json_out, _native_context) = match &mode {
+        Mode::DiffSeries {
+            inputs,
+            by,
+            top,
+            json,
+            json_out,
+            native_context,
+            ..
+        } => (
+            inputs.clone(),
+            *by,
+            *top,
+            *json,
+            json_out.as_deref(),
+            native_context.as_deref(),
+        ),
+        _ => unreachable!(),
+    };
+    validate_mode_inputs(&mode)?;
+    let resolved_mapping = resolve_mapping_for_mode(&mode)?;
+    print_mapping_notice(resolved_mapping.as_ref());
+    let mut report = with_hprof_context("diff series input", series_diff::run(&inputs, by))?;
+    if let Some(mapping) = resolved_mapping.as_ref() {
+        series_diff::symbolicate_report(&mut report, &mapping.symbolicator);
+    }
+    if json {
+        write_json_file(&report, json_out, "heaptrail-diff-series")?;
+    }
+    print!("{}", series_diff::render_text(&report, top, by));
     println!("\nFile successfully processed in {:?}", started.elapsed());
     Ok(())
 }
