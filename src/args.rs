@@ -212,6 +212,18 @@ pub struct AndroidCaptureArgs {
     #[arg(long = "foreground", default_value_t = false)]
     pub foreground: bool,
 
+    /// Number of validated HProf captures to collect for a diff-series run.
+    #[arg(long = "series", value_name = "COUNT", default_value_t = 1)]
+    pub series: usize,
+
+    /// Seconds to wait between captures when --series is greater than 1.
+    #[arg(
+        long = "series-delay-seconds",
+        value_name = "SECONDS",
+        default_value_t = 0
+    )]
+    pub series_delay_seconds: u64,
+
     /// Discover the matching R8 mapping from a local Android Gradle project.
     #[arg(long = "auto-mapping", value_name = "MODE", num_args = 0..=1, default_missing_value = "strict")]
     pub auto_mapping: Option<AutoMappingMode>,
@@ -344,6 +356,8 @@ pub enum Mode {
         out_dir: String,
         allocation_sites: bool,
         foreground: bool,
+        series: usize,
+        series_delay_seconds: u64,
         auto_mapping: Option<AutoMappingMode>,
         project_root: Option<String>,
     },
@@ -360,15 +374,24 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
 
     if let Some(command) = cli.command {
         return match command {
-            Command::AndroidCapture(args) => Ok(Mode::AndroidCapture {
-                serial: args.serial,
-                package: args.package,
-                out_dir: args.out,
-                allocation_sites: args.allocation_sites,
-                foreground: args.foreground,
-                auto_mapping: args.auto_mapping,
-                project_root: args.project_root,
-            }),
+            Command::AndroidCapture(args) => {
+                if args.series == 0 || args.series == 2 {
+                    return Err(HprofSlurpError::AndroidCapture {
+                        message: "--series must be 1 or at least 3".to_string(),
+                    });
+                }
+                Ok(Mode::AndroidCapture {
+                    serial: args.serial,
+                    package: args.package,
+                    out_dir: args.out,
+                    allocation_sites: args.allocation_sites,
+                    foreground: args.foreground,
+                    series: args.series,
+                    series_delay_seconds: args.series_delay_seconds,
+                    auto_mapping: args.auto_mapping,
+                    project_root: args.project_root,
+                })
+            }
         };
     }
 
@@ -615,6 +638,54 @@ mod args_tests {
                 assert!(args.foreground);
             }
             other => panic!("expected android-capture, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_android_capture_series_options() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "android-capture",
+            "--package",
+            "com.example.app",
+            "--out",
+            "artifacts/run",
+            "--series",
+            "3",
+            "--series-delay-seconds",
+            "5",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Some(Command::AndroidCapture(args)) => {
+                assert_eq!(args.series, 3);
+                assert_eq!(args.series_delay_seconds, 5);
+            }
+            other => panic!("expected android-capture, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_android_capture_series_two() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "android-capture",
+            "--package",
+            "com.example.app",
+            "--out",
+            "artifacts/run",
+            "--series",
+            "2",
+        ])
+        .unwrap();
+
+        let err = resolve(cli).unwrap_err();
+        match err {
+            HprofSlurpError::AndroidCapture { message } => {
+                assert!(message.contains("--series must be 1 or at least 3"));
+            }
+            other => panic!("expected AndroidCapture, got {other:?}"),
         }
     }
 

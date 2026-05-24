@@ -18,7 +18,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines (v1.3.0), grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines (v1.3.0), grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.3.1 hardens `android-capture` with stalled-dump detection, allocation-profile cleanup, and `--series` capture. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -151,13 +151,18 @@ Options:
 ```bash
 heaptrail android-capture --serial 192.168.50.98:5555 --package com.example.app --out artifacts/run
 heaptrail android-capture --package com.example.app --out artifacts/run --foreground --allocation-sites
+heaptrail android-capture --package com.example.app --out artifacts/run --foreground --series 3 --series-delay-seconds 10
 ```
 
-Runs the ADB capture path, pulls the `.hprof`, validates that the local file is
-nonzero, runs a cheap summary pass to record AllocationSites availability, and
-writes a transcript with PID, foreground evidence, commands, dump size, and
-artifact paths. The helper leaves device files in `/data/local/tmp` so failed
-or partial captures remain inspectable.
+Runs the ADB capture path, waits for the device-side `.hprof` to become
+nonzero/stable before pulling, validates that the local file is nonzero, runs a
+cheap summary pass to record AllocationSites availability, and writes a
+transcript with PID, foreground evidence, commands, dump size, and artifact
+paths. `--series 3` captures three validated HProfs and prints the
+`--diff-series` command to run next; `--series` must be `1` or at least `3`.
+`--allocation-sites` is opportunistic on Android: heaptrail always attempts
+`am profile stop <pid>` cleanup, but ART may still omit AllocationSites records
+on a given device/build.
 
 ### Mapping files for obfuscated Android builds
 
@@ -465,6 +470,20 @@ heaptrail --diff-from before.hprof --diff-to after.hprof --json --json-out repor
 ```
 
 Details in [USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
+
+## v1.3.1 — Android capture reliability
+
+v1.3.1 improves the live-device `android-capture` helper:
+
+- waits for the device-side HProf to become nonzero/stable before pulling;
+- fails after 60s of unchanged remote size instead of repeatedly pulling empty
+  dumps;
+- always attempts `am profile stop <pid>` cleanup for allocation-tracked
+  captures;
+- reports allocation-tracked capture stalls as unsupported/failed on that
+  device so agents fall back to diff-series, leak suspects, holders, and paths;
+- adds `--series <COUNT>` and `--series-delay-seconds <SECONDS>` to collect
+  validated HProf series for `--diff-series`.
 
 ## v1.3.0 — playback debugging foundation
 

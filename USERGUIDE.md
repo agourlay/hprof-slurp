@@ -5,7 +5,10 @@ Every example below uses real output from a 235 MiB Android dump
 (`heap-phase4-jvm.hprof`, captured from a Modern Home / nexio.tv build) — not
 synthetic data.
 
-> **Need v1.3.0+ for playback/debugging timelines.** v1.3.0 adds
+> **Need v1.3.1+ for reliable live Android capture.** v1.3.1 adds
+> `android-capture --series`, waits for nonzero/stable device HProf files
+> before pulling, and always attempts allocation profiling cleanup. Need
+> v1.3.0+ for playback/debugging timelines: v1.3.0 adds
 > `--diff-series`, `--group-holders`, root metadata fallback, and
 > `--native-context`. v1.2.0 adds `--mapping` and `--auto-mapping` for
 > R8/ProGuard-obfuscated Android heaps.
@@ -50,8 +53,24 @@ The helper wraps the manual ADB flow when a repeatable capture transcript is
 more useful than hand-entered commands. It resolves the package PID with
 `pidof`, optionally brings the app foreground with `monkey -p <package> 1`,
 records focused-window evidence from `dumpsys window`, runs `am dumpheap`,
-pulls the resulting `.hprof`, rejects 0-byte local pulls, and writes a
-transcript beside the dump.
+waits for the device-side `.hprof` to become nonzero/stable, pulls the
+resulting file, rejects 0-byte local pulls, and writes a transcript beside the
+dump.
+
+For playback, navigation, or soak-growth investigations, capture a small series
+so `--diff-series` is immediately available:
+
+```bash
+heaptrail android-capture \
+  --package com.example.myapp \
+  --out artifacts/heap-captures \
+  --foreground \
+  --series 3 \
+  --series-delay-seconds 10
+```
+
+The command prints the collected HProfs and the `heaptrail --diff-series ...`
+command to run next.
 
 Use `--allocation-sites` to attempt allocation tracking setup before the dump:
 
@@ -63,9 +82,12 @@ heaptrail android-capture \
 ```
 
 After pull, heaptrail runs a cheap summary pass and records whether
-`AllocationSites` data is present in the transcript. The helper does not delete
-the device-side `/data/local/tmp/*.hprof` by default, so failed or partial
-captures remain available for manual inspection.
+`AllocationSites` data is present in the transcript. The helper attempts
+`am profile stop <pid>` cleanup even when dump capture fails. Treat
+AllocationSites as opportunistic on Android: `am profile start` can succeed
+without ART emitting AllocationSites records into the HProf on that device or
+build. The helper does not delete the device-side `/data/local/tmp/*.hprof` by
+default, so failed or partial captures remain available for manual inspection.
 
 ### Deobfuscating release-build heap reports
 

@@ -13,7 +13,13 @@ path-to-root, content preview, retained leak suspects, and snapshot diff**.
 It supports both 4-byte (Android) and 8-byte (JVM) identifier formats, and
 processes dumps **larger than RAM** at ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.3.0+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.3.1+).
+
+> **v1.3.1 (Android capture reliability):** use `android-capture --series 3`
+> for quick playback-growth capture sets. The helper waits for device-side
+> HProf files to become nonzero/stable before pulling, fails after 60s of no
+> size progress, and always attempts allocation profiling cleanup. Treat
+> allocation-tracked capture stalls as unsupported/failed on that device.
 
 > **v1.3.0 (playback debugging foundation):** use `--diff-series` for 3+
 > ordered snapshots, `--group-holders` to collapse noisy Media3/cache holder
@@ -89,6 +95,15 @@ Use these defaults unless the user explicitly asks for a raw/minimal command:
    AllocationSites presence, and mapping metadata when `--auto-mapping` is
    enabled. That transcript is often as valuable as the dump when another
    agent must reason about capture quality later.
+7. **Treat capture quality as evidence.** A zero-byte local HProf is not a
+   valid dump. Current `android-capture` waits for the device-side HProf to
+   become nonzero and stable before pulling, and fails if the remote size does
+   not change for 60s. Treat that as a device/app-side dumpheap stall until
+   logcat or a manual capture proves otherwise. Do not analyze an empty file.
+8. **Pair Java HProf with native context for graphics/native questions.**
+   HProf explains Java reachability, not native pixel buffers, decoder native
+   allocations, GL, or graphics PSS. Capture `dumpsys meminfo <package>` beside
+   the HProf series and attach it with `--native-context` for timeline reports.
 
 ## Step 0: Ensure heaptrail is installed
 
@@ -111,16 +126,17 @@ command -v cargo >/dev/null 2>&1 || {
 cargo install heaptrail
 
 # Verify
-heaptrail --version    # should report 1.3.0 or newer
+heaptrail --version    # should report 1.3.1 or newer
 ```
 
-If `heaptrail` is found but version is older than `1.3.0`, **upgrade**:
+If `heaptrail` is found but version is older than `1.3.1`, **upgrade**:
 ```bash
 cargo install heaptrail --force
 ```
-Versions older than 1.3.0 lack playback diff-series and grouped holder
-summaries. Versions older than 1.2.0 lack release-build deobfuscation. Versions
-0.7–1.1.0 also have the modern-Android
+Versions older than 1.3.1 have weaker Android capture guards. Versions older
+than 1.3.0 lack playback diff-series and grouped holder summaries. Versions
+older than 1.2.0 lack release-build deobfuscation. Versions 0.7–1.1.0 also
+have the modern-Android
 `class id must have a class definition` panic fixed in 1.1.1 — recommend
 an upgrade whenever a user reports that crash.
 
@@ -134,6 +150,19 @@ it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
 by mutually-exclusive flags. Pick exactly one of: `--find-referrers`,
 `--target-glob`, `--paths-from-id`, `--diff-from`/`--diff-to`,
 `--diff-series`, `--allocation-sites`, `--leak-suspects`, or `--bitmaps`.
+
+Useful modifiers:
+
+- `--json --json-out <path>` writes stable machine-readable artifacts. Prefer
+  `--json-out` in agent workflows so reports do not disappear into timestamped
+  sidecars.
+- `--include-statics` includes class statics in referrer scans. Use it for
+  singleton/cache/companion-object suspicions.
+- `--debug` is for heaptrail parser development and record-tag diagnosis, not
+  normal app memory triage. It is noisy.
+- `--auto-mapping optional` records mapping when available but does not fail the
+  command if local Gradle metadata cannot be matched. Use `strict` only when a
+  mapped release report is mandatory.
 
 ### Android release-build deobfuscation
 
@@ -525,11 +554,18 @@ UI context, or the user points at bitmap/image pressure. On dumps where
 message; on the Nexio playback dumps this made it lower value than Media3,
 leak-suspects, and diff-series probes.
 
-### `--json` for any mode
+### `--json` and `--json-out` for any mode
 
-Append `--json` to any of the above. Writes `heaptrail-<mode>-<ts>.json`
-alongside the text output. Use this when piping to `jq`, dashboards, or
-CI gates.
+Append `--json` to any of the above. Without `--json-out`, heaptrail writes a
+timestamped/default sidecar. With `--json-out`, it writes the exact path:
+
+```bash
+heaptrail -i heap.hprof --mapping mapping.txt --leak-suspects \
+  --exclude-soft-weak --json --json-out reports/leaks.json
+```
+
+Use exact JSON paths for repeatable agent artifacts, CI gates, and follow-up
+`jq` queries.
 
 ## The standard triage workflow
 
@@ -538,38 +574,57 @@ Given a fresh heap dump and a vague "memory looks bad" report:
 0. **Resolve mapping first.** Use explicit `--mapping` if known; otherwise
    try `--auto-mapping`. If neither is available, say the report may contain
    obfuscated names and treat conclusions as provisional.
-1. **Android vague leak / OOM:** start with
+1. **Capture quality check:** confirm the file is nonzero, the process/package
+   was the intended foreground state, and the transcript/meminfo sidecars exist
+   when this is a live Android capture. If the helper pulled 0 bytes but the
+   remote file later grows, repull the stable remote HProf before analysis.
+2. **For vague Android/playback growth, capture a series by default.** If the
+   user is investigating playback memory, UI churn, start/stop behavior, soak
+   growth, or "memory is high" without a known object id, prefer at least three
+   ordered HProfs plus meminfo before interpreting one snapshot. A single dump
+   is enough only for narrow "what holds object/class X?" questions.
+3. **Android vague leak / OOM:** start with
    `--leak-suspects --exclude-soft-weak --preview-bytes 200 --top 5`.
    This answers "what dominates retained heap and what holds it?" in one
    command. Then use `--paths-from-id <suspect-id> --retained-size` only when
    a suspect path needs deeper confirmation.
-2. **Need composition / IDs:** run mapped
+4. **Need composition / IDs:** run mapped
    `summary --preview-bytes 200 -t 20`. Use this to collect dominant classes,
    large primitive-array object ids, and the `AllocationSites:` presence hint.
    Do not run a no-preview summary first; it usually forces a second command.
-3. **3+ ordered captures:** run mapped `--diff-series ... --diff-by bytes`.
-   Use monotonic growth candidates as the shortlist. If there are exactly two
+5. **3+ ordered captures:** run mapped
+   `--diff-series ... --diff-by bytes --native-context meminfo.txt`. Use
+   monotonic growth candidates as the shortlist. If there are exactly two
    captures, use `--diff-from/--diff-to --diff-by bytes`.
-4. **Playback / Media3 / cache ownership:** run mapped
+6. **Playback / Media3 / cache ownership:** run mapped
    `--target-glob 'androidx.media3.**' --hops 2 --group-holders`. For another
    subsystem, replace the glob with that package family. Grouped rows are the
    report agents should summarize first.
-5. **Dominant class holder question:** run mapped
+7. **Dominant class holder question:** run mapped
    `--find-referrers <class> --hops 2 --group-holders` for class families or
    collection-heavy output. Hop 2 is the default because hop 1 often only says
-   `Object[]`.
-6. **Single giant primitive array:** run mapped
+   `Object[]`. Add `--include-statics` when static caches/singletons are
+   plausible.
+8. **Single giant primitive array:** run mapped
    `--find-referrers id:<id> --hops 1 --preview-bytes 200`, then
    `--paths-from-id <id> --preview-bytes 200 --retained-size` if the holder
    path matters.
-7. **AllocationSites present:** run mapped `--allocation-sites --top 20` as a
+9. **Noisy text/content exploration:** run `-l --preview-bytes 200` redirected
+   to a file, then jump to `Standalone large arrays`. `-l` can print tens of
+   thousands of strings before the useful array section.
+10. **AllocationSites present:** run mapped `--allocation-sites --top 20` as a
    replacement for holder/path guessing; it points at allocation stack traces.
-   If summary says `AllocationSites: not present`, skip it.
-8. **Many leaked instances of one class:** use
+   If summary says `AllocationSites: not present`, skip it. AllocationSites are
+   opportunistic on Android; never assume `am profile start` guarantees HProf
+   allocation records.
+11. **Many leaked instances of one class:** use
    `--paths-from-id <any-instance> --merge-paths --retained-size` to fold shared
    paths into one tree.
-9. **Bitmap/image pressure:** use `--bitmaps` only when the dump loaded
-   `android.graphics.Bitmap` or the user/context points at image memory.
+12. **Bitmap/image pressure:** use `--bitmaps` only when the dump loaded
+   `android.graphics.Bitmap` or the user/context points at image memory. If it
+   exits with "Bitmap class is not loaded", treat that as evidence that this
+   HProf cannot answer bitmap ownership; correlate graphics/native pressure via
+   meminfo instead.
 
 ## Capturing an Android heap dump
 
@@ -591,6 +646,44 @@ when possible so the transcript records the selected mapping path, source, and
 hash. The resulting local `.hprof` path is the input for follow-up `heaptrail`
 analysis commands.
 
+After every capture, verify:
+
+- local HProf size is greater than 0;
+- transcript foreground evidence names the expected package/activity;
+- mapping path/source/hash are present for release builds when mapping was
+  requested;
+- summary reports `AllocationSites:` presence or absence;
+- meminfo was captured separately if native, graphics, GL, decoder, or bitmap
+  pressure is part of the question.
+
+If `android-capture` fails with `device hprof size did not change for 60s`,
+inspect the transcript and logcat before discarding the run. The helper already
+waited for the remote file to become nonzero and stable; a 0-byte remote file
+after 60s points at an Android/app dumpheap stall, app crash, or device-side
+write problem. Older helper versions could fail with `captured hprof is 0
+bytes` after pulling too early; for those transcripts, check the remote path
+and repull only if the remote file later becomes nonzero.
+
+### Default Android capture shape
+
+For vague Android memory, playback, Compose, navigation, start/stop, or soak
+investigations, capture a 3+ snapshot series first. This makes `--diff-series`
+available and avoids over-interpreting a single heap moment:
+
+```bash
+heaptrail android-capture --serial <adb-serial> --package <package> \
+  --out artifacts/heap-captures --foreground --auto-mapping optional \
+  --project-root <android-project-root> --series 3 --series-delay-seconds 10
+adb -s <adb-serial> shell dumpsys meminfo <package> > artifacts/heap-captures/meminfo.txt
+```
+
+The command prints the collected HProfs and the exact `heaptrail --diff-series`
+command to run next. Use separate one-off captures instead when the user must
+manually drive named states between dumps (`01-launch.hprof`, `02-home.hprof`,
+`03-playback.hprof`). Use a single HProf only when the question is already
+narrow: "what holds this object id?", "what owns this class?", or "what is
+inside this giant primitive array?".
+
 Use `--allocation-sites` only when the user can recapture the workload and
 needs "where was this allocated?" stack traces:
 
@@ -610,6 +703,22 @@ AllocationSites cannot be recovered from an ordinary already-captured
 tracking can perturb runtime behavior, so use it for targeted reproductions
 rather than every baseline capture.
 
+Treat AllocationSites as opportunistic on Android. `am profile start` returning
+success only means profiling was requested; it does not guarantee ART will emit
+AllocationSites records into the next HProf on that device/build. After any
+allocation-tracked capture:
+
+- always run `am profile stop <pid>`, even if dump or pull failed;
+- verify the local HProf is nonzero before analysis;
+- run summary and trust its `AllocationSites:` line;
+- if the tracked HProf stays zero bytes or summary says records are absent,
+  stop retrying and use diff-series, leak suspects, referrers, and paths.
+
+Current `android-capture --allocation-sites` already attempts `am profile stop`
+cleanup and reports 0-byte/stalled tracked captures as
+`allocation-tracked dump unsupported/failed on this device`. Treat that message
+as a signal to fall back, not as a reason to keep retrying the same capture.
+
 There is no special bitmap capture flag. Capture the app after navigating to
 the image-heavy screen and waiting for images to load, then run mapped
 `--bitmaps` on the resulting HProf. Java HProf records live
@@ -623,10 +732,17 @@ Manual fallback when `android-capture` cannot be used:
 # Find the target process
 adb shell ps -A | grep com.example.myapp
 
-# Capture (writes to device, then pull)
+# Capture (writes to device, wait for a stable nonzero file, then pull)
 adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
+adb shell stat -c %s /data/local/tmp/heap.hprof
 adb pull /data/local/tmp/heap.hprof
 ```
+
+On devices where `am dumpheap` returns before the file is complete, poll the
+remote size until it is nonzero and unchanged for a few seconds before pulling.
+If the remote size does not change for 60s, stop and treat the capture as
+stuck; collect logcat around `dumpheap`/`hprof` instead of repeatedly pulling
+0-byte files.
 
 Manual AllocationSites fallback:
 
@@ -634,9 +750,17 @@ Manual AllocationSites fallback:
 adb shell am profile start <pid> /data/local/tmp/heaptrail-alloc.trace
 adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
 adb shell am profile stop <pid>
+adb shell stat -c %s /data/local/tmp/heap.hprof
 adb pull /data/local/tmp/heap.hprof
 heaptrail -i heap.hprof --mapping mapping.txt --allocation-sites --top 20
 ```
+
+Allocation-site capture is device/build-sensitive. On tested rooted Android TV
+hardware, `am profile start` returned success but the allocation-tracked HProf
+remained 0 bytes; ordinary non-tracked dumps worked. Always stop profiling, do
+not leave the target under allocation tracking, and fall back to suspects,
+diffs, holders, and paths when summary still says `AllocationSites: not
+present`.
 
 For two-snapshot diff:
 ```bash
@@ -652,8 +776,17 @@ For ordered playback/state captures, prefer a series:
 
 ```bash
 heaptrail --diff-series launch.hprof home.hprof play.hprof stop.hprof soak.hprof \
-  --mapping mapping.txt --diff-by bytes --json --json-out playback-series.json
+  --mapping mapping.txt \
+  --diff-by bytes \
+  --native-context meminfo.txt \
+  --json --json-out playback-series.json
 ```
+
+For Compose-heavy Android TV apps, the monotonic growth section is often more
+actionable than a single pair diff. It can surface repeated growth in classes
+such as `SnapshotIdSet`, `SlotWriter`, `SemanticsNode`, `CombinedModifier`, and
+other UI invalidation artifacts that would otherwise be mixed into one
+first-to-last table.
 
 For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 
@@ -672,11 +805,12 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Compare playback/state series | `heaptrail --diff-series a.hprof b.hprof c.hprof --mapping mapping.txt --diff-by bytes` |
 | Glob targeting / subsystem family | `heaptrail -i heap.hprof --mapping mapping.txt --target-glob 'com.foo.**' --hops 2 --group-holders` |
 | Media3 playback ownership | `heaptrail -i heap.hprof --mapping mapping.txt --target-glob 'androidx.media3.**' --hops 2 --group-holders` |
+| Include static singleton/cache holders | append `--include-statics` to referrer scans |
 | Allocation sites (only when present) | `heaptrail -i heap.hprof --mapping mapping.txt --allocation-sites --top 20` |
 | Fold N paths-to-root into one tree | append `--merge-paths` to mapped `--paths-from-id <any-instance> --retained-size` |
 | Bitmap pixel-byte accounting (Android) | `heaptrail -i heap.hprof --mapping mapping.txt --bitmaps -t 20` |
-| JSON sidecar | append `--json` to any of the above |
-| List all UTF-8 strings/large arrays | `heaptrail -i heap.hprof --mapping mapping.txt -l --preview-bytes 200` |
+| Stable JSON sidecar | append `--json --json-out reports/name.json` to any report mode |
+| List all UTF-8 strings/large arrays | `heaptrail -i heap.hprof --mapping mapping.txt -l --preview-bytes 200 > strings-and-arrays.txt` |
 
 ## Common mistakes
 
@@ -687,16 +821,20 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Stopping at `--hops 1` | Hop 1 reports `Object[][]` for any class held in a collection — uninformative. **Always run with `--hops 2`** for class targets. |
 | Running raw commands on release dumps | Obfuscated names hide the diagnosis. Always include `--mapping`/`--auto-mapping`; if output has names like `x7.k` or `p1.j`, rerun mapped. |
 | Hand-writing ADB capture when provenance matters | Use `heaptrail android-capture`; it writes a transcript with PID, focus evidence, commands, dump size, AllocationSites presence, and mapping metadata. |
+| Analyzing a 0-byte HProf | Invalid input. Check the transcript and remote file; on some Android TV devices the remote HProf finishes after the helper's first pull. Repull only after remote size is stable and nonzero. |
 | Expecting AllocationSites from an ordinary dump | Allocation stack traces must be captured up front with allocation tracking, e.g. `android-capture --allocation-sites`. If summary says not present, use holders/paths/diffs. |
+| Leaving allocation tracking running after a failed capture | Always run `am profile stop <pid>`. Allocation tracking can perturb performance, and on some devices it may produce a 0-byte HProf even when `am profile start` succeeds. |
 | Looking for a bitmap capture mode | `--bitmaps` analyzes an HProf; it does not change capture. Navigate to the image-heavy screen, wait for images to load, capture normally, then run mapped `--bitmaps`. |
+| Treating Bitmap strings as loaded Bitmap objects | `-l` may show `android.graphics.Bitmap` strings even when no Bitmap ClassDump/instances are loaded. Trust `--bitmaps`; if it says the class is not loaded, use meminfo/native tools for graphics pressure. |
 | Running summary without preview | It identifies `byte[]`/`char[]` but not content. Use `--preview-bytes 200` by default on first-pass triage. |
 | Running pairwise diffs for playback captures | For 3+ ordered snapshots, `--diff-series` gives the whole timeline and monotonic growth candidates in one run. |
+| Dumping `-l` to the conversation | It can emit tens of thousands of strings. Redirect to a file and inspect the `Standalone large arrays` section. |
 | Scanning huge Media3 referrer output manually | Use `--target-glob 'androidx.media3.**' --group-holders` so owner families and holder fields surface first. |
-| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.3.0+ for playback diff-series and 1.2.0+ for Android release-build deobfuscation. |
+| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.3.1+ for reliable Android capture, 1.3.0+ for playback diff-series, and 1.2.0+ for Android release-build deobfuscation. |
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
 | Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `heaptrail` accepts and displays dotted. Inner classes: `Outer$Inner`. |
-| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.3.0+, which logs a single warning and continues instead. |
+| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.3.1+, which logs a single warning and continues instead. |
 
 ## Performance reference
 

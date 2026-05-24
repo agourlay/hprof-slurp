@@ -88,6 +88,8 @@ fn main_result() -> Result<(), HprofSlurpError> {
             out_dir,
             allocation_sites,
             foreground,
+            series,
+            series_delay_seconds,
             auto_mapping,
             project_root,
         } => {
@@ -109,8 +111,26 @@ fn main_result() -> Result<(), HprofSlurpError> {
                 allocation_sites,
                 foreground,
                 mapping,
+                series_count: series,
+                series_delay_seconds,
             })?;
-            println!("Captured heap dump: {}", report.local_hprof.display());
+            if report.local_hprofs.len() <= 1 {
+                println!("Captured heap dump: {}", report.local_hprof.display());
+            } else {
+                println!("Captured heap dump series:");
+                for path in &report.local_hprofs {
+                    println!("  {}", path.display());
+                }
+                println!(
+                    "Diff-series command: heaptrail --diff-series {} --diff-by bytes",
+                    report
+                        .local_hprofs
+                        .iter()
+                        .map(|path| path.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+            }
             println!("Dump size: {} bytes", report.dump_size_bytes);
             println!(
                 "AllocationSites present: {}",
