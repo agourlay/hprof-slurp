@@ -193,7 +193,11 @@ Packages:
         let mapping_dir = root.join("app/build/outputs/mapping/universalRelease");
         std::fs::create_dir_all(&apk_dir).unwrap();
         std::fs::create_dir_all(&mapping_dir).unwrap();
-        std::fs::write(mapping_dir.join("mapping.txt"), "com.example.Real -> a.b:\n").unwrap();
+        std::fs::write(
+            mapping_dir.join("mapping.txt"),
+            "com.example.Real -> a.b:\n",
+        )
+        .unwrap();
         std::fs::write(
             apk_dir.join("output-metadata.json"),
             r#"{

@@ -217,17 +217,16 @@ impl ReferrerResult {
         if let Some(retained) = self.class_retained_by_name.take() {
             let mut remapped = AHashMap::new();
             for (class_name, bytes) in retained {
-                *remapped.entry(symbolicator.class_name(&class_name)).or_insert(0) += bytes;
+                *remapped
+                    .entry(symbolicator.class_name(&class_name))
+                    .or_insert(0) += bytes;
             }
             self.class_retained_by_name = Some(remapped);
         }
     }
 }
 
-fn deobfuscate_target_label(
-    label: &str,
-    symbolicator: &crate::mapping::Symbolicator,
-) -> String {
+fn deobfuscate_target_label(label: &str, symbolicator: &crate::mapping::Symbolicator) -> String {
     if label.starts_with("id:") {
         label.to_string()
     } else {

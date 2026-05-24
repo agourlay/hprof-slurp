@@ -89,10 +89,7 @@ pub fn compute(
     out
 }
 
-pub fn symbolicate_entries(
-    entries: &mut [DiffEntry],
-    symbolicator: &crate::mapping::Symbolicator,
-) {
+pub fn symbolicate_entries(entries: &mut [DiffEntry], symbolicator: &crate::mapping::Symbolicator) {
     for entry in entries {
         let mapped = symbolicator.class_name(&entry.class_name);
         if mapped != entry.class_name {

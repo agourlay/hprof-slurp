@@ -156,7 +156,6 @@ impl Symbolicator {
             .cloned()
             .unwrap_or_else(|| raw_field.to_string())
     }
-
 }
 
 fn invalid(path: &Path, line: usize, message: &str) -> HprofSlurpError {
@@ -239,10 +238,7 @@ com.nexio.tv.domain.model.MetaPreview -> d1.q2:
         let parsed = Symbolicator::parse_text(Path::new("mapping.txt"), text).unwrap();
 
         assert_eq!(parsed.info.pg_map_id.as_deref(), Some("abc123"));
-        assert_eq!(
-            parsed.info.pg_map_hash.as_deref(),
-            Some("SHA-256 deadbeef")
-        );
+        assert_eq!(parsed.info.pg_map_hash.as_deref(), Some("SHA-256 deadbeef"));
         assert_eq!(
             parsed.class_name("d1.q2"),
             "com.nexio.tv.domain.model.MetaPreview"
