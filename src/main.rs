@@ -84,14 +84,27 @@ fn main_result() -> Result<(), HprofSlurpError> {
             out_dir,
             allocation_sites,
             foreground,
-            ..
+            auto_mapping,
+            project_root,
         } => {
+            let mapping = if let Some(auto_mapping) = auto_mapping {
+                crate::mapping::resolve_mapping(&crate::args::MappingOptions {
+                    mapping: None,
+                    auto_mapping: Some(auto_mapping),
+                    project_root,
+                    package: Some(package.clone()),
+                    serial: serial.clone(),
+                })?
+            } else {
+                None
+            };
             let report = android_capture::run(android_capture::CaptureOptions {
                 serial,
                 package,
                 out_dir: out_dir.into(),
                 allocation_sites,
                 foreground,
+                mapping,
             })?;
             println!("Captured heap dump: {}", report.local_hprof.display());
             println!("Dump size: {} bytes", report.dump_size_bytes);

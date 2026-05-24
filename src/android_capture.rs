@@ -13,6 +13,7 @@ pub struct CaptureOptions {
     pub out_dir: PathBuf,
     pub allocation_sites: bool,
     pub foreground: bool,
+    pub mapping: Option<crate::mapping::ResolvedMapping>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -290,6 +291,25 @@ fn write_transcript(
     text.push_str(&format!(
         "allocation_sites_present: {allocation_sites_present}\n"
     ));
+    if let Some(mapping) = &options.mapping {
+        text.push_str(&format!(
+            "mapping_path: {}\n",
+            mapping.symbolicator.info.path.display()
+        ));
+        let source = match &mapping.source {
+            crate::mapping::MappingSource::Manual => "manual",
+            crate::mapping::MappingSource::Auto { .. } => "auto",
+        };
+        text.push_str(&format!("mapping_source: {source}\n"));
+        if let Some(id) = &mapping.symbolicator.info.pg_map_id {
+            text.push_str(&format!("pg_map_id: {id}\n"));
+        }
+        if let Some(hash) = &mapping.symbolicator.info.pg_map_hash {
+            text.push_str(&format!("pg_map_hash: {hash}\n"));
+        }
+    } else {
+        text.push_str("mapping_path: (none)\n");
+    }
     text.push_str("\nforeground_evidence:\n");
     text.push_str(foreground_evidence);
     text.push_str("\n\ncommands:\n");
@@ -367,6 +387,7 @@ mod tests {
                 out_dir: dir,
                 allocation_sites: false,
                 foreground: false,
+                mapping: None,
             },
             &mut runner,
         )
@@ -410,6 +431,7 @@ mod tests {
                 out_dir: dir.clone(),
                 allocation_sites: false,
                 foreground: false,
+                mapping: None,
             },
             &mut runner,
         )
@@ -449,6 +471,7 @@ mod tests {
                 out_dir: dir,
                 allocation_sites: false,
                 foreground: false,
+                mapping: None,
             },
             &mut runner,
         )
@@ -485,6 +508,7 @@ mod tests {
                 out_dir: dir,
                 allocation_sites: true,
                 foreground: true,
+                mapping: None,
             },
             &mut runner,
         )
@@ -508,6 +532,48 @@ mod tests {
             calls.contains("shell am dumpheap 1234 /data/local/tmp/"),
             "{calls}"
         );
+    }
+
+    #[test]
+    fn transcript_includes_mapping_metadata_when_present() {
+        let dir = std::env::temp_dir().join(format!(
+            "heaptrail-capture-mapping-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mapping_path = dir.join("mapping.txt");
+        std::fs::write(
+            &mapping_path,
+            "# pg_map_id: abc123\n# pg_map_hash: SHA-256 deadbeef\ncom.example.Real -> a.b:\n",
+        )
+        .unwrap();
+        let mut runner = FakeRunner::default();
+        runner.push(0, "1234\n", "");
+        runner.push(0, "mCurrentFocus=Window{ com.example/.MainActivity }\n", "");
+        runner.push(0, "", "");
+        runner.push(0, "", "");
+        runner.on_pull_write = Some(std::fs::read("test-heap-dumps/hprof-64.bin").unwrap());
+
+        let report = run_with_runner(
+            CaptureOptions {
+                serial: None,
+                package: "com.example.app".to_string(),
+                out_dir: dir,
+                allocation_sites: false,
+                foreground: false,
+                mapping: Some(crate::mapping::ResolvedMapping {
+                    symbolicator: crate::mapping::Symbolicator::from_file(&mapping_path).unwrap(),
+                    source: crate::mapping::MappingSource::Manual,
+                }),
+            },
+            &mut runner,
+        )
+        .unwrap();
+
+        let transcript = std::fs::read_to_string(report.transcript).unwrap();
+        assert!(transcript.contains("mapping_path:"));
+        assert!(transcript.contains("pg_map_id: abc123"));
+        assert!(transcript.contains("pg_map_hash: SHA-256 deadbeef"));
     }
 
     #[test]
