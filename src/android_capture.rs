@@ -138,7 +138,11 @@ pub fn run_with_runner<R: CommandRunner>(
     adb_checked(
         &options.serial,
         runner,
-        &["pull", &device_hprof, local_hprof.to_string_lossy().as_ref()],
+        &[
+            "pull",
+            &device_hprof,
+            local_hprof.to_string_lossy().as_ref(),
+        ],
         &mut transcript,
     )?;
 
@@ -492,7 +496,10 @@ mod tests {
             .map(|args| args.join(" "))
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(calls.contains("shell monkey -p com.example.app 1"), "{calls}");
+        assert!(
+            calls.contains("shell monkey -p com.example.app 1"),
+            "{calls}"
+        );
         assert!(
             calls.contains("shell am profile start 1234 /data/local/tmp/heaptrail-alloc.trace"),
             "{calls}"
