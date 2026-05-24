@@ -19,6 +19,7 @@ mod referrer;
 mod rendered_result;
 mod result_recorder;
 mod retained;
+mod series_diff;
 mod slurp;
 mod utils;
 
