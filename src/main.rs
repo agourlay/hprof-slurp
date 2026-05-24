@@ -5,6 +5,7 @@ mod bitmaps;
 mod diff;
 mod dominators;
 mod errors;
+mod holder_grouping;
 mod leak_suspects;
 mod mapping;
 mod mapping_discovery;
@@ -287,8 +288,13 @@ fn run_allocation_sites(mode: Mode, started: Instant) -> Result<(), HprofSlurpEr
 }
 
 fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpError> {
-    let (json, json_out) = match &mode {
-        Mode::FindReferrers { json, json_out, .. } => (*json, json_out.as_deref()),
+    let (json, json_out, group_holders) = match &mode {
+        Mode::FindReferrers {
+            json,
+            json_out,
+            group_holders,
+            ..
+        } => (*json, json_out.as_deref(), *group_holders),
         _ => unreachable!(),
     };
     validate_mode_inputs(&mode)?;
@@ -297,6 +303,10 @@ fn run_find_referrers(mode: Mode, started: Instant) -> Result<(), HprofSlurpErro
     let mut result = with_hprof_context(mode_hprof_label(&mode), referrer::run(&mode))?;
     if let Some(mapping) = resolved_mapping.as_ref() {
         result.symbolicate(&mapping.symbolicator);
+        if group_holders {
+            let retained = result.class_retained_by_name.clone();
+            result.refresh_grouped_holders(retained.as_ref());
+        }
     }
     if json {
         write_json_file(&result, json_out, "heaptrail-referrers")?;

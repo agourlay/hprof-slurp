@@ -181,6 +181,8 @@ pub struct ReferrerResult {
     pub hop1: Vec<ReferrerEntry>,
     pub hop2: Vec<ReferrerEntry>,
     pub hop3: Vec<ReferrerEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grouped_holders: Vec<crate::holder_grouping::GroupedHolder>,
     /// v0.9.0: preview bodies (when --preview-bytes > 0) keyed by
     /// object_id. Used by `render_text` to display content above the
     /// hop tables when the target is a primitive array. Skipped from
@@ -224,6 +226,17 @@ impl ReferrerResult {
             self.class_retained_by_name = Some(remapped);
         }
     }
+
+    pub fn refresh_grouped_holders(&mut self, retained_by_name: Option<&AHashMap<String, u64>>) {
+        self.grouped_holders = crate::holder_grouping::group_entries(
+            self.hop1
+                .iter()
+                .chain(self.hop2.iter())
+                .chain(self.hop3.iter())
+                .cloned(),
+            retained_by_name,
+        );
+    }
 }
 
 fn deobfuscate_target_label(label: &str, symbolicator: &crate::mapping::Symbolicator) -> String {
@@ -245,6 +258,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         preview_bytes,
         retained_size,
         exclude_soft_weak,
+        group_holders,
     ) = match mode {
         Mode::FindReferrers {
             input_file,
@@ -256,6 +270,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             preview_bytes,
             retained_size,
             exclude_soft_weak,
+            group_holders,
             ..
         } => (
             input_file.as_str(),
@@ -267,6 +282,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
             *preview_bytes,
             *retained_size,
             *exclude_soft_weak,
+            *group_holders,
         ),
         _ => {
             return Err(HprofSlurpError::NotYetImplemented {
@@ -369,7 +385,7 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         )?;
     }
 
-    Ok(ReferrerResult {
+    let mut result = ReferrerResult {
         target_label,
         target_instance_count: target_ids.len() as u64,
         matched_classes,
@@ -378,7 +394,13 @@ pub fn run(mode: &Mode) -> Result<ReferrerResult, HprofSlurpError> {
         hop1: top_n(&idx, by_field_hop1, top),
         hop2: top_n(&idx, by_field_hop2, top),
         hop3: top_n(&idx, by_field_hop3, top),
-    })
+        grouped_holders: Vec::new(),
+    };
+    if group_holders {
+        let retained = result.class_retained_by_name.clone();
+        result.refresh_grouped_holders(retained.as_ref());
+    }
+    Ok(result)
 }
 
 /// Class-name label for retained-size lookups. Mirrors
@@ -915,6 +937,7 @@ pub fn render_text(r: &ReferrerResult) -> String {
         r.target_instance_count, r.target_label
     );
     render_target_preview(&mut out, &r.target_label, &r.array_previews);
+    render_grouped_holders(&mut out, &r.grouped_holders);
     render_section(
         &mut out,
         "Direct referrers (1-hop)",
@@ -938,6 +961,29 @@ pub fn render_text(r: &ReferrerResult) -> String {
         );
     }
     out
+}
+
+fn render_grouped_holders(out: &mut String, rows: &[crate::holder_grouping::GroupedHolder]) {
+    use std::fmt::Write;
+    if rows.is_empty() {
+        return;
+    }
+    out.push_str("\n=== Grouped holders ===\n");
+    let _ = writeln!(
+        out,
+        "  {:<28} {:<52} {:<28} {:>9}",
+        "owner family", "holder class", "field", "ref count"
+    );
+    for row in rows {
+        let _ = writeln!(
+            out,
+            "  {:<28} {:<52} {:<28} {:>9}",
+            trim(&row.owner_family, 28),
+            trim(&row.holder_class, 52),
+            trim(&row.field_label, 28),
+            row.ref_count
+        );
+    }
 }
 
 fn render_target_preview(
@@ -1054,6 +1100,7 @@ mod tests {
             preview_bytes: 0,
             retained_size: false,
             exclude_soft_weak: false,
+            group_holders: false,
             mapping: crate::args::MappingOptions::default(),
         }
     }
@@ -1098,6 +1145,7 @@ mod tests {
             }],
             hop2: vec![],
             hop3: vec![],
+            grouped_holders: Vec::new(),
             array_previews: AHashMap::new(),
             class_retained_by_name: None,
         };

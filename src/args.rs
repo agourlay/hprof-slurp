@@ -106,6 +106,10 @@ pub struct Cli {
     #[arg(long = "include-statics", default_value_t = true)]
     pub include_statics: bool,
 
+    /// Group referrer rows by owner family, holder class, and field label.
+    #[arg(long = "group-holders", default_value_t = false)]
+    pub group_holders: bool,
+
     // -- paths mode --
     /// Trace holder chain from this object id toward a GC root.
     #[arg(long = "paths-from-id", value_name = "ID")]
@@ -273,6 +277,7 @@ pub enum Mode {
         preview_bytes: u32,
         retained_size: bool,
         exclude_soft_weak: bool,
+        group_holders: bool,
         mapping: MappingOptions,
     },
     Paths {
@@ -392,6 +397,9 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
     if mode_count > 1 {
         return Err(ConflictingModes);
     }
+    if cli.group_holders && !referrers_set {
+        return Err(ConflictingModes);
+    }
 
     if diff_series_set {
         if cli.diff_series.len() < 3 {
@@ -487,6 +495,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
             exclude_soft_weak: cli.exclude_soft_weak,
+            group_holders: cli.group_holders,
             mapping: mapping.clone(),
         });
     }
@@ -746,6 +755,29 @@ mod args_tests {
             .unwrap();
         assert_eq!(cli.target_glob.as_deref(), Some("com.foo.*"));
         assert!(cli.find_referrers.is_none());
+    }
+
+    #[test]
+    fn parses_group_holders_for_referrers() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--target-glob",
+            "androidx.media3.**",
+            "--group-holders",
+        ])
+        .unwrap();
+
+        assert!(cli.group_holders);
+    }
+
+    #[test]
+    fn rejects_group_holders_without_referrer_mode() {
+        let cli = Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "--group-holders"]).unwrap();
+        let err = resolve(cli).unwrap_err();
+
+        assert!(matches!(err, HprofSlurpError::ConflictingModes));
     }
 
     #[test]
