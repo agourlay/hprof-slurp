@@ -26,7 +26,10 @@ pub struct Suspect {
     pub accumulating_count: u32,
     pub accumulating_total_bytes: u64,
     pub path_to_root: crate::paths::PathResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_content_label: Option<crate::preview::ContentLabel>,
     /// True when the suspect's retained share is below the threshold
     /// but it appears in the top-3 fallback.
     pub below_threshold: bool,
@@ -136,14 +139,21 @@ pub fn run(mode: &Mode) -> Result<SuspectsReport, HprofSlurpError> {
         };
         let path_to_root = crate::paths::run(&path_mode)?;
 
-        let preview_snippet = array_previews.get(&dom_oid).map(|p| {
-            use crate::preview::{PreviewKind, render_preview};
-            let kind = render_preview(&p.bytes, p.element_type, p.total_bytes as usize);
-            match kind {
-                PreviewKind::Text { snippet, .. } => snippet.chars().take(120).collect::<String>(),
-                PreviewKind::Hex { lines, .. } => lines.first().cloned().unwrap_or_default(),
-            }
-        });
+        let (preview_snippet, preview_content_label) = array_previews
+            .get(&dom_oid)
+            .map(|p| {
+                use crate::preview::{PreviewKind, render_preview};
+                let kind = render_preview(&p.bytes, p.element_type, p.total_bytes as usize);
+                let label = kind.content_label();
+                let snippet = match kind {
+                    PreviewKind::Text { snippet, .. } => {
+                        snippet.chars().take(120).collect::<String>()
+                    }
+                    PreviewKind::Hex { total_bytes, .. } => format!("binary, {total_bytes} bytes"),
+                };
+                (Some(snippet), Some(label))
+            })
+            .unwrap_or((None, None));
 
         let heap_share_pct = if retained_reachable_bytes == 0 {
             0.0
@@ -161,6 +171,7 @@ pub fn run(mode: &Mode) -> Result<SuspectsReport, HprofSlurpError> {
             accumulating_total_bytes: accum_bytes,
             path_to_root,
             preview_snippet,
+            preview_content_label,
             below_threshold: below,
         });
     }
@@ -254,7 +265,11 @@ pub fn render_text(r: &SuspectsReport) -> String {
             crate::utils::pretty_bytes_size(s.accumulating_total_bytes),
         );
         if let Some(preview) = &s.preview_snippet {
-            let _ = writeln!(out, "  preview: {preview}");
+            if let Some(label) = s.preview_content_label {
+                let _ = writeln!(out, "  preview: content: {}, {preview}", label.display());
+            } else {
+                let _ = writeln!(out, "  preview: {preview}");
+            }
         }
         let _ = writeln!(out, "  path to GC root:");
         let path = crate::paths::render_text(&s.path_to_root);
@@ -264,4 +279,51 @@ pub fn render_text(r: &SuspectsReport) -> String {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_path_result() -> crate::paths::PathResult {
+        crate::paths::PathResult {
+            start_object_id: 42,
+            steps: Vec::new(),
+            terminated_at_root: false,
+            root_kind: None,
+            root_thread_name: None,
+            root_frame: None,
+            max_depth_reached: false,
+            depth: 0,
+            array_previews: ahash::AHashMap::new(),
+            retained_by_oid: None,
+            terminated_by_soft_weak: None,
+        }
+    }
+
+    #[test]
+    fn serializes_preview_content_label() {
+        let report = SuspectsReport {
+            total_heap_bytes: 100,
+            retained_reachable_bytes: 100,
+            threshold_pct: 5.0,
+            suspects: vec![Suspect {
+                dominator_id: 42,
+                dominator_class: "byte[]".to_string(),
+                retained_bytes: 80,
+                heap_share_pct: 80.0,
+                accumulating_class: "byte[]".to_string(),
+                accumulating_count: 1,
+                accumulating_total_bytes: 80,
+                path_to_root: empty_path_result(),
+                preview_snippet: Some("{\"ok\":true}".to_string()),
+                preview_content_label: Some(crate::preview::ContentLabel::Json),
+                below_threshold: false,
+            }],
+        };
+
+        let value = serde_json::to_value(report).unwrap();
+
+        assert_eq!(value["suspects"][0]["preview_content_label"], "json");
+    }
 }
