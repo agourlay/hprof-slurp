@@ -21,6 +21,14 @@ pub enum HprofSlurpError {
         "android.graphics.Bitmap class is not loaded in this dump; bitmap accounting has nothing to report. This can happen on Android dumps from screens that have not used Bitmap-backed images."
     )]
     BitmapClassNotLoaded,
+    #[error("android capture failed: {message}")]
+    AndroidCapture { message: String },
+    #[error("adb command failed: {command}\nstatus: {status}\nstderr: {stderr}")]
+    AdbCommandFailed {
+        command: String,
+        status: i32,
+        stderr: String,
+    },
     #[error("no AllocationSites records in this dump (capture with `am profile start <pid>`)")]
     NoAllocationSites,
     #[error("invalid pointer size - the value should be either `4` or `8`")]

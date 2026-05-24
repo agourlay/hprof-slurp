@@ -1,4 +1,5 @@
 mod allocation_sites;
+mod android_capture;
 mod args;
 mod bitmaps;
 mod diff;
@@ -72,9 +73,24 @@ fn main_result() -> Result<(), HprofSlurpError> {
         mode @ Mode::AllocationSites { .. } => run_allocation_sites(mode, now),
         mode @ Mode::LeakSuspects { .. } => run_leak_suspects(mode, now),
         mode @ Mode::Bitmaps { .. } => run_bitmaps(mode, now),
-        Mode::AndroidCapture { .. } => Err(HprofSlurpError::NotYetImplemented {
-            what: "android-capture dispatch",
-        }),
+        Mode::AndroidCapture {
+            serial,
+            package,
+            out_dir,
+            allocation_sites,
+            foreground,
+        } => {
+            let report = android_capture::run(android_capture::CaptureOptions {
+                serial,
+                package,
+                out_dir: out_dir.into(),
+                allocation_sites,
+                foreground,
+            })?;
+            println!("Captured heap dump: {}", report.local_hprof.display());
+            println!("Transcript: {}", report.transcript.display());
+            Ok(())
+        }
     }
 }
 
