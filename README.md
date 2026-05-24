@@ -276,6 +276,12 @@ etc.) inline with the existing output. UTF-8 / UTF-16 BE auto-detect
 with control-char escaping; falls back to xxd-style hex on binary.
 Default 0 (off).
 
+Preview output includes a short `content:` label when heaptrail can identify the
+payload shape. Initial labels include `JSON`, `XML`, `UTF-8 text`,
+`UTF-16 text`, image signatures (`PNG image`, `JPEG image`, `GIF image`,
+`WebP image`), compressed data (`gzip compressed`, `ZIP archive`),
+`protobuf-like binary`, `binary/repeated-fill`, and `unknown binary`.
+
 **Engineering motivation:** a 72 MiB `char[]` whose holder chain ended
 at a Gson `StringBuilder` told us *who* held it but not *what* it
 contained — investigation needed `adb shell` for file size + source-grep

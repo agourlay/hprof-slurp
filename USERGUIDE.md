@@ -446,6 +446,24 @@ heaptrail -i my.hprof --find-referrers id:1661812752 --preview-bytes 200
 heaptrail -i my.hprof -l --preview-bytes 200 --list-arrays-min-bytes 1024
 ```
 
+### Content labels
+
+Preview output includes a concise `content:` label before the snippet or hex
+preview. The label is heuristic and intentionally conservative: known file
+signatures such as PNG, JPEG, GIF, WebP, gzip, and ZIP win over generic binary
+labels; text previews are labeled as JSON, XML, UTF-8 text, or UTF-16 text when
+the prefix is clear.
+
+Example:
+
+```text
+content: JSON
+{"items":[{"id":42,"title":"Example"}]}...
+```
+
+For opaque buffers, heaptrail reports `unknown binary`, `protobuf-like binary`,
+or `binary/repeated-fill` rather than guessing an application-specific format.
+
 ### Sanitization
 
 | Element type | Decoder | Fallback |
