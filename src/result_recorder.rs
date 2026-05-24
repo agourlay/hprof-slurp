@@ -502,7 +502,7 @@ impl ResultRecorder {
 
         // v0.9.0 (feature B, -l extension): standalone large arrays.
         if !self.standalone_large_arrays.is_empty() {
-            use crate::preview::{PreviewKind, render_preview};
+            use crate::preview::{render_preview, render_short_preview};
             use crate::utils::pretty_bytes_size;
 
             let mut sorted: Vec<&(u64, ArrayPreview)> =
@@ -526,13 +526,8 @@ impl ResultRecorder {
                     preview.element_type,
                     preview.total_bytes as usize,
                 );
-                let preview_text = match kind {
-                    PreviewKind::Text { snippet, .. } => {
-                        let trimmed: String = snippet.chars().take(80).collect();
-                        format!("  {trimmed}")
-                    }
-                    PreviewKind::Hex { .. } => "  (binary)".to_string(),
-                };
+                let rendered = render_short_preview(&kind, 80);
+                let preview_text = format!("  {}  {}", rendered.header, rendered.first_line);
                 let _ = writeln!(
                     result,
                     "  {size:>10}  object_id={oid:<14}  {kind_label:<8} {preview_text}"

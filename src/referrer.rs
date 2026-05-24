@@ -907,7 +907,6 @@ fn render_target_preview(
     label: &str,
     previews: &AHashMap<u64, crate::result_recorder::ArrayPreview>,
 ) {
-    use crate::preview::{PreviewKind, render_preview};
     use std::fmt::Write;
     // Only id-targeted invocations carry a useful preview here. Class
     // targets (FQ-name or glob) point at many instances; rendering each
@@ -922,31 +921,17 @@ fn render_target_preview(
         Err(_) => return,
     };
     if let Some(preview) = previews.get(&id) {
+        use crate::preview::{render_preview, render_short_preview};
         let kind = render_preview(
             &preview.bytes,
             preview.element_type,
             preview.total_bytes as usize,
         );
-        match kind {
-            PreviewKind::Text {
-                snippet, truncated, ..
-            } => {
-                let trimmed: String = snippet.chars().take(140).collect();
-                let suffix = if truncated || snippet.chars().count() > 140 {
-                    "..."
-                } else {
-                    ""
-                };
-                let _ = writeln!(out, "  preview: {trimmed}{suffix}");
-            }
-            PreviewKind::Hex {
-                lines, total_bytes, ..
-            } => {
-                let _ = writeln!(out, "  preview: (binary, {total_bytes} bytes total)");
-                for line in lines.iter().take(2) {
-                    let _ = writeln!(out, "    {line}");
-                }
-            }
+        let rendered = render_short_preview(&kind, 140);
+        let _ = writeln!(out, "  preview: {}", rendered.header);
+        let _ = writeln!(out, "    {}", rendered.first_line);
+        for line in rendered.extra_lines {
+            let _ = writeln!(out, "    {line}");
         }
     }
 }

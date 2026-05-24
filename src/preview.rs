@@ -72,6 +72,47 @@ impl PreviewKind {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedPreview {
+    pub header: String,
+    pub first_line: String,
+    pub extra_lines: Vec<String>,
+}
+
+pub fn render_short_preview(kind: &PreviewKind, text_limit: usize) -> RenderedPreview {
+    match kind {
+        PreviewKind::Text {
+            label,
+            snippet,
+            truncated,
+        } => {
+            let trimmed: String = snippet.chars().take(text_limit).collect();
+            let suffix = if *truncated || snippet.chars().count() > text_limit {
+                "..."
+            } else {
+                ""
+            };
+            RenderedPreview {
+                header: format!("content: {}", label.display()),
+                first_line: format!("{trimmed}{suffix}"),
+                extra_lines: Vec::new(),
+            }
+        }
+        PreviewKind::Hex {
+            label,
+            lines,
+            total_bytes,
+        } => {
+            let mut iter = lines.iter().take(2);
+            RenderedPreview {
+                header: format!("content: {}, {total_bytes} bytes total", label.display()),
+                first_line: iter.next().cloned().unwrap_or_default(),
+                extra_lines: iter.cloned().collect(),
+            }
+        }
+    }
+}
+
 /// Render `bytes` as a preview. `element_type` selects the decoder:
 /// * `Char`   → UTF-16 BE (Java string contents)
 /// * `Byte`   → try UTF-8; fall back to hex
@@ -461,5 +502,24 @@ mod tests {
         let bytes = [0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87];
         let p = render_preview(&bytes, FieldType::Byte, bytes.len());
         assert_eq!(p.content_label(), ContentLabel::UnknownBinary);
+    }
+
+    #[test]
+    fn short_text_preview_includes_content_label() {
+        let preview = render_preview(br#"{"ok":true}"#, FieldType::Byte, 11);
+        let rendered = render_short_preview(&preview, 80);
+        assert_eq!(rendered.header, "content: JSON");
+        assert_eq!(rendered.first_line, r#"{"ok":true}"#);
+        assert!(rendered.extra_lines.is_empty());
+    }
+
+    #[test]
+    fn short_binary_preview_includes_content_label_and_hex_lines() {
+        let bytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+        let preview = render_preview(&bytes, FieldType::Byte, bytes.len());
+        let rendered = render_short_preview(&preview, 80);
+        assert_eq!(rendered.header, "content: PNG image, 8 bytes total");
+        assert!(rendered.first_line.contains("89 50 4e 47"));
+        assert!(rendered.extra_lines.is_empty());
     }
 }

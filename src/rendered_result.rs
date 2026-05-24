@@ -203,35 +203,20 @@ impl RenderedResult {
                 // primitive array of this class, when --preview-bytes was
                 // set. Indented two extra spaces under the class row.
                 if let Some(preview) = array_previews.get(&s.largest_object_id) {
-                    use crate::preview::{PreviewKind, render_preview};
+                    use crate::preview::{render_preview, render_short_preview};
                     let kind = render_preview(
                         &preview.bytes,
                         preview.element_type,
                         preview.total_bytes as usize,
                     );
-                    match kind {
-                        PreviewKind::Text {
-                            snippet, truncated, ..
-                        } => {
-                            let trimmed: String = snippet.chars().take(140).collect();
-                            let suffix = if truncated || snippet.chars().count() > 140 {
-                                "..."
-                            } else {
-                                ""
-                            };
-                            writeln!(analysis, "             {trimmed}{suffix}")
-                                .expect("Could not write to analysis");
-                        }
-                        PreviewKind::Hex {
-                            lines, total_bytes, ..
-                        } => {
-                            writeln!(analysis, "             (binary, {total_bytes} bytes total)")
-                                .expect("Could not write to analysis");
-                            for line in lines.iter().take(2) {
-                                writeln!(analysis, "             {line}")
-                                    .expect("Could not write to analysis");
-                            }
-                        }
+                    let rendered = render_short_preview(&kind, 140);
+                    writeln!(analysis, "             {}", rendered.header)
+                        .expect("Could not write to analysis");
+                    writeln!(analysis, "             {}", rendered.first_line)
+                        .expect("Could not write to analysis");
+                    for line in rendered.extra_lines {
+                        writeln!(analysis, "             {line}")
+                            .expect("Could not write to analysis");
                     }
                 }
             }

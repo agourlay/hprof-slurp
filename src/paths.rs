@@ -484,33 +484,18 @@ fn retained_suffix(r: &PathResult, object_id: u64) -> String {
 }
 
 fn render_preview_block(out: &mut String, preview: &crate::result_recorder::ArrayPreview) {
-    use crate::preview::{PreviewKind, render_preview};
+    use crate::preview::{render_preview, render_short_preview};
     use std::fmt::Write;
     let kind = render_preview(
         &preview.bytes,
         preview.element_type,
         preview.total_bytes as usize,
     );
-    match kind {
-        PreviewKind::Text {
-            snippet, truncated, ..
-        } => {
-            let trimmed: String = snippet.chars().take(140).collect();
-            let suffix = if truncated || snippet.chars().count() > 140 {
-                "..."
-            } else {
-                ""
-            };
-            let _ = writeln!(out, "         {trimmed}{suffix}");
-        }
-        PreviewKind::Hex {
-            lines, total_bytes, ..
-        } => {
-            let _ = writeln!(out, "         (binary, {total_bytes} bytes total)");
-            for line in lines.iter().take(2) {
-                let _ = writeln!(out, "         {line}");
-            }
-        }
+    let rendered = render_short_preview(&kind, 140);
+    let _ = writeln!(out, "         {}", rendered.header);
+    let _ = writeln!(out, "         {}", rendered.first_line);
+    for line in rendered.extra_lines {
+        let _ = writeln!(out, "         {line}");
     }
 }
 
