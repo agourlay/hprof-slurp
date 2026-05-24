@@ -1023,6 +1023,7 @@ mod tests {
             include_statics: true,
             debug: false,
             json: false,
+            json_out: None,
             preview_bytes: 0,
             retained_size: false,
             exclude_soft_weak: false,

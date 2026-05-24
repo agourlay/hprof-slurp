@@ -128,6 +128,7 @@ pub fn run(mode: &Mode) -> Result<SuspectsReport, HprofSlurpError> {
             max_depth: 12,
             debug,
             json: false,
+            json_out: None,
             preview_bytes: 0,
             retained_size: false,
             exclude_soft_weak,

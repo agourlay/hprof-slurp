@@ -47,6 +47,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
             debug,
             list_strings,
             json,
+            json_out: _,
             preview_bytes,
             list_arrays_min_bytes,
             retained_size,

@@ -33,6 +33,11 @@ pub struct Cli {
     #[arg(long = "json", default_value_t = false)]
     pub json: bool,
 
+    /// Write JSON output to this exact path. Requires --json. When omitted,
+    /// --json keeps the current timestamped/default sidecar behavior.
+    #[arg(long = "json-out", value_name = "PATH", requires = "json")]
+    pub json_out: Option<String>,
+
     /// Show first N bytes/chars of primitive arrays in summary, paths,
     /// find-referrers id:N, and (with -l) the standalone-array list.
     /// Default 0 (off); recommended 200. UTF-8 / UTF-16 BE auto-detect
@@ -166,6 +171,7 @@ pub enum Mode {
         debug: bool,
         list_strings: bool,
         json: bool,
+        json_out: Option<String>,
         preview_bytes: u32,
         list_arrays_min_bytes: u32,
         retained_size: bool,
@@ -179,6 +185,7 @@ pub enum Mode {
         include_statics: bool,
         debug: bool,
         json: bool,
+        json_out: Option<String>,
         preview_bytes: u32,
         retained_size: bool,
         exclude_soft_weak: bool,
@@ -189,6 +196,7 @@ pub enum Mode {
         max_depth: u8,
         debug: bool,
         json: bool,
+        json_out: Option<String>,
         preview_bytes: u32,
         retained_size: bool,
         exclude_soft_weak: bool,
@@ -200,12 +208,14 @@ pub enum Mode {
         by: DiffSort,
         top: usize,
         json: bool,
+        json_out: Option<String>,
     },
     AllocationSites {
         input_file: String,
         top: usize,
         debug: bool,
         json: bool,
+        json_out: Option<String>,
     },
     LeakSuspects {
         input_file: String,
@@ -215,12 +225,14 @@ pub enum Mode {
         preview_bytes: u32,
         debug: bool,
         json: bool,
+        json_out: Option<String>,
     },
     Bitmaps {
         input_file: String,
         top: usize,
         debug: bool,
         json: bool,
+        json_out: Option<String>,
     },
 }
 
@@ -266,6 +278,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             by: cli.diff_by,
             top: cli.top,
             json: cli.json,
+            json_out: cli.json_out.clone(),
         });
     }
 
@@ -278,6 +291,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             top: cli.top,
             debug: cli.debug,
             json: cli.json,
+            json_out: cli.json_out.clone(),
         });
     }
 
@@ -290,6 +304,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             preview_bytes: cli.preview_bytes,
             debug: cli.debug,
             json: cli.json,
+            json_out: cli.json_out.clone(),
         });
     }
 
@@ -299,6 +314,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             top: cli.top,
             debug: cli.debug,
             json: cli.json,
+            json_out: cli.json_out.clone(),
         });
     }
 
@@ -317,6 +333,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             include_statics: cli.include_statics,
             debug: cli.debug,
             json: cli.json,
+            json_out: cli.json_out.clone(),
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
             exclude_soft_weak: cli.exclude_soft_weak,
@@ -330,6 +347,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
             max_depth: cli.max_depth,
             debug: cli.debug,
             json: cli.json,
+            json_out: cli.json_out.clone(),
             preview_bytes: cli.preview_bytes,
             retained_size: cli.retained_size,
             exclude_soft_weak: cli.exclude_soft_weak,
@@ -341,6 +359,7 @@ pub fn resolve(cli: Cli) -> Result<Mode, HprofSlurpError> {
         debug: cli.debug,
         list_strings: cli.list_strings,
         json: cli.json,
+        json_out: cli.json_out,
         preview_bytes: cli.preview_bytes,
         list_arrays_min_bytes: cli.list_arrays_min_bytes,
         retained_size: cli.retained_size,
@@ -383,6 +402,36 @@ mod args_tests {
             Cli::try_parse_from(["heaptrail", "-i", "x.hprof", "--preview-bytes", "200"]).unwrap();
         assert_eq!(cli.preview_bytes, 200);
         assert_eq!(cli.list_arrays_min_bytes, 1024); // default
+    }
+
+    #[test]
+    fn parses_json_out_with_json() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--json",
+            "--json-out",
+            "reports/summary.json",
+        ])
+        .unwrap();
+
+        assert!(cli.json);
+        assert_eq!(cli.json_out.as_deref(), Some("reports/summary.json"));
+    }
+
+    #[test]
+    fn rejects_json_out_without_json() {
+        let err = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "x.hprof",
+            "--json-out",
+            "reports/summary.json",
+        ])
+        .unwrap_err();
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
     }
 
     #[test]
@@ -500,6 +549,50 @@ mod args_tests {
                 assert_eq!(input_file, "test-heap-dumps/hprof-64.bin");
             }
             other => panic!("expected Summary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_carries_json_out_into_summary_mode() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "-i",
+            "test-heap-dumps/hprof-64.bin",
+            "--json",
+            "--json-out",
+            "reports/summary.json",
+        ])
+        .unwrap();
+
+        match resolve(cli).unwrap() {
+            Mode::Summary { json, json_out, .. } => {
+                assert!(json);
+                assert_eq!(json_out.as_deref(), Some("reports/summary.json"));
+            }
+            other => panic!("expected Summary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_carries_json_out_into_diff_mode() {
+        let cli = Cli::try_parse_from([
+            "heaptrail",
+            "--diff-from",
+            "test-heap-dumps/hprof-64.bin",
+            "--diff-to",
+            "test-heap-dumps/hprof-64.bin",
+            "--json",
+            "--json-out",
+            "reports/diff.json",
+        ])
+        .unwrap();
+
+        match resolve(cli).unwrap() {
+            Mode::Diff { json, json_out, .. } => {
+                assert!(json);
+                assert_eq!(json_out.as_deref(), Some("reports/diff.json"));
+            }
+            other => panic!("expected Diff, got {other:?}"),
         }
     }
 

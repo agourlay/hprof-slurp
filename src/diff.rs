@@ -169,6 +169,7 @@ mod tests {
             by: DiffSort::Count,
             top: 30,
             json: false,
+            json_out: None,
         };
         let entries = run(&mode).unwrap();
         assert!(

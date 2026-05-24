@@ -144,6 +144,7 @@ mod tests {
             top: 10,
             debug: false,
             json: false,
+            json_out: None,
         };
         match run(&mode) {
             Err(HprofSlurpError::NoAllocationSites) => {}

@@ -521,6 +521,7 @@ mod tests {
             max_depth,
             debug: false,
             json: false,
+            json_out: None,
             preview_bytes: 0,
             retained_size: false,
             exclude_soft_weak: false,
