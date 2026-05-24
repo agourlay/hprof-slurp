@@ -1,6 +1,6 @@
 ---
 name: analysing-heap-dumps
-description: Use when investigating .hprof files (Android or JVM heap dumps), diagnosing memory leaks, asking 'what holds class X / object id Y', measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, 'memory leak', 'retained size', 'heap is huge', 'find what is holding this object'. heaptrail is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
+description: Use when investigating .hprof files (Android or JVM heap dumps), deobfuscating Android release heap reports, diagnosing memory leaks, asking 'what holds class X / object id Y', measuring GC churn between two snapshots, or chasing OutOfMemoryError. Triggers include `am dumpheap`, `jmap -dump`, 'memory leak', 'retained size', 'heap is huge', 'find what is holding this object'. heaptrail is the recommended CLI; do not reach for Eclipse MAT first on large dumps.
 ---
 
 # Analyzing heap dumps with heaptrail
@@ -13,7 +13,13 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 8-byte (JVM) identifier formats, and processes dumps **larger than RAM** at
 ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.1.1+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.2.0+).
+
+> **v1.2.0 (Android release-build deobfuscation):** use `--mapping` with the
+> exact R8/ProGuard mapping file for the installed build, or `--auto-mapping`
+> from the Android project root to query the device package version and select
+> the matching local Gradle mapping. Summary/diff JSON keeps
+> `obfuscated_class_name` for traceability.
 
 > **v1.1.1 (modern Android dump fix):** v1.1.0 panicked with
 > `class id must have a class definition` on dumps that reference
@@ -22,7 +28,7 @@ path-to-root, and snapshot diff**. It supports both 4-byte (Android) and
 > gracefully: unknown classes get bare object-header size and an
 > `<unknown class #id>` label, plus a single end-of-run stderr
 > warning. If a user reports that panic message, upgrade them with
-> `cargo install --git https://github.com/johnneerdael/heaptrail --force`.
+> `cargo install heaptrail --force`.
 
 ## When to use
 
@@ -61,22 +67,21 @@ command -v cargo >/dev/null 2>&1 || {
   exit 1
 }
 
-# Install latest from johnneerdael's fork (has --find-referrers, --paths-from-id, --diff-from)
-cargo install --git https://github.com/johnneerdael/heaptrail
+# Install latest published release
+cargo install heaptrail
 
 # Verify
-heaptrail --version    # should report 1.1.1 or newer
+heaptrail --version    # should report 1.2.0 or newer
 ```
 
-If `heaptrail` is found but version is older than `1.1.1`, **upgrade**:
+If `heaptrail` is found but version is older than `1.2.0`, **upgrade**:
 ```bash
-cargo install --git https://github.com/johnneerdael/heaptrail --force
+cargo install heaptrail --force
 ```
-The 0.6.3 build (from crates.io) is summary-only and lacks the referrer
-tracing and diff modes you need for retainer queries. Versions 0.7–1.1.0
-have the modern-Android `class id must have a class definition` panic
-fixed in 1.1.1 — recommend the upgrade whenever a user reports that
-crash.
+Versions older than 1.2.0 lack release-build deobfuscation. Versions
+0.7–1.1.0 also have the modern-Android
+`class id must have a class definition` panic fixed in 1.1.1 — recommend
+an upgrade whenever a user reports that crash.
 
 If `~/.cargo/bin` is not on PATH after install, instruct the user to add
 it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
@@ -87,6 +92,21 @@ it (bash/zsh: `export PATH="$HOME/.cargo/bin:$PATH"` in `~/.bashrc` or
 `heaptrail` has one default mode (summary) and three opt-in modes
 selected by mutually-exclusive flags. Pick exactly one of:
 `--find-referrers`, `--paths-from-id`, or `--diff-from`/`--diff-to`.
+
+### Android release-build deobfuscation
+
+```bash
+# Explicit mapping file from the exact installed build
+heaptrail -i heap.hprof --mapping app/build/outputs/mapping/universalRelease/mapping.txt --leak-suspects
+
+# Auto-select mapping from local Gradle outputs by installed package version
+heaptrail -i heap.hprof --auto-mapping --package com.example.app --serial <device>
+```
+
+Run `--auto-mapping` from the Android project root, or add
+`--project-root <dir>`. It maps class and holder-field names in text
+reports; summary and diff JSON also include `obfuscated_class_name` when
+a row was renamed.
 
 ### 1. `summary` (default) — what's in the heap?
 
@@ -521,6 +541,7 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Retained-size triage (wrapper-vs-subgraph) | append `--retained-size` to summary, paths, or find-referrers |
 | Filter weak/soft/phantom holders (Android default) | append `--exclude-soft-weak` to any retained-size or path-walk mode |
 | Automated leak-suspect identification | `heaptrail -i heap.hprof --leak-suspects --exclude-soft-weak --preview-bytes 200` |
+| Deobfuscate Android release heap | append `--mapping mapping.txt` or `--auto-mapping --package <app>` |
 | Fold N paths-to-root into one tree | append `--merge-paths` to `--paths-from-id <any-instance>` |
 | Bitmap pixel-byte accounting (Android) | `heaptrail -i heap.hprof --bitmaps -t 20` |
 | JSON sidecar | append `--json` to any of the above |
@@ -533,11 +554,11 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Reaching for Eclipse MAT first | MAT loads the dump into RAM and is slow on multi-hundred-MB dumps. Use `heaptrail` for triage, MAT only if you need a full dominator tree. |
 | Running `hprof-conv` | Modern Android hprof from `am dumpheap` is already the standard format. `hprof-conv` is only for legacy pre-ART Dalvik dumps. |
 | Stopping at `--hops 1` | Hop 1 reports `Object[][]` for any class held in a collection — uninformative. **Always run with `--hops 2`** for class targets. |
-| Trying to install via `cargo install heaptrail` | The crates.io build is 0.6.3 — summary-only, no referrer tracing. Use `cargo install --git https://github.com/johnneerdael/heaptrail`. |
+| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.2.0+ for Android release-build deobfuscation. |
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
 | Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `heaptrail` accepts and displays dotted. Inner classes: `Outer$Inner`. |
-| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install --git https://github.com/johnneerdael/heaptrail --force` to get 1.1.1+, which logs a single warning and continues instead. |
+| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.2.0+, which logs a single warning and continues instead. |
 
 ## Performance reference
 

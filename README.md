@@ -17,7 +17,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, and automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0) for the "what's wrong with this dump?" entry point. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, referrer chains, paths to GC roots with thread name and top Java frame at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.1.1 hardens the summary parser so modern Android dumps that reference unloaded boot-classpath / zygote-shared class ids no longer panic with `class id must have a class definition`. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -29,6 +29,7 @@ The parser reads sequentially. Summary and diff modes complete in a single pass;
 - **Content-aware diagnosis.** Inline previews of large primitive arrays in summary, paths, and referrer output identify the *kind* of bug — a `SharedPreferences` XML blob or an inflated Gson string — which MAT's narrative output doesn't surface (you can click into a String in MAT, but Leak Suspects doesn't preview content; heaptrail's `--leak-suspects` includes a content snippet inline per suspect).
 - **Retained-size triage.** Lengauer–Tarjan dominator-tree retained sizes augment `summary`, `--paths-from-id`, and `--find-referrers` — the wrapper-vs-subgraph question MAT answers, at the CLI in seconds rather than a GUI session.
 - **Automated suspect detection.** `--leak-suspects` ranks dominators by retained share, clusters by accumulating class, and emits a narrative report with path-to-root and content previews per suspect — the "what's wrong with this dump?" entry point that doesn't require knowing the suspect class up front. Pairs with `--exclude-soft-weak` to filter out `WeakReference`/`SoftReference`/`PhantomReference` noise from LeakCanary and the framework.
+- **Android release-build deobfuscation.** `--mapping` applies an explicit R8/ProGuard mapping file; `--auto-mapping` queries the installed package version via ADB and selects the matching local Gradle mapping. Text reports show real class and field names, while JSON summary/diff rows keep `obfuscated_class_name` for traceability.
 - **Narrow, repeatable questions.** "Who holds class X?", "What changed between these two dumps?", "What dominates the heap by retained size?", "What are the top allocation sites?" — single-command answers in seconds, no load-and-explore session.
 
 ### When to use [Eclipse MAT](https://www.eclipse.org/mat/) or [VisualVM](https://visualvm.github.io/)
@@ -109,18 +110,30 @@ reference and worked examples.
 
 ```
 ./heaptrail --help
-JVM heap dump hprof file analyzer
+JVM/Android heap dump (hprof) analyzer
 
-Usage: heaptrail [OPTIONS] --inputFile <inputFile>
+Usage: heaptrail [OPTIONS] [COMMAND]
 
 Options:
-  -i, --inputFile <inputFile>  binary hprof input file
-  -t, --top <top>              the top results to display [default: 20]
-  -d, --debug                  debug info
-  -l, --listStrings            list all Strings found
-      --json                   additional JSON output in file
-  -h, --help                   Print help
-  -V, --version                Print version
+  -i, --inputFile <INPUT_FILE>  Binary hprof input file
+  -t, --top <TOP>               The top N results to display [default: 20]
+      --json                    Additional JSON output
+      --json-out <PATH>         Write JSON output to this exact path
+      --mapping <PATH>          R8/ProGuard mapping file for deobfuscation
+      --auto-mapping [<MODE>]   Discover mapping from local Gradle output
+      --project-root <DIR>      Android project root for --auto-mapping
+      --package <PACKAGE>       Android package/application id
+      --serial <SERIAL>         adb serial/device id
+      --find-referrers <TARGET> Find direct + N-hop referrers
+      --paths-from-id <ID>      Trace holder chain toward a GC root
+      --diff-from <PATH>        Baseline hprof for diff
+      --diff-to <PATH>          Comparison hprof for diff
+      --leak-suspects [<THRESHOLD>]
+      --retained-size
+      --exclude-soft-weak
+      --bitmaps
+  -h, --help                    Print help
+  -V, --version                 Print version
 ```
 
 ### `android-capture` — capture and validate Android dumps
@@ -427,6 +440,22 @@ heaptrail --diff-from before.hprof --diff-to after.hprof --json --json-out repor
 
 Details in [USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
 
+## v1.2.0 — Android release-build deobfuscation
+
+v1.2.0 adds first-class R8/ProGuard mapping support for obfuscated Android
+release heaps:
+
+- `--mapping <PATH>` loads an explicit mapping file.
+- `--auto-mapping` matches the installed package's `versionCode` /
+  `versionName` to local Gradle `output-metadata.json`, then loads
+  `app/build/outputs/mapping/<variant>/mapping.txt`.
+- Summary, diff, referrers, paths, merged paths, leak suspects, and allocation
+  site reports render deobfuscated class and holder-field names.
+- Summary and diff JSON keep `obfuscated_class_name` when a row was
+  deobfuscated, so reports remain traceable back to raw HPROF symbols.
+- `android-capture --auto-mapping` records mapping path, source, `pg_map_id`,
+  and `pg_map_hash` in the capture transcript.
+
 ## v1.1.1 — modern Android dump robustness
 
 v1.1.0 panicked with `class id must have a class definition` when an
@@ -490,25 +519,24 @@ cargo --version
 
 If `cargo` isn't found, see [Adding cargo bin to PATH](#adding-cargo-bin-to-path) below.
 
-### Latest build (recommended — includes referrer tracing, paths, diff)
-
-```bash
-cargo install --git https://github.com/johnneerdael/heaptrail
-```
-
-This downloads the source, compiles in release mode (~1–2 minutes), and
-installs the binary to `~/.cargo/bin/heaptrail` (or
-`%USERPROFILE%\.cargo\bin\heaptrail.exe` on Windows). To upgrade later,
-rerun the same command.
-
-### Legacy build (crates.io 0.6.3 — summary mode only)
+### Latest published build (recommended)
 
 ```bash
 cargo install heaptrail
 ```
 
-The published crates.io build does not yet include `--find-referrers`,
-`--paths-from-id`, or `--diff-from`/`--diff-to`.
+This downloads the crate, compiles in release mode (~1–2 minutes), and installs
+the binary to `~/.cargo/bin/heaptrail` (or
+`%USERPROFILE%\.cargo\bin\heaptrail.exe` on Windows). To upgrade later, rerun
+with `--force`.
+
+### Build directly from git
+
+```bash
+cargo install --git https://github.com/johnneerdael/heaptrail --force
+```
+
+Use the git install when testing unreleased changes from `master`.
 
 ### Verify the install
 
@@ -568,7 +596,7 @@ Each tagged release attaches binaries for six targets, no `cargo` needed:
 Download from
 [johnneerdael/heaptrail/releases](https://github.com/johnneerdael/heaptrail/releases),
 extract, and place on your `PATH`. The latest release is
-[heaptrail v0.8.0](https://github.com/johnneerdael/heaptrail/releases/latest).
+[heaptrail v1.2.0](https://github.com/johnneerdael/heaptrail/releases/latest).
 
 (The legacy summary-only binaries from
 [agourlay/hprof-slurp/releases](https://github.com/agourlay/hprof-slurp/releases)
@@ -582,7 +610,7 @@ This repo doubles as a [Claude Code](https://claude.com/claude-code) plugin
 marketplace. Installing the plugin gives Claude an `analysing-heap-dumps`
 skill that auto-activates whenever you mention `.hprof` files, memory
 leaks, retained size, `am dumpheap`, etc. — Claude will then run
-`heaptrail` for you, install it via `cargo install --git` if missing,
+`heaptrail` for you, install it via `cargo install heaptrail` if missing,
 and walk through the standard triage workflow (summary → find-referrers
 → paths-from-id → diff).
 
@@ -620,10 +648,9 @@ I have a 235 MB Android hprof at /tmp/heap.hprof. The app is using way more
 memory than expected. What's going on?
 ```
 
-Claude will load the skill, verify `heaptrail` is on PATH (and install
-it via `cargo install --git https://github.com/johnneerdael/heaptrail`
-if not), then walk you through summary, retainer tracing, and path-to-root
-in the right order.
+Claude will load the skill, verify `heaptrail` is on PATH (and install it via
+`cargo install heaptrail` if not), then walk you through summary, retainer
+tracing, and path-to-root in the right order.
 
 ### Updating
 

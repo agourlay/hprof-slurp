@@ -5,13 +5,14 @@ Every example below uses real output from a 235 MiB Android dump
 (`heap-phase4-jvm.hprof`, captured from a Modern Home / nexio.tv build) — not
 synthetic data.
 
-> **Need v1.1.1+.** v1.1.0 panicked with
+> **Need v1.2.0+ for release-build deobfuscation.** v1.2.0 adds
+> `--mapping` and `--auto-mapping` for R8/ProGuard-obfuscated Android heaps.
+> v1.1.0 panicked with
 > `class id must have a class definition` on modern Android dumps that
 > reference elided boot-classpath / zygote-shared class ids (common on
 > recent ART builds — `am dumpheap` on Android 14+). v1.1.1 logs a
 > single warning and continues. If you hit the panic on a 1.1.0 install,
-> upgrade with
-> `cargo install --git https://github.com/johnneerdael/heaptrail --force`.
+> upgrade with `cargo install heaptrail --force`.
 
 ---
 
@@ -91,6 +92,11 @@ from another directory. If multiple local outputs match, heaptrail prefers a
 single `universal` variant; otherwise pass `--mapping` explicitly. The mapping
 must come from the same build as the installed app; using a stale mapping can
 produce plausible but wrong class names.
+
+Mapping applies to summary, diff, referrers, paths, merged paths, leak suspects,
+and allocation-site reports. Summary and diff JSON include
+`obfuscated_class_name` whenever a class was renamed, so machine-readable
+reports retain a link back to the raw HPROF symbol.
 
 ### Option B — Android Studio Profiler
 
@@ -686,9 +692,8 @@ Eclipse MAT's default leak-hunting workflow excludes those edges, so
 a side-by-side comparison will show MAT's retained smaller than
 heaptrail's for any object reachable only via a weak/soft/phantom
 holder. **This is by design, not a bug.** If the difference matters
-for your investigation, the v1.1+ roadmap includes
-`--exclude-soft-weak` to rebuild the graph dropping outgoing edges
-from `java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses.
+for your investigation, use `--exclude-soft-weak` to rebuild the graph dropping
+outgoing edges from `java.lang.ref.{Soft,Weak,Phantom}Reference` subclasses.
 
 ### Memory and wall time
 
@@ -1399,8 +1404,8 @@ summary's class column first.
 ### "32 bits heap dumps are not supported yet"
 
 You're on an old build. `heaptrail >= 0.6.4` supports both 32-bit and
-64-bit identifier sizes. `cargo install --git
-https://github.com/johnneerdael/heaptrail` for the current build.
+64-bit identifier sizes. Run `cargo install heaptrail --force` for the current
+published build.
 
 ### `--paths-from-id` reports "orphan"
 

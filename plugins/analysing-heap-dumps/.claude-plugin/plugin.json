@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "analysing-heap-dumps",
-  "version": "1.1.1",
-  "description": "Investigate .hprof files (Android or JVM heap dumps), diagnose memory leaks, find what holds an over-allocated class or specific object id, measure GC churn between two snapshots, or chase OutOfMemoryError. Wraps heaptrail with auto-install instructions.",
+  "version": "1.2.0",
+  "description": "Investigate .hprof files (Android or JVM heap dumps), deobfuscate Android release heaps with R8 mappings, diagnose memory leaks, find holders, measure GC churn, or chase OutOfMemoryError. Wraps heaptrail with auto-install instructions.",
   "author": {
     "name": "John Neerdael",
     "email": "john@neerdael.nl",

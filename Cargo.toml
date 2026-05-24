@@ -1,11 +1,11 @@
 [package]
 name = "heaptrail"
-version = "1.1.1"
+version = "1.2.0"
 authors = [
     "John Neerdael <john@neerdael.nl>",
     "Arnaud Gourlay <arnaud.gourlay@gmail.com>",
 ]
-description = "Production-grade leak hunting at the CLI for JVM/Android hprof dumps: retained-size dominators, leak suspects, reference-strength filtering, content previews, bitmap mode, snapshot diff. LLM-friendly."
+description = "Production-grade leak hunting at the CLI for JVM/Android hprof dumps: retained-size dominators, leak suspects, R8 mapping deobfuscation, content previews, bitmap mode, snapshot diff. LLM-friendly."
 repository = "https://github.com/johnneerdael/heaptrail"
 homepage = "https://github.com/johnneerdael/heaptrail"
 license = "Apache-2.0"
