@@ -9,6 +9,8 @@ use crate::errors::HprofSlurpError;
 
 const DEVICE_DUMP_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 const DEVICE_DUMP_READY_POLL: Duration = Duration::from_millis(500);
+const DEVICE_TMP_HPROF_GLOB: &str = "/data/local/tmp/*.hprof";
+const DEVICE_ALLOCATION_TRACE: &str = "/data/local/tmp/heaptrail-alloc.trace";
 
 #[derive(Debug, Clone)]
 pub struct CaptureOptions {
@@ -121,6 +123,8 @@ pub fn run_with_runner<R: CommandRunner>(
     )?;
     let foreground_evidence = extract_focus_lines(&focus_output.stdout);
 
+    cleanup_previous_device_captures(&options.serial, runner, &mut transcript)?;
+
     let mut local_hprofs = Vec::new();
     let mut dump_size_bytes = 0;
     let mut any_allocation_sites_present = false;
@@ -220,7 +224,7 @@ fn capture_one<R: CommandRunner>(
                 "profile",
                 "start",
                 pid,
-                "/data/local/tmp/heaptrail-alloc.trace",
+                DEVICE_ALLOCATION_TRACE,
             ],
             transcript,
         )?;
@@ -259,6 +263,7 @@ fn capture_one<R: CommandRunner>(
         &["pull", device_hprof, local_hprof.to_string_lossy().as_ref()],
         transcript,
     )?;
+    cleanup_captured_device_hprof(&options.serial, runner, device_hprof, transcript);
 
     let dump_size_bytes = std::fs::metadata(local_hprof)?.len();
     if dump_size_bytes == 0 {
@@ -270,6 +275,39 @@ fn capture_one<R: CommandRunner>(
         ));
     }
     Ok(dump_size_bytes)
+}
+
+fn cleanup_previous_device_captures<R: CommandRunner>(
+    serial: &Option<String>,
+    runner: &mut R,
+    transcript: &mut Vec<CommandRecord>,
+) -> Result<(), HprofSlurpError> {
+    adb_checked(
+        serial,
+        runner,
+        &[
+            "shell",
+            "sh",
+            "-c",
+            &format!("rm -f {DEVICE_TMP_HPROF_GLOB} {DEVICE_ALLOCATION_TRACE}"),
+        ],
+        transcript,
+    )?;
+    Ok(())
+}
+
+fn cleanup_captured_device_hprof<R: CommandRunner>(
+    serial: &Option<String>,
+    runner: &mut R,
+    device_hprof: &str,
+    transcript: &mut Vec<CommandRecord>,
+) {
+    let _ = adb_recorded(
+        serial,
+        runner,
+        &["shell", "rm", "-f", device_hprof],
+        transcript,
+    );
 }
 
 fn capture_failure(err: HprofSlurpError, allocation_sites: bool) -> HprofSlurpError {
@@ -533,6 +571,13 @@ mod tests {
             args: &[String],
         ) -> Result<CommandOutput, HprofSlurpError> {
             self.calls.push(args.to_vec());
+            if is_cleanup_command(args) {
+                return Ok(CommandOutput {
+                    status: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                });
+            }
             if args.iter().any(|arg| arg == "pull")
                 && let Some(bytes) = self
                     .on_pull_write
@@ -544,6 +589,26 @@ mod tests {
             }
             Ok(self.outputs.pop_front().expect("missing fake output"))
         }
+    }
+
+    fn is_cleanup_command(args: &[String]) -> bool {
+        let mut args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        if args.len() >= 2 && args[0] == "-s" {
+            args.drain(0..2);
+        }
+        args.as_slice()
+            == [
+                "shell",
+                "sh",
+                "-c",
+                "rm -f /data/local/tmp/*.hprof /data/local/tmp/heaptrail-alloc.trace",
+            ]
+            || (args.len() == 4
+                && args[0] == "shell"
+                && args[1] == "rm"
+                && args[2] == "-f"
+                && args[3].starts_with("/data/local/tmp/")
+                && args[3].ends_with(".hprof"))
     }
 
     #[test]
@@ -633,6 +698,16 @@ mod tests {
         let transcript = std::fs::read_to_string(report.transcript).unwrap();
         assert!(transcript.contains("mCurrentFocus"));
         assert!(transcript.contains("allocation_sites_present: false"));
+        assert!(
+            transcript
+                .contains("rm -f /data/local/tmp/*.hprof /data/local/tmp/heaptrail-alloc.trace"),
+            "{transcript}"
+        );
+        assert!(
+            transcript.contains("rm -f /data/local/tmp/com-example-app-")
+                && transcript.contains(".hprof"),
+            "{transcript}"
+        );
     }
 
     #[test]
@@ -849,6 +924,15 @@ mod tests {
                 .contains("-03.hprof")
         );
         assert!(report.local_hprofs.iter().all(|path| path.is_file()));
+        let cleanup_calls = runner
+            .calls
+            .iter()
+            .filter(|args| {
+                let joined = args.join(" ");
+                joined.starts_with("shell rm -f /data/local/tmp/") && joined.ends_with(".hprof")
+            })
+            .count();
+        assert_eq!(cleanup_calls, 3);
     }
 
     #[test]

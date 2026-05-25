@@ -18,7 +18,7 @@ The design of the underlying streaming parser is described in detail in
 
 ## Motivation
 
-`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines (v1.3.0), grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.3.1 hardens `android-capture` with stalled-dump detection, allocation-profile cleanup, and `--series` capture. Output is structured for terminal reading and CI logs, not interactive exploration.
+`heaptrail` is a CLI for fast, detailed post-mortem analysis of JVM and Android heap dumps. Each investigation mode answers a specific question in a single command — top classes, snapshot diff, diff-series playback timelines (v1.3.0), grouped referrer holders, paths to GC roots with thread metadata fallback at thread-owned terminators, allocation-site attribution, inline content previews (v0.9.0) so a 234 KiB `char[]` identifies itself as a `SharedPreferences` XML blob or an inflated Gson string, dominator-tree retained sizes (v1.0.0) for the wrapper-vs-subgraph question MAT answers, automated leak-suspect clustering with reference-strength filtering and bitmap-aware reporting (v1.1.0), and R8/ProGuard mapping deobfuscation (v1.2.0) for Android release-build dumps. v1.4.0 hardens `android-capture` with stalled-dump detection, device tmp cleanup, allocation-profile cleanup, and `--series` capture. Output is structured for terminal reading and CI logs, not interactive exploration.
 
 The parser reads sequentially. Summary and diff modes complete in a single pass; the investigation modes (`--find-referrers`, `--paths-from-id`, `--allocation-sites`) do a lightweight first pass to build a metadata index — classes, threads, stack frames, GC roots — before a targeted second scan. None of those modes hold a full object graph in memory, so multi-gigabyte dumps run comfortably on a laptop. The opt-in `--retained-size` mode (v1.0.0+) is the exception: it builds a full reference graph and dominator tree in memory (~210 MiB extra on a 200 MiB Android dump) — the cost of MAT-grade retained-bytes accounting.
 
@@ -155,10 +155,12 @@ heaptrail android-capture --package com.example.app --out artifacts/run --foregr
 ```
 
 Runs the ADB capture path, waits for the device-side `.hprof` to become
-nonzero/stable before pulling, validates that the local file is nonzero, runs a
-cheap summary pass to record AllocationSites availability, and writes a
-transcript with PID, foreground evidence, commands, dump size, and artifact
-paths. `--series 3` captures three validated HProfs and prints the
+nonzero/stable before pulling, validates that the local file is nonzero,
+cleans stale `/data/local/tmp/*.hprof` files before capture, removes each
+device-side HProf after it is pulled, runs a cheap summary pass to record
+AllocationSites availability, and writes a transcript with PID, foreground
+evidence, commands, dump size, and artifact paths. `--series 3` captures three
+validated HProfs and prints the
 `--diff-series` command to run next; `--series` must be `1` or at least `3`.
 `--allocation-sites` is opportunistic on Android: heaptrail always attempts
 `am profile stop <pid>` cleanup, but ART may still omit AllocationSites records
@@ -471,6 +473,17 @@ heaptrail --diff-from before.hprof --diff-to after.hprof --json --json-out repor
 
 Details in [USERGUIDE §7](USERGUIDE.md#7---json--structured-output-for-scripts).
 
+## v1.4.0 — Android capture tmp cleanup
+
+v1.4.0 prevents Android device `/data` pressure from repeated captures:
+
+- deletes stale `/data/local/tmp/*.hprof` files before each `android-capture`
+  run;
+- removes each device-side HProf after it has been pulled locally;
+- includes cleanup commands in the transcript for capture provenance;
+- updates manual capture guidance to clean `/data/local/tmp` before and after
+  hand-written `adb shell am dumpheap` workflows.
+
 ## v1.3.1 — Android capture reliability
 
 v1.3.1 improves the live-device `android-capture` helper:
@@ -655,7 +668,7 @@ Each tagged release attaches binaries for six targets, no `cargo` needed:
 Download from
 [johnneerdael/heaptrail/releases](https://github.com/johnneerdael/heaptrail/releases),
 extract, and place on your `PATH`. The latest release is
-[heaptrail v1.3.0](https://github.com/johnneerdael/heaptrail/releases/latest).
+[heaptrail v1.4.0](https://github.com/johnneerdael/heaptrail/releases/latest).
 
 (The legacy summary-only binaries from
 [agourlay/hprof-slurp/releases](https://github.com/agourlay/hprof-slurp/releases)

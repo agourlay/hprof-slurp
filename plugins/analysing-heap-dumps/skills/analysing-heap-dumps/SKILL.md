@@ -13,13 +13,15 @@ path-to-root, content preview, retained leak suspects, and snapshot diff**.
 It supports both 4-byte (Android) and 8-byte (JVM) identifier formats, and
 processes dumps **larger than RAM** at ~1.5 GB/s.
 
-**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.3.1+).
+**Source:** https://github.com/johnneerdael/heaptrail (master, version 1.4.0+).
 
-> **v1.3.1 (Android capture reliability):** use `android-capture --series 3`
+> **v1.4.0 (Android capture tmp cleanup):** use `android-capture --series 3`
 > for quick playback-growth capture sets. The helper waits for device-side
 > HProf files to become nonzero/stable before pulling, fails after 60s of no
-> size progress, and always attempts allocation profiling cleanup. Treat
-> allocation-tracked capture stalls as unsupported/failed on that device.
+> size progress, cleans stale `/data/local/tmp/*.hprof` files before capture,
+> removes pulled device-side HProf files, and always attempts allocation
+> profiling cleanup. Treat allocation-tracked capture stalls as
+> unsupported/failed on that device.
 
 > **v1.3.0 (playback debugging foundation):** use `--diff-series` for 3+
 > ordered snapshots, `--group-holders` to collapse noisy Media3/cache holder
@@ -90,11 +92,13 @@ Use these defaults unless the user explicitly asks for a raw/minimal command:
    targets into actionable owner/field rows such as
    `LoadControl$Parameters.timeline`, `playerId`, and `mediaPeriodId`.
 6. **For new Android captures, prefer `android-capture`.** Use it instead of
-   hand-written `adb` commands when capturing from a live device. It records
-   PID, focused-window evidence, exact commands, local file size,
-   AllocationSites presence, and mapping metadata when `--auto-mapping` is
-   enabled. That transcript is often as valuable as the dump when another
-   agent must reason about capture quality later.
+   hand-written `adb` commands when capturing from a live device. It cleans
+   stale `/data/local/tmp/*.hprof` files before capture, removes each
+   device-side HProf after pulling, and records PID, focused-window evidence,
+   exact commands, local file size, AllocationSites presence, and mapping
+   metadata when `--auto-mapping` is enabled. That transcript is often as
+   valuable as the dump when another agent must reason about capture quality
+   later.
 7. **Treat capture quality as evidence.** A zero-byte local HProf is not a
    valid dump. Current `android-capture` waits for the device-side HProf to
    become nonzero and stable before pulling, and fails if the remote size does
@@ -126,13 +130,14 @@ command -v cargo >/dev/null 2>&1 || {
 cargo install heaptrail
 
 # Verify
-heaptrail --version    # should report 1.3.1 or newer
+heaptrail --version    # should report 1.4.0 or newer
 ```
 
-If `heaptrail` is found but version is older than `1.3.1`, **upgrade**:
+If `heaptrail` is found but version is older than `1.4.0`, **upgrade**:
 ```bash
 cargo install heaptrail --force
 ```
+Versions older than 1.4.0 do not clean Android device-side HProf temp files.
 Versions older than 1.3.1 have weaker Android capture guards. Versions older
 than 1.3.0 lack playback diff-series and grouped holder summaries. Versions
 older than 1.2.0 lack release-build deobfuscation. Versions 0.7–1.1.0 also
@@ -747,28 +752,32 @@ stuck; collect logcat around `dumpheap`/`hprof` instead of repeatedly pulling
 Manual AllocationSites fallback:
 
 ```bash
+adb shell rm -f /data/local/tmp/*.hprof /data/local/tmp/heaptrail-alloc.trace
 adb shell am profile start <pid> /data/local/tmp/heaptrail-alloc.trace
 adb shell am dumpheap <pid> /data/local/tmp/heap.hprof
 adb shell am profile stop <pid>
 adb shell stat -c %s /data/local/tmp/heap.hprof
 adb pull /data/local/tmp/heap.hprof
+adb shell rm -f /data/local/tmp/heap.hprof
 heaptrail -i heap.hprof --mapping mapping.txt --allocation-sites --top 20
 ```
 
 Allocation-site capture is device/build-sensitive. On tested rooted Android TV
 hardware, `am profile start` returned success but the allocation-tracked HProf
-remained 0 bytes; ordinary non-tracked dumps worked. Always stop profiling, do
-not leave the target under allocation tracking, and fall back to suspects,
-diffs, holders, and paths when summary still says `AllocationSites: not
-present`.
+remained 0 bytes; ordinary non-tracked dumps worked. Always clear old HProf
+captures from `/data/local/tmp` before starting, stop profiling, remove the
+remote HProf after pulling it locally, and fall back to suspects, diffs,
+holders, and paths when summary still says `AllocationSites: not present`.
 
 For two-snapshot diff:
 ```bash
+adb shell rm -f /data/local/tmp/*.hprof
 adb shell am dumpheap <pid> /data/local/tmp/before.hprof
 # (run the suspect interaction)
 adb shell am dumpheap <pid> /data/local/tmp/after.hprof
 adb pull /data/local/tmp/before.hprof
 adb pull /data/local/tmp/after.hprof
+adb shell rm -f /data/local/tmp/before.hprof /data/local/tmp/after.hprof
 heaptrail --diff-from before.hprof --diff-to after.hprof --mapping mapping.txt --diff-by bytes
 ```
 
@@ -830,11 +839,11 @@ For JVM (server) dumps: `jmap -dump:format=b,file=heap.hprof <pid>`.
 | Running pairwise diffs for playback captures | For 3+ ordered snapshots, `--diff-series` gives the whole timeline and monotonic growth candidates in one run. |
 | Dumping `-l` to the conversation | It can emit tens of thousands of strings. Redirect to a file and inspect the `Standalone large arrays` section. |
 | Scanning huge Media3 referrer output manually | Use `--target-glob 'androidx.media3.**' --group-holders` so owner families and holder fields surface first. |
-| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.3.1+ for reliable Android capture, 1.3.0+ for playback diff-series, and 1.2.0+ for Android release-build deobfuscation. |
+| Using stale heaptrail | Install or upgrade with `cargo install heaptrail --force`; use 1.4.0+ for Android capture temp-file cleanup, 1.3.1+ for reliable Android capture, 1.3.0+ for playback diff-series, and 1.2.0+ for Android release-build deobfuscation. |
 | Forgetting the `id:` prefix | `--find-referrers 1661812752` and `--find-referrers id:1661812752` both work; `--find-referrers <class-name>` is FQ-name targeting. Bare digits are always treated as ids. |
 | Combining `--find-referrers` with `--diff-from` | Modes are mutually exclusive. Run them as separate commands. |
 | Using slash form for class names | Names are dotted (`java.util.ArrayList`), not slash-form (`java/util/ArrayList`). The HPROF stores slash form internally; `heaptrail` accepts and displays dotted. Inner classes: `Outer$Inner`. |
-| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.3.1+, which logs a single warning and continues instead. |
+| Seeing `class id must have a class definition` panic | Pre-1.1.1 bug on modern Android dumps where `InstanceDump` references an elided boot-classpath / zygote-shared class id. Upgrade with `cargo install heaptrail --force` to get 1.4.0+, which logs a single warning and continues instead. |
 
 ## Performance reference
 

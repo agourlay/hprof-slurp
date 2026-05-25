@@ -5,9 +5,11 @@ Every example below uses real output from a 235 MiB Android dump
 (`heap-phase4-jvm.hprof`, captured from a Modern Home / nexio.tv build) — not
 synthetic data.
 
-> **Need v1.3.1+ for reliable live Android capture.** v1.3.1 adds
-> `android-capture --series`, waits for nonzero/stable device HProf files
-> before pulling, and always attempts allocation profiling cleanup. Need
+> **Need v1.4.0+ for reliable live Android capture.** v1.4.0 cleans stale
+> `/data/local/tmp/*.hprof` files before capture and removes pulled device-side
+> HProf files. v1.3.1 adds `android-capture --series`, waits for nonzero/stable
+> device HProf files before pulling, and always attempts allocation profiling
+> cleanup. Need
 > v1.3.0+ for playback/debugging timelines: v1.3.0 adds
 > `--diff-series`, `--group-holders`, root metadata fallback, and
 > `--native-context`. v1.2.0 adds `--mapping` and `--auto-mapping` for
@@ -31,8 +33,10 @@ adb shell ps -A | grep com.example.myapp
 # u0_a382  29481  ...  com.example.myapp
 
 # Capture (writes to device, then pull)
+adb shell rm -f /data/local/tmp/*.hprof
 adb shell am dumpheap 29481 /data/local/tmp/heap.hprof
 adb pull /data/local/tmp/heap.hprof
+adb shell rm -f /data/local/tmp/heap.hprof
 ```
 
 `am dumpheap` gives you the live heap of a running process. The captured file
@@ -83,11 +87,13 @@ heaptrail android-capture \
 
 After pull, heaptrail runs a cheap summary pass and records whether
 `AllocationSites` data is present in the transcript. The helper attempts
-`am profile stop <pid>` cleanup even when dump capture fails. Treat
+`am profile stop <pid>` cleanup even when dump capture fails, removes stale
+`/data/local/tmp/*.hprof` files before capture, and removes each device-side
+HProf after it has been pulled locally. Treat
 AllocationSites as opportunistic on Android: `am profile start` can succeed
 without ART emitting AllocationSites records into the HProf on that device or
-build. The helper does not delete the device-side `/data/local/tmp/*.hprof` by
-default, so failed or partial captures remain available for manual inspection.
+build. Failed captures still write a transcript so cleanup and remote file
+state are visible.
 
 ### Deobfuscating release-build heap reports
 
@@ -448,11 +454,13 @@ load and diff them:
 
 ```bash
 # Capture before & after a workload
+adb shell rm -f /data/local/tmp/*.hprof
 adb shell am dumpheap <pid> /data/local/tmp/before.hprof
 # (run your suspect interaction)
 adb shell am dumpheap <pid> /data/local/tmp/after.hprof
 adb pull /data/local/tmp/before.hprof
 adb pull /data/local/tmp/after.hprof
+adb shell rm -f /data/local/tmp/before.hprof /data/local/tmp/after.hprof
 
 # Compare
 heaptrail --diff-from before.hprof --diff-to after.hprof --diff-by count --top 20
