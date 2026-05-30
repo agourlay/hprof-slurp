@@ -53,6 +53,18 @@ const TAG_GC_INSTANCE_DUMP: u8 = 0x21;
 const TAG_GC_OBJ_ARRAY_DUMP: u8 = 0x22;
 const TAG_GC_PRIM_ARRAY_DUMP: u8 = 0x23;
 
+// Android HPROF extension tags (JAVA PROFILE 1.0.3, emitted by `am dumpheap`
+// on modern ART). Source: art/runtime/hprof/hprof.cc in AOSP.
+const TAG_GC_ROOT_INTERNED_STRING: u8 = 0x89;
+const TAG_GC_ROOT_FINALIZING: u8 = 0x8A; // obsolete in ART, but emitted by older Dalvik dumps
+const TAG_GC_ROOT_DEBUGGER: u8 = 0x8B;
+const TAG_GC_ROOT_REFERENCE_CLEANUP: u8 = 0x8C; // obsolete in ART
+const TAG_GC_ROOT_VM_INTERNAL: u8 = 0x8D;
+const TAG_GC_ROOT_JNI_MONITOR: u8 = 0x8E;
+const TAG_GC_UNREACHABLE: u8 = 0x90; // obsolete in ART
+const TAG_GC_PRIM_ARRAY_NODATA_DUMP: u8 = 0xC3; // obsolete in ART
+const TAG_GC_HEAP_DUMP_INFO: u8 = 0xFE;
+
 pub struct HprofRecordParser {
     debug_mode: bool,
     id_size: u32,
@@ -190,6 +202,16 @@ fn parse_gc_record(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
         TAG_GC_INSTANCE_DUMP => parse_gc_instance_dump(r1, id_size),
         TAG_GC_OBJ_ARRAY_DUMP => parse_gc_object_array_dump(r1, id_size),
         TAG_GC_PRIM_ARRAY_DUMP => parse_gc_primitive_array_dump(r1, id_size),
+        // Android HPROF 1.0.3 extensions (am dumpheap on modern ART).
+        TAG_GC_ROOT_INTERNED_STRING => parse_gc_root_interned_string(r1, id_size),
+        TAG_GC_ROOT_FINALIZING => parse_gc_root_finalizing(r1, id_size),
+        TAG_GC_ROOT_DEBUGGER => parse_gc_root_debugger(r1, id_size),
+        TAG_GC_ROOT_REFERENCE_CLEANUP => parse_gc_root_reference_cleanup(r1, id_size),
+        TAG_GC_ROOT_VM_INTERNAL => parse_gc_root_vm_internal(r1, id_size),
+        TAG_GC_ROOT_JNI_MONITOR => parse_gc_root_jni_monitor(r1, id_size),
+        TAG_GC_UNREACHABLE => parse_gc_unreachable(r1, id_size),
+        TAG_GC_PRIM_ARRAY_NODATA_DUMP => parse_gc_primitive_array_nodata_dump(r1, id_size),
+        TAG_GC_HEAP_DUMP_INFO => parse_gc_heap_dump_info(r1, id_size),
         x => panic!("unhandled gc record tag {x}"),
     }
 }
@@ -273,6 +295,89 @@ fn parse_gc_root_thread_block(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord
 
 fn parse_gc_root_monitor_used(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
     map(id(id_size), |object_id| RootMonitorUsed { object_id }).parse(i)
+}
+
+// ---- Android HPROF 1.0.3 extension parsers ----
+// All roots below are ID-only records (single object id payload), except
+// RootJniMonitor. Modern ART `LOG(FATAL)`s on RootFinalizing /
+// RootReferenceCleanup / Unreachable, but older Dalvik dumps do emit them as
+// id-only roots (the `leak_asynctask_pre_m.hprof` fixture exercises 0x8a),
+// so they are parsed rather than rejected.
+
+fn parse_gc_root_interned_string(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| GcRecord::RootInternedString {
+        object_id,
+    })
+    .parse(i)
+}
+
+fn parse_gc_root_finalizing(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| GcRecord::RootFinalizing {
+        object_id,
+    })
+    .parse(i)
+}
+
+fn parse_gc_root_debugger(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| GcRecord::RootDebugger {
+        object_id,
+    })
+    .parse(i)
+}
+
+fn parse_gc_root_reference_cleanup(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| GcRecord::RootReferenceCleanup {
+        object_id,
+    })
+    .parse(i)
+}
+
+fn parse_gc_root_vm_internal(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| GcRecord::RootVmInternal {
+        object_id,
+    })
+    .parse(i)
+}
+
+fn parse_gc_root_jni_monitor(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(
+        (id(id_size), parse_u32, parse_u32),
+        |(object_id, thread_serial_number, frame_number_in_stack_trace)| GcRecord::RootJniMonitor {
+            object_id,
+            thread_serial_number,
+            frame_number_in_stack_trace,
+        },
+    )
+    .parse(i)
+}
+
+fn parse_gc_unreachable(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(id(id_size), |object_id| GcRecord::Unreachable { object_id }).parse(i)
+}
+
+fn parse_gc_primitive_array_nodata_dump(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map(
+        (id(id_size), parse_u32, parse_u32, parse_field_type),
+        |(object_id, stack_trace_serial_number, number_of_elements, element_type)| {
+            GcRecord::PrimitiveArrayNoDataDump {
+                object_id,
+                stack_trace_serial_number,
+                number_of_elements,
+                element_type,
+            }
+        },
+    )
+    .parse(i)
+}
+
+fn parse_gc_heap_dump_info(i: &[u8], id_size: u32) -> IResult<&[u8], GcRecord> {
+    map((parse_u32, id(id_size)), |(heap_type, heap_name_id)| {
+        GcRecord::HeapDumpInfo {
+            heap_type,
+            heap_name_id,
+        }
+    })
+    .parse(i)
 }
 
 fn parse_field_value(ty: FieldType, id_size: u32) -> impl Fn(&[u8]) -> IResult<&[u8], FieldValue> {
@@ -873,6 +978,129 @@ mod tests {
                 assert_eq!(data.stack_frame_ids, vec![10, 11]);
             }
             other => panic!("expected stack trace record, got {other:?}"),
+        }
+    }
+
+    // ---- Android HPROF 1.0.3 extension parsers ----
+    // A 32-bit Android dump panicked with "unhandled gc record tag 141"
+    // (0x8D = TAG_GC_ROOT_VM_INTERNAL). These cover the full extension set.
+
+    fn dispatch_gc_record(tag: u8, payload: &[u8], id_size: u32) -> GcRecord {
+        let mut buf = Vec::with_capacity(payload.len() + 1);
+        buf.push(tag);
+        buf.extend_from_slice(payload);
+        let (rest, gcd) = parse_gc_record(&buf, id_size).unwrap();
+        assert!(rest.is_empty(), "parser left {} bytes unread", rest.len());
+        gcd
+    }
+
+    #[test]
+    fn android_root_vm_internal_parses() {
+        // Tag 0x8d (decimal 141) — the exact tag that panicked.
+        let payload = 42u64.to_be_bytes();
+        match dispatch_gc_record(0x8D, &payload, 8) {
+            GcRecord::RootVmInternal { object_id } => assert_eq!(object_id, 42),
+            other => panic!("expected RootVmInternal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_root_interned_string_parses() {
+        let payload = 7u64.to_be_bytes();
+        match dispatch_gc_record(0x89, &payload, 8) {
+            GcRecord::RootInternedString { object_id } => assert_eq!(object_id, 7),
+            other => panic!("expected RootInternedString, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_root_jni_monitor_parses_three_fields() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&100u64.to_be_bytes()); // object_id
+        payload.extend_from_slice(&5u32.to_be_bytes()); // thread_serial
+        payload.extend_from_slice(&3u32.to_be_bytes()); // frame number in stack trace
+        match dispatch_gc_record(0x8E, &payload, 8) {
+            GcRecord::RootJniMonitor {
+                object_id,
+                thread_serial_number,
+                frame_number_in_stack_trace,
+            } => {
+                assert_eq!(object_id, 100);
+                assert_eq!(thread_serial_number, 5);
+                assert_eq!(frame_number_in_stack_trace, 3);
+            }
+            other => panic!("expected RootJniMonitor, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_heap_dump_info_parses() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&u32::from(b'A').to_be_bytes()); // heap_type 'A' (app)
+        payload.extend_from_slice(&0xCAFEu64.to_be_bytes()); // heap_name_id
+        match dispatch_gc_record(0xFE, &payload, 8) {
+            GcRecord::HeapDumpInfo {
+                heap_type,
+                heap_name_id,
+            } => {
+                assert_eq!(heap_type, u32::from(b'A'));
+                assert_eq!(heap_name_id, 0xCAFE);
+            }
+            other => panic!("expected HeapDumpInfo, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_primitive_array_nodata_dump_parses() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&50u64.to_be_bytes()); // object_id
+        payload.extend_from_slice(&1u32.to_be_bytes()); // stack_trace_serial
+        payload.extend_from_slice(&64u32.to_be_bytes()); // number_of_elements
+        payload.push(8); // element_type Byte
+        match dispatch_gc_record(0xC3, &payload, 8) {
+            GcRecord::PrimitiveArrayNoDataDump {
+                object_id,
+                number_of_elements,
+                element_type,
+                ..
+            } => {
+                assert_eq!(object_id, 50);
+                assert_eq!(number_of_elements, 64);
+                assert!(matches!(element_type, FieldType::Byte));
+            }
+            other => panic!("expected PrimitiveArrayNoDataDump, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_deprecated_roots_still_parse() {
+        // 0x8a, 0x8c, 0x90 — older Android builds still emit these.
+        // Must not panic and must consume the payload exactly.
+        for tag in [0x8A, 0x8C, 0x90] {
+            let payload = 99u64.to_be_bytes();
+            dispatch_gc_record(tag, &payload, 8);
+        }
+    }
+
+    #[test]
+    fn android_root_debugger_and_reference_cleanup_parse() {
+        let payload = 11u64.to_be_bytes();
+        match dispatch_gc_record(0x8B, &payload, 8) {
+            GcRecord::RootDebugger { object_id } => assert_eq!(object_id, 11),
+            other => panic!("expected RootDebugger, got {other:?}"),
+        }
+        match dispatch_gc_record(0x8C, &payload, 8) {
+            GcRecord::RootReferenceCleanup { object_id } => assert_eq!(object_id, 11),
+            other => panic!("expected RootReferenceCleanup, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_roots_parse_with_32_bit_ids() {
+        let payload = 0x1234_5678u32.to_be_bytes();
+        match dispatch_gc_record(0x8D, &payload, 4) {
+            GcRecord::RootVmInternal { object_id } => assert_eq!(object_id, 0x1234_5678),
+            other => panic!("expected RootVmInternal, got {other:?}"),
         }
     }
 }

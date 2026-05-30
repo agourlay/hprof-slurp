@@ -164,6 +164,11 @@ mod tests {
     const FILE_PATH_64: &str = "test-heap-dumps/hprof-64.bin";
     const FILE_PATH_RESULT_64: &str = "test-heap-dumps/hprof-64-result.txt";
 
+    // Android `JAVA PROFILE 1.0.3` dump (32-bit ids) carrying ART/Dalvik
+    // extension records (e.g. ROOT_FINALIZING 0x8a). See test-heap-dumps/README.md.
+    const FILE_PATH_ANDROID: &str = "test-heap-dumps/hprof-android.bin";
+    const FILE_PATH_RESULT_ANDROID: &str = "test-heap-dumps/hprof-android-result.txt";
+
     fn validate_gold_rendered_result(render_result: RenderedResult, gold_path: &str) {
         let gold = fs::read_to_string(gold_path).expect("gold file not found!");
         // top 20 hardcoded
@@ -198,6 +203,25 @@ mod tests {
         let result = slurp_file(FILE_PATH_64, false, false);
         assert!(result.is_ok());
         validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_64);
+    }
+
+    #[test]
+    fn supported_android_1_0_3_extension_records() {
+        // Regression: this dump emits Android extension GC records that older
+        // versions panicked on ("unhandled gc record tag 138" = ROOT_FINALIZING).
+        // It must now parse cleanly end-to-end and match the gold output.
+        let result = slurp_file(FILE_PATH_ANDROID, false, false);
+        assert!(result.is_ok());
+        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_ANDROID);
+    }
+
+    #[test]
+    fn file_header_android_1_0_3() {
+        let file = File::open(FILE_PATH_ANDROID).unwrap();
+        let mut reader = BufReader::new(file);
+        let file_header = slurp_header(&mut reader).unwrap();
+        assert_eq!(file_header.size_pointers, 4);
+        assert_eq!(file_header.format, "JAVA PROFILE 1.0.3".to_string());
     }
 
     #[test]

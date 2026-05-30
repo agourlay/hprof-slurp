@@ -1,0 +1,86 @@
+
+File content summary:
+
+UTF-8 Strings: 23361
+Classes loaded: 3631
+Classes unloaded: 0
+Stack traces: 1
+Stack frames: 0
+Start threads: 0
+Allocation sites: 0
+End threads: 0
+Control settings: 0
+CPU samples: 0
+Heap summaries: 0
+683 heap dumps containing in total 57312 segments:
+..GC root unknown: 0
+..GC root thread objects: 12
+..GC root JNI global: 270
+..GC root JNI local: 7
+..GC root Java frame: 99
+..GC root native stack: 0
+..GC root sticky class: 3631
+..GC root thread block: 0
+..GC root monitor used: 0
+..GC primitive array dump: 13717
+..GC object array dump: 2060
+..GC class dump: 3631
+..GC instance dump: 25977
+
+Found 0 threads with stacktraces:
+
+Found a total of 2.61MiB of raw shallow heap objects in the dump.
+
+Top 20 raw shallow heap classes:
+
++------------+-----------+------------+--------------------------------------------------------+
+| Total size | Instances |    Largest | Class name                                             |
++------------+-----------+------------+--------------------------------------------------------+
+|    1.14MiB |      1452 |  156.27KiB | byte[]                                                 |
+|  604.48KiB |     10221 |   37.01KiB | char[]                                                 |
+|  269.58KiB |     11502 | 24.00bytes | java.lang.String                                       |
+|   98.06KiB |      4184 | 24.00bytes | java.util.HashMap$HashMapEntry                         |
+|   91.62KiB |      1930 |    6.44KiB | int[]                                                  |
+|   62.02KiB |      1381 |    2.27KiB | java.lang.String[][]                                   |
+|   46.07KiB |        83 |   16.02KiB | java.util.HashMap$HashMapEntry[][]                     |
+|   37.83KiB |      2421 | 16.00bytes | java.lang.Integer                                      |
+|   25.34KiB |       811 | 32.00bytes | java.util.LinkedHashMap$LinkedEntry                    |
+|   19.95KiB |       279 |    2.00KiB | java.lang.Object[][]                                   |
+|   19.36KiB |       826 | 24.00bytes | java.util.Hashtable$HashtableEntry                     |
+|   19.26KiB |       493 | 40.00bytes | java.lang.ref.FinalizerReference                       |
+|    7.27KiB |       186 | 40.00bytes | java.security.Provider$Service                         |
+|    7.24KiB |        21 |    4.02KiB | java.util.Hashtable$HashtableEntry[][]                 |
+|    6.68KiB |       285 | 24.00bytes | java.lang.ref.WeakReference                            |
+|    6.11KiB |       391 | 16.00bytes | com.android.org.bouncycastle.asn1.ASN1ObjectIdentifier |
+|    6.07KiB |        52 |    4.02KiB | int[][][]                                              |
+|    5.48KiB |       234 | 24.00bytes | java.util.ArrayList                                    |
+|    5.06KiB |       108 | 48.00bytes | org.ccil.cowan.tagsoup.ElementType                     |
+|    4.71KiB |       201 | 24.00bytes | android.graphics.Rect                                  |
++------------+-----------+------------+--------------------------------------------------------+
+
+Top 20 largest instances:
+
++-------------+-----------+-------------+--------------------------------------------------------------+
+|  Total size | Instances |     Largest | Class name                                                   |
++-------------+-----------+-------------+--------------------------------------------------------------+
+|     1.14MiB |      1452 |   156.27KiB | byte[]                                                       |
+|   604.48KiB |     10221 |    37.01KiB | char[]                                                       |
+|    46.07KiB |        83 |    16.02KiB | java.util.HashMap$HashMapEntry[][]                           |
+|    91.62KiB |      1930 |     6.44KiB | int[]                                                        |
+|     7.24KiB |        21 |     4.02KiB | java.util.Hashtable$HashtableEntry[][]                       |
+|     6.07KiB |        52 |     4.02KiB | int[][][]                                                    |
+|    62.02KiB |      1381 |     2.27KiB | java.lang.String[][]                                         |
+|     4.66KiB |         4 |     2.27KiB | java.lang.String[][][]                                       |
+|    19.95KiB |       279 |     2.00KiB | java.lang.Object[][]                                         |
+|     1.02KiB |         1 |     1.02KiB | java.lang.Short[][]                                          |
+|     1.02KiB |         1 |     1.02KiB | java.lang.Long[][]                                           |
+|     1.02KiB |         1 |     1.02KiB | java.lang.Integer[][]                                        |
+|     1.02KiB |         1 |     1.02KiB | java.lang.Byte[][]                                           |
+|     1.02KiB |         1 |     1.02KiB | com.android.org.bouncycastle.asn1.ASN1ObjectIdentifier[][][] |
+| 856.00bytes |         1 | 856.00bytes | java.lang.Character$UnicodeBlock[][]                         |
+|     1.30KiB |         2 | 664.00bytes | com.android.internal.widget.ActionBarView                    |
+|     2.44KiB |         4 | 624.00bytes | android.widget.TextView                                      |
+|     2.44KiB |         4 | 624.00bytes | android.widget.Button                                        |
+|     1.12KiB |         2 | 576.00bytes | com.android.internal.policy.impl.PhoneWindow$DecorView       |
+|     1.09KiB |         2 | 560.00bytes | com.android.internal.view.menu.ActionMenuView                |
++-------------+-----------+-------------+--------------------------------------------------------------+

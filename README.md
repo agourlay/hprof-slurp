@@ -3,9 +3,9 @@
 [![Build status](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/hprof-slurp/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/hprof-slurp.svg)](https://crates.io/crates/hprof-slurp)
 
-`hprof-slurp` is a specialized JVM heap dump analyzer.
+`hprof-slurp` is a specialized JVM and Android heap dump analyzer.
 
-It is named after the `hprof` format which is used by the [JDK](https://hg.openjdk.java.net/jdk/jdk/file/ee1d592a9f53/src/hotspot/share/services/heapDumper.cpp#l62) to encode heap dumps.
+It is named after the `hprof` format which is used by the [JDK](https://github.com/openjdk/jdk/blob/master/src/hotspot/share/services/heapDumper.cpp) to encode heap dumps.
 
 The design of this tool is described in details in the [following blog articles series](https://agourlay.github.io/tags/hprof-slurp/).
 
@@ -15,18 +15,28 @@ The underlying motivation is to enable the analysis of **huge** heap dumps which
 
 `hprof-slurp` processes dump files in a **streaming fashion in a single pass** without storing intermediary results on the host.
 
-This approach makes it possible to provide an extremely fast overview of dump files without the need to spin up expensive beefy instance.
+This approach makes it possible to provide an extremely fast overview of dump files without the need to spin up an expensive beefy instance.
 
 However, it does not replace tools like [Eclipse Mat](https://www.eclipse.org/mat/) and [VisualVM](https://visualvm.github.io/) which provide more advanced features at a different cost.
 
+The reported sizes are **shallow**: the footprint of each object itself (its header and fields), not the objects it transitively references. Computing *retained* sizes would require building the full reference graph, which is out of scope for the single-pass design.
+
 ## Features
 
+- supports the `JAVA PROFILE 1.0.1`, `1.0.2` and `1.0.3` formats — 32-bit and
+  64-bit, including Android ART/Dalvik dumps.
 - displays top `n` raw shallow heap classes found in the dump.
 - displays number of instances per class.
 - displays largest instance size per class.
 - displays threads stack traces.
 - lists all `Strings` found.
-- output results as JSON possible
+- outputs results as JSON.
+
+## Limitations
+
+- Reports **shallow** sizes only (see [Motivation](#motivation)). Retained
+  sizes, dominator trees and reference chains require a full reference graph,
+  which the single-pass design does not build.
 
 ## Usage
 
@@ -89,8 +99,10 @@ Top 20 raw shallow heap classes:
 ./hprof-slurp -i "test-heap-dumps/hprof-64.bin" --top 3 --json
 ```
 
+The output file name is printed on completion (it includes a timestamp, e.g. `hprof-slurp-1780171439141.json`).
+
 ```bash
-less hprof-slurp.json | grep jq .
+jq . hprof-slurp-<timestamp>.json
 ```
 
 ```JSON
@@ -139,11 +151,6 @@ On modern hardware `hprof-slurp` can process heap dump files at around 2GB/s.
 
 To maximize performance make sure to run on a host with at least 4 cores.
 
-## Limitations
-
-- Tested only with `JAVA PROFILE 1.0.2` & `JAVA PROFILE 1.0.1` formats.
-- Supports heap dumps with 4-byte and 8-byte HPROF identifiers.
-
 ## Generate a heap dump
 
 Heap dump files are sometimes generated in case of a JVM crash depending on your runtime configuration.
@@ -154,6 +161,13 @@ Example:
 
 `jmap -dump:format=b,file=my-hprof-file.bin <pid>`
 
+On Android, dump an app's heap with `am dumpheap` and pull the raw file (do not
+run it through `hprof-conv`, which strips the ART/Dalvik extension records).
+
+Example:
+
+`adb shell am dumpheap <pid> /data/local/tmp/my-hprof-file.bin`
+
 ## Prior art of HPROF parsing
 
 Several projects have been very useful while researching and implementing this tool.
@@ -161,3 +175,7 @@ They have provided guidance and inspiration in moments of uncertainty.
 
 - https://github.com/monoid/hprof_dump_parser
 - https://github.com/eaftan/hprof-parser
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
