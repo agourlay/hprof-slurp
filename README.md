@@ -110,27 +110,44 @@ jq . hprof-slurp-<timestamp>.json
 
 ```JSON
 {
-  "top_allocated_classes": [
-    {
-      "class_name": "int[]",
-      "instance_count": 436,
-      "largest_allocation_bytes": 650016,
-      "allocation_size_bytes": 2089368
-    },
-    {
-      "class_name": "char[]",
-      "instance_count": 1991,
-      "largest_allocation_bytes": 16400,
-      "allocation_size_bytes": 199568
-    },
-    {
-      "class_name": "byte[]",
-      "instance_count": 443,
-      "largest_allocation_bytes": 8208,
-      "allocation_size_bytes": 87272
-    }
-  ],
-  "top_largest_instances": [..]
+  "schema_version": 1,
+  "tool": {
+    "name": "hprof-slurp",
+    "version": "0.9.0"
+  },
+  "dump": {
+    "file": "test-heap-dumps/hprof-64.bin",
+    "file_size_bytes": 3214090,
+    "format": "JAVA PROFILE 1.0.1",
+    "id_size_bytes": 8,
+    "captured_at_epoch_millis": 1515934059480,
+    "captured_at_utc": "2018-01-14 12:47:39 UTC"
+  },
+  "heap": {
+    "total_shallow_bytes": 2628000,
+    "class_count": 233,
+    "top_allocated_classes": [
+      {
+        "class_name": "int[]",
+        "instance_count": 436,
+        "largest_allocation_bytes": 650016,
+        "allocation_size_bytes": 2089368
+      },
+      {
+        "class_name": "char[]",
+        "instance_count": 1991,
+        "largest_allocation_bytes": 16400,
+        "allocation_size_bytes": 199568
+      },
+      {
+        "class_name": "byte[]",
+        "instance_count": 443,
+        "largest_allocation_bytes": 8208,
+        "allocation_size_bytes": 87272
+      }
+    ],
+    "top_largest_instances": [..]
+  }
 }
 ```
 

@@ -3,7 +3,10 @@ use std::{fmt::Write, fs::File, io::BufWriter};
 
 use serde::Serialize;
 
-use crate::{errors::HprofSlurpError, utils::pretty_bytes_size};
+use crate::{
+    errors::HprofSlurpError,
+    utils::{pretty_bytes_size, pretty_timestamp_utc},
+};
 
 #[derive(Serialize, Clone)]
 pub struct ClassAllocationStats {
@@ -29,14 +32,72 @@ impl ClassAllocationStats {
     }
 }
 
+// Bump on any breaking change of the JSON output structure.
+const JSON_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Serialize)]
-pub struct JsonResult {
+struct ToolInfo {
+    name: &'static str,
+    version: &'static str,
+}
+
+#[derive(Serialize)]
+pub struct DumpInfo {
+    file: String,
+    file_size_bytes: u64,
+    format: String,
+    id_size_bytes: u32,
+    captured_at_epoch_millis: Option<u64>,
+    captured_at_utc: Option<String>,
+}
+
+impl DumpInfo {
+    pub fn new(
+        file: String,
+        file_size_bytes: u64,
+        format: String,
+        id_size_bytes: u32,
+        timestamp_epoch_millis: u64,
+    ) -> Self {
+        // `0` means the dumper did not record a capture time
+        let captured_at_epoch_millis =
+            (timestamp_epoch_millis != 0).then_some(timestamp_epoch_millis);
+        let captured_at_utc = captured_at_epoch_millis.map(pretty_timestamp_utc);
+        Self {
+            file,
+            file_size_bytes,
+            format,
+            id_size_bytes,
+            captured_at_epoch_millis,
+            captured_at_utc,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct HeapInfo {
+    total_shallow_bytes: u64,
+    class_count: usize,
     top_allocated_classes: Vec<ClassAllocationStats>,
     top_largest_instances: Vec<ClassAllocationStats>,
 }
 
+#[derive(Serialize)]
+pub struct JsonResult {
+    schema_version: u32,
+    tool: ToolInfo,
+    dump: DumpInfo,
+    heap: HeapInfo,
+}
+
 impl JsonResult {
-    pub fn new(memory_usage: &mut [ClassAllocationStats], top: usize) -> Self {
+    pub fn new(dump: DumpInfo, memory_usage: &mut [ClassAllocationStats], top: usize) -> Self {
+        // totals over all classes, not only the top entries
+        let total_shallow_bytes = memory_usage
+            .iter()
+            .map(|stats| stats.allocation_size_bytes)
+            .sum();
+        let class_count = memory_usage.len();
         // top allocated
         memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
         let top_allocated_classes = memory_usage.iter().take(top).cloned().collect();
@@ -44,8 +105,18 @@ impl JsonResult {
         memory_usage.sort_by_key(|b| std::cmp::Reverse(b.largest_allocation_bytes));
         let top_largest_instances = memory_usage.iter().take(top).cloned().collect();
         Self {
-            top_allocated_classes,
-            top_largest_instances,
+            schema_version: JSON_SCHEMA_VERSION,
+            tool: ToolInfo {
+                name: env!("CARGO_PKG_NAME"),
+                version: env!("CARGO_PKG_VERSION"),
+            },
+            dump,
+            heap: HeapInfo {
+                total_shallow_bytes,
+                class_count,
+                top_allocated_classes,
+                top_largest_instances,
+            },
         }
     }
 
@@ -294,6 +365,56 @@ mod tests {
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));
         assert!(!output.contains("instances allocated on the heap"));
+    }
+
+    #[test]
+    fn json_result_includes_metadata_and_totals() {
+        let mut memory_usage = vec![
+            ClassAllocationStats::new("A".to_string(), 1, 16, 16),
+            ClassAllocationStats::new("B".to_string(), 2, 8, 24),
+        ];
+        let dump_info = DumpInfo::new(
+            "heap.hprof".to_string(),
+            1234,
+            "JAVA PROFILE 1.0.1".to_string(),
+            8,
+            1_608_192_273_831,
+        );
+
+        let json_result = JsonResult::new(dump_info, &mut memory_usage, 1);
+        let json = serde_json::to_value(&json_result).expect("should serialize");
+
+        assert_eq!(json["schema_version"], 1);
+        assert_eq!(json["tool"]["name"], "hprof-slurp");
+        assert_eq!(json["dump"]["file"], "heap.hprof");
+        assert_eq!(json["dump"]["file_size_bytes"], 1234);
+        assert_eq!(json["dump"]["format"], "JAVA PROFILE 1.0.1");
+        assert_eq!(json["dump"]["id_size_bytes"], 8);
+        assert_eq!(
+            json["dump"]["captured_at_epoch_millis"],
+            1_608_192_273_831_u64
+        );
+        assert_eq!(json["dump"]["captured_at_utc"], "2020-12-17 08:04:33 UTC");
+        // totals cover all classes while the top lists are truncated
+        assert_eq!(json["heap"]["total_shallow_bytes"], 40);
+        assert_eq!(json["heap"]["class_count"], 2);
+        assert_eq!(
+            json["heap"]["top_allocated_classes"]
+                .as_array()
+                .expect("should be an array")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn json_capture_time_is_null_when_absent() {
+        let dump_info = DumpInfo::new("heap.hprof".to_string(), 1, "F".to_string(), 4, 0);
+
+        let json = serde_json::to_value(&dump_info).expect("should serialize");
+
+        assert!(json["captured_at_epoch_millis"].is_null());
+        assert!(json["captured_at_utc"].is_null());
     }
 
     #[test]

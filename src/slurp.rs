@@ -27,7 +27,7 @@ pub fn slurp_file(
     file_path: &str,
     debug_mode: bool,
     list_strings: bool,
-) -> Result<RenderedResult, HprofSlurpError> {
+) -> Result<(FileHeader, RenderedResult), HprofSlurpError> {
     let file = File::open(file_path)?;
     let file_len = file.metadata()?.len() as usize;
     let mut reader = BufReader::new(file);
@@ -133,7 +133,7 @@ pub fn slurp_file(
     // Blocks until recorder is done
     recorder_thread.join().map_err(|e| StdThreadError { e })?;
 
-    Ok(rendered_result)
+    Ok((header, rendered_result))
 }
 
 pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlurpError> {
@@ -195,14 +195,14 @@ mod tests {
     fn supported_32_bits() {
         let result = slurp_file(FILE_PATH_32, false, false);
         assert!(result.is_ok());
-        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_32);
+        validate_gold_rendered_result(result.unwrap().1, FILE_PATH_RESULT_32);
     }
 
     #[test]
     fn supported_64_bits() {
         let result = slurp_file(FILE_PATH_64, false, false);
         assert!(result.is_ok());
-        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_64);
+        validate_gold_rendered_result(result.unwrap().1, FILE_PATH_RESULT_64);
     }
 
     #[test]
@@ -212,7 +212,7 @@ mod tests {
         // It must now parse cleanly end-to-end and match the gold output.
         let result = slurp_file(FILE_PATH_ANDROID, false, false);
         assert!(result.is_ok());
-        validate_gold_rendered_result(result.unwrap(), FILE_PATH_RESULT_ANDROID);
+        validate_gold_rendered_result(result.unwrap().1, FILE_PATH_RESULT_ANDROID);
     }
 
     #[test]
