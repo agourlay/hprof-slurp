@@ -1,4 +1,4 @@
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use crossbeam_channel::{Receiver, Sender};
 use indoc::formatdoc;
 use std::fmt::Write;
@@ -156,13 +156,27 @@ impl ResultRecorder {
         }
     }
 
-    fn get_class_name_string(&self, class_id: u64) -> String {
-        self.class_data_by_id
+    // Modern Android dumps routinely reference class ids that were never
+    // emitted as `LoadClass`/`ClassDump` records (e.g. classes in an elided
+    // heap segment), so a missing definition falls back to a placeholder
+    // name instead of failing; the id is collected for an end-of-run warning.
+    fn get_class_name_string(
+        &self,
+        class_id: u64,
+        missing_class_ids: &mut AHashSet<u64>,
+    ) -> String {
+        match self
+            .class_data_by_id
             .get(&class_id)
             .and_then(|data_index| self.class_data.get(*data_index))
             .and_then(|class_data| self.utf8_strings_by_id.get(&class_data.class_name_id))
-            .expect("class_id must have an UTF-8 string representation available")
-            .replace('/', ".")
+        {
+            Some(class_name) => class_name.replace('/', "."),
+            None => {
+                missing_class_ids.insert(class_id);
+                format!("<unknown class 0x{class_id:x}>")
+            }
+        }
     }
 
     pub fn start(
@@ -183,16 +197,21 @@ impl ResultRecorder {
                         send_pooled_vec.send(records).unwrap_or_default();
                     } else {
                         // no more Record to pull, generate and send back results
+                        let mut missing_class_ids = AHashSet::new();
+                        let thread_info = self.render_thread_info(&mut missing_class_ids);
+                        let memory_usage = self.aggregate_memory_usage(&mut missing_class_ids);
+                        let warnings = render_missing_class_warning(&missing_class_ids);
                         let rendered_result = RenderedResult {
                             summary: self.render_summary(),
-                            thread_info: self.render_thread_info(),
-                            memory_usage: self.aggregate_memory_usage(),
+                            thread_info,
+                            memory_usage,
                             duplicated_strings: self.render_duplicated_strings(),
                             captured_strings: if self.list_strings {
                                 Some(self.render_captured_strings())
                             } else {
                                 None
                             },
+                            warnings,
                         };
                         send_result
                             .send(rendered_result)
@@ -379,7 +398,7 @@ impl ResultRecorder {
         }
     }
 
-    fn render_thread_info(&self) -> String {
+    fn render_thread_info(&self, missing_class_ids: &mut AHashSet<u64>) -> String {
         let mut thread_info = String::new();
 
         // for each stacktrace
@@ -404,17 +423,29 @@ impl ResultRecorder {
 
             //  for each stack frames
             for stack_frame_id in &stack_data.stack_frame_ids {
-                let stack_frame = self
-                    .stack_frame_by_id
-                    .get(stack_frame_id)
-                    .expect("stack frame id must be present");
-                let class_object_id = self
+                // missing metadata is rendered as a placeholder instead of
+                // failing, like in `get_class_name_string`
+                let Some(stack_frame) = self.stack_frame_by_id.get(stack_frame_id) else {
+                    writeln!(
+                        thread_info,
+                        "  at <unknown stack frame 0x{stack_frame_id:x}>"
+                    )
+                    .expect("Could not write to thread info");
+                    continue;
+                };
+                let class_name = match self
                     .class_data_by_serial_number
                     .get(&stack_frame.class_serial_number)
                     .and_then(|index| self.class_data.get(*index))
-                    .expect("Class not found")
-                    .class_object_id;
-                let class_name = self.get_class_name_string(class_object_id);
+                {
+                    Some(class_data) => {
+                        self.get_class_name_string(class_data.class_object_id, missing_class_ids)
+                    }
+                    None => format!(
+                        "<unknown class (serial {})>",
+                        stack_frame.class_serial_number
+                    ),
+                };
                 let method_name = self
                     .utf8_strings_by_id
                     .get(&stack_frame.method_name_id)
@@ -446,18 +477,24 @@ impl ResultRecorder {
         thread_info
     }
 
-    fn calculate_instance_size(&self, class_id: u64) -> u64 {
+    fn calculate_instance_size(&self, class_id: u64, missing_class_ids: &mut AHashSet<u64>) -> u64 {
         u64::from(align_to_u32(
-            self.calculate_instance_size_recursive(class_id),
+            self.calculate_instance_size_recursive(class_id, missing_class_ids),
             OBJECT_ALIGN,
         ))
     }
 
-    fn calculate_instance_size_recursive(&self, class_id: u64) -> u32 {
-        let class_info = self
-            .classes_single_instance_size_by_id
-            .get(&class_id)
-            .expect("class id must have a class definition");
+    fn calculate_instance_size_recursive(
+        &self,
+        class_id: u64,
+        missing_class_ids: &mut AHashSet<u64>,
+    ) -> u32 {
+        // A class id without a `ClassDump` record (see `get_class_name_string`)
+        // is sized as a bare object header so the analysis can keep going.
+        let Some(class_info) = self.classes_single_instance_size_by_id.get(&class_id) else {
+            missing_class_ids.insert(class_id);
+            return object_header_size(self.id_size);
+        };
 
         if class_info.super_class_object_id == 0 {
             return object_header_size(self.id_size);
@@ -469,18 +506,25 @@ impl ResultRecorder {
             .map(|field_type| field_size(*field_type, self.id_size))
             .sum::<u32>();
         align_to_u32(
-            fields_size + self.calculate_instance_size_recursive(class_info.super_class_object_id),
+            fields_size
+                + self.calculate_instance_size_recursive(
+                    class_info.super_class_object_id,
+                    missing_class_ids,
+                ),
             self.id_size,
         )
     }
 
-    fn aggregate_memory_usage(&self) -> Vec<ClassAllocationStats> {
+    fn aggregate_memory_usage(
+        &self,
+        missing_class_ids: &mut AHashSet<u64>,
+    ) -> Vec<ClassAllocationStats> {
         let mut classes_dump_vec: Vec<_> = self
             .classes_all_instance_total_size_by_id
             .iter()
             .map(|(class_id, v)| {
-                let class_name = self.get_class_name_string(*class_id);
-                let size = self.calculate_instance_size(*class_id);
+                let class_name = self.get_class_name_string(*class_id, missing_class_ids);
+                let size = self.calculate_instance_size(*class_id, missing_class_ids);
                 let total_size = size * v.number_of_instances;
                 ClassAllocationStats::new(
                     class_name,
@@ -508,7 +552,7 @@ impl ResultRecorder {
 
         // For array of objects we are interested in the total size of the array headers and outgoing elements references
         let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, ac)| {
-            let raw_class_name = self.get_class_name_string(*class_id);
+            let raw_class_name = self.get_class_name_string(*class_id, missing_class_ids);
             let cleaned_class_name: String = if raw_class_name.starts_with("[[L") {
                 // remove '[[L' prefix and ';' suffix
                 raw_class_name[3..raw_class_name.len() - 1].to_string()
@@ -651,6 +695,24 @@ fn array_header_size(id_size: u32) -> u64 {
     }
 }
 
+fn render_missing_class_warning(missing_class_ids: &AHashSet<u64>) -> Option<String> {
+    if missing_class_ids.is_empty() {
+        return None;
+    }
+    let mut ids: Vec<u64> = missing_class_ids.iter().copied().collect();
+    ids.sort_unstable();
+    let mut displayed_ids: Vec<String> =
+        ids.iter().take(10).map(|id| format!("0x{id:x}")).collect();
+    if ids.len() > displayed_ids.len() {
+        displayed_ids.push("...".to_string());
+    }
+    Some(format!(
+        "\nWarning: {} class definition(s) referenced in the dump were never loaded (ids: {}).\nAffected objects are reported as '<unknown class>' and sized as bare object headers.\n",
+        ids.len(),
+        displayed_ids.join(", ")
+    ))
+}
+
 fn align_to_u32(value: u32, alignment: u32) -> u32 {
     value + (alignment - value % alignment) % alignment
 }
@@ -740,7 +802,7 @@ mod tests {
         ];
 
         recorder.record_records(&mut records);
-        let memory_usage = recorder.aggregate_memory_usage();
+        let memory_usage = recorder.aggregate_memory_usage(&mut AHashSet::new());
         let child = memory_usage
             .iter()
             .find(|stats| stats.class_name == "com.example.Child")
@@ -769,7 +831,7 @@ mod tests {
         ];
 
         recorder.record_records(&mut records);
-        let memory_usage = recorder.aggregate_memory_usage();
+        let memory_usage = recorder.aggregate_memory_usage(&mut AHashSet::new());
         let bool_arrays = memory_usage
             .iter()
             .find(|stats| stats.class_name == "bool[]")
@@ -808,7 +870,7 @@ mod tests {
         ];
 
         recorder.record_records(&mut records);
-        let memory_usage = recorder.aggregate_memory_usage();
+        let memory_usage = recorder.aggregate_memory_usage(&mut AHashSet::new());
         let object_arrays = memory_usage
             .iter()
             .find(|stats| stats.class_name == "java.lang.Object[]")
@@ -816,5 +878,156 @@ mod tests {
 
         assert_eq!(object_arrays.largest_allocation_bytes, 24);
         assert_eq!(object_arrays.allocation_size_bytes, 40);
+    }
+
+    // Modern Android dumps reference class ids with no LoadClass/ClassDump
+    // record; this used to panic the recorder thread.
+    #[test]
+    fn unknown_class_instance_falls_back_to_object_header_size() {
+        let mut recorder = ResultRecorder::new(4, false);
+        let mut records = vec![Record::GcSegment(GcRecord::InstanceDump {
+            object_id: 1,
+            stack_trace_serial_number: 0,
+            class_object_id: 0xABC,
+            data_size: 0,
+        })];
+
+        recorder.record_records(&mut records);
+        let mut missing_class_ids = AHashSet::new();
+        let memory_usage = recorder.aggregate_memory_usage(&mut missing_class_ids);
+        let unknown = memory_usage
+            .iter()
+            .find(|stats| stats.class_name == "<unknown class 0xabc>")
+            .expect("unknown class stats should be present");
+
+        // bare 32-bit object header, 8-byte aligned
+        assert_eq!(unknown.allocation_size_bytes, 8);
+        assert!(missing_class_ids.contains(&0xABC));
+    }
+
+    #[test]
+    fn missing_super_class_falls_back_to_object_header_size() {
+        let mut recorder = ResultRecorder::new(4, false);
+        let mut records = vec![
+            Record::Utf8String {
+                id: 10,
+                str: "com/example/Orphan".into(),
+            },
+            Record::LoadClass(LoadClassData {
+                serial_number: 1,
+                class_object_id: 1,
+                stack_trace_serial_number: 0,
+                class_name_id: 10,
+            }),
+            // super class 0xDEAD is never registered
+            Record::GcSegment(GcRecord::ClassDump(Box::new(ClassDumpFields::new(
+                1,
+                0,
+                0xDEAD,
+                999,
+                vec![],
+                vec![],
+                vec![FieldInfo {
+                    name_id: 20,
+                    field_type: FieldType::Int,
+                }],
+            )))),
+            Record::GcSegment(GcRecord::InstanceDump {
+                object_id: 30,
+                stack_trace_serial_number: 0,
+                class_object_id: 1,
+                data_size: 0,
+            }),
+        ];
+
+        recorder.record_records(&mut records);
+        let mut missing_class_ids = AHashSet::new();
+        let memory_usage = recorder.aggregate_memory_usage(&mut missing_class_ids);
+        let orphan = memory_usage
+            .iter()
+            .find(|stats| stats.class_name == "com.example.Orphan")
+            .expect("orphan stats should be present");
+
+        // int field (4) + super fallback header (8), aligned to 8 -> 16
+        assert_eq!(orphan.allocation_size_bytes, 16);
+        assert!(missing_class_ids.contains(&0xDEAD));
+    }
+
+    #[test]
+    fn thread_info_renders_placeholders_for_missing_frames_and_classes() {
+        let mut recorder = ResultRecorder::new(4, false);
+        let mut records = vec![
+            // frame 0x111 is never registered; frame 0x222 references the
+            // never-loaded class serial number 7
+            Record::StackTrace(StackTraceData {
+                serial_number: 1,
+                thread_serial_number: 1,
+                number_of_frames: 2,
+                stack_frame_ids: vec![0x111, 0x222],
+            }),
+            Record::StackFrame(StackFrameData {
+                stack_frame_id: 0x222,
+                method_name_id: 50,
+                method_signature_id: 0,
+                source_file_name_id: 51,
+                class_serial_number: 7,
+                line_number: 42,
+            }),
+        ];
+
+        recorder.record_records(&mut records);
+        let thread_info = recorder.render_thread_info(&mut AHashSet::new());
+
+        assert!(thread_info.contains("  at <unknown stack frame 0x111>"));
+        assert!(thread_info.contains(
+            "  at <unknown class (serial 7)>.unknown method name (unknown source file:42)"
+        ));
+    }
+
+    // End-to-end through the recorder thread: a record stream referencing an
+    // unknown class must produce a result carrying the warning, not a panic.
+    #[test]
+    fn recorder_thread_reports_missing_classes_as_warning() {
+        let recorder = ResultRecorder::new(4, false);
+        let (send_records, receive_records) = crossbeam_channel::unbounded();
+        let (send_result, receive_result) = crossbeam_channel::unbounded();
+        let (send_pooled_vec, _receive_pooled_vec) = crossbeam_channel::unbounded();
+        let recorder_thread = recorder
+            .start(receive_records, send_result, send_pooled_vec)
+            .expect("recorder thread should start");
+
+        send_records
+            .send(vec![Record::GcSegment(GcRecord::InstanceDump {
+                object_id: 1,
+                stack_trace_serial_number: 0,
+                class_object_id: 0xABC,
+                data_size: 0,
+            })])
+            .expect("recorder should accept records");
+        drop(send_records);
+
+        let result = receive_result
+            .recv()
+            .expect("recorder should send a result");
+        recorder_thread.join().expect("recorder should not panic");
+
+        let warnings = result.warnings.expect("warnings should be present");
+        assert!(warnings.contains("1 class definition(s)"));
+        assert!(warnings.contains("0xabc"));
+    }
+
+    #[test]
+    fn missing_class_warning_lists_sorted_ids_and_caps_display() {
+        assert!(render_missing_class_warning(&AHashSet::new()).is_none());
+
+        let warning = render_missing_class_warning(&AHashSet::from_iter([0xB, 0xA]))
+            .expect("warning should be present");
+        assert!(warning.contains("2 class definition(s)"));
+        assert!(warning.contains("0xa, 0xb"));
+
+        let many: AHashSet<u64> = (1..=11).collect();
+        let warning = render_missing_class_warning(&many).expect("warning should be present");
+        assert!(warning.contains("11 class definition(s)"));
+        assert!(warning.contains("..."));
     }
 }

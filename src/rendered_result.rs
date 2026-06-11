@@ -66,6 +66,7 @@ pub struct RenderedResult {
     pub memory_usage: Vec<ClassAllocationStats>,
     pub duplicated_strings: Option<String>,
     pub captured_strings: Option<String>,
+    pub warnings: Option<String>,
 }
 
 impl RenderedResult {
@@ -76,6 +77,7 @@ impl RenderedResult {
             mut memory_usage,
             duplicated_strings,
             captured_strings,
+            warnings,
         } = self;
         let memory = Self::render_memory_usage(&mut memory_usage, top);
         let mut result = format!("{summary}\n{thread_info}\n{memory}");
@@ -84,6 +86,10 @@ impl RenderedResult {
         }
         if let Some(list_strings) = captured_strings {
             write!(result, "{list_strings}").expect("write should not fail");
+        }
+        // last so it stays visible even when `--list-strings` floods the output
+        if let Some(warnings) = warnings {
+            write!(result, "{warnings}").expect("write should not fail");
         }
         result
     }
@@ -279,5 +285,21 @@ mod tests {
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));
         assert!(!output.contains("instances allocated on the heap"));
+    }
+
+    #[test]
+    fn serialize_appends_warnings_last() {
+        let rendered_result = RenderedResult {
+            summary: "summary".to_string(),
+            thread_info: "threads".to_string(),
+            memory_usage: vec![ClassAllocationStats::new("Thing".to_string(), 1, 16, 16)],
+            duplicated_strings: None,
+            captured_strings: Some("strings".to_string()),
+            warnings: Some("\nWarning: something was off\n".to_string()),
+        };
+
+        let output = rendered_result.serialize(1);
+
+        assert!(output.ends_with("\nWarning: something was off\n"));
     }
 }
