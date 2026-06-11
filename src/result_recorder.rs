@@ -478,10 +478,10 @@ impl ResultRecorder {
     }
 
     fn calculate_instance_size(&self, class_id: u64, missing_class_ids: &mut AHashSet<u64>) -> u64 {
-        u64::from(align_to_u32(
-            self.calculate_instance_size_recursive(class_id, missing_class_ids),
-            OBJECT_ALIGN,
-        ))
+        u64::from(
+            self.calculate_instance_size_recursive(class_id, missing_class_ids)
+                .next_multiple_of(OBJECT_ALIGN),
+        )
     }
 
     fn calculate_instance_size_recursive(
@@ -505,14 +505,12 @@ impl ResultRecorder {
             .iter()
             .map(|field_type| field_size(*field_type, self.id_size))
             .sum::<u32>();
-        align_to_u32(
-            fields_size
-                + self.calculate_instance_size_recursive(
-                    class_info.super_class_object_id,
-                    missing_class_ids,
-                ),
-            self.id_size,
-        )
+        (fields_size
+            + self.calculate_instance_size_recursive(
+                class_info.super_class_object_id,
+                missing_class_ids,
+            ))
+        .next_multiple_of(self.id_size)
     }
 
     fn aggregate_memory_usage(
@@ -670,13 +668,13 @@ fn primitive_byte_size(field_type: FieldType) -> u64 {
 fn primitive_array_size(id_size: u32, field_type: FieldType, number_of_elements: u32) -> u64 {
     let header_size = array_header_size(id_size);
     let elements_size = primitive_byte_size(field_type) * u64::from(number_of_elements);
-    align_to_u64(header_size + elements_size, u64::from(OBJECT_ALIGN))
+    (header_size + elements_size).next_multiple_of(u64::from(OBJECT_ALIGN))
 }
 
 fn object_array_size(id_size: u32, number_of_elements: u32) -> u64 {
     let header_size = array_header_size(id_size);
     let elements_size = u64::from(id_size) * u64::from(number_of_elements);
-    align_to_u64(header_size + elements_size, u64::from(OBJECT_ALIGN))
+    (header_size + elements_size).next_multiple_of(u64::from(OBJECT_ALIGN))
 }
 
 fn object_header_size(id_size: u32) -> u32 {
@@ -711,14 +709,6 @@ fn render_missing_class_warning(missing_class_ids: &AHashSet<u64>) -> Option<Str
         ids.len(),
         displayed_ids.join(", ")
     ))
-}
-
-fn align_to_u32(value: u32, alignment: u32) -> u32 {
-    value + (alignment - value % alignment) % alignment
-}
-
-fn align_to_u64(value: u64, alignment: u64) -> u64 {
-    value + (alignment - value % alignment) % alignment
 }
 
 #[cfg(test)]
