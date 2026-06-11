@@ -3,15 +3,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum HprofSlurpError {
-    #[error("input file `{name:?}` not found")]
+    #[error("input file `{name}` not found")]
     InputFileNotFound { name: String },
-    #[error("invalid argument `top` - the value should be strictly positive")]
-    InvalidTopPositiveInt,
     #[error("invalid pointer size - the value should be either `4` or `8`")]
     InvalidIdSize,
     #[error("invalid content after header")]
     InvalidHeaderSize,
-    #[error("invalid Hprof file - {message:?}")]
+    #[error("invalid Hprof file - {message}")]
     InvalidHprofFile { message: String },
     #[error("CLI argument error ({0})")]
     ClapError(#[from] clap::Error),

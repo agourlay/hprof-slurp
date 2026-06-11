@@ -49,12 +49,17 @@ impl JsonResult {
         }
     }
 
-    pub fn save_as_file(&self) -> Result<(), HprofSlurpError> {
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be set after 1970")
-            .as_millis();
-        let file_path = format!("hprof-slurp-{millis}.json");
+    pub fn save_as_file(&self, output_path: Option<&str>) -> Result<(), HprofSlurpError> {
+        let file_path = output_path.map_or_else(
+            || {
+                let millis = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("system clock should be set after 1970")
+                    .as_millis();
+                format!("hprof-slurp-{millis}.json")
+            },
+            str::to_string,
+        );
         let file = File::create(&file_path)?;
         let writer = BufWriter::new(file);
         // Serialize the struct directly to the file via the writer

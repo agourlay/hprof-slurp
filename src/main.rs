@@ -34,12 +34,13 @@ fn main_result() -> Result<(), HprofSlurpError> {
         debug,
         list_strings,
         json_output,
+        output_file,
     } = get_args()?;
     let mut rendered_result = slurp_file(&file_path, debug, list_strings)?;
     if json_output {
         // only memory usage rendered for now
         let json_result = JsonResult::new(&mut rendered_result.memory_usage, top);
-        json_result.save_as_file()?;
+        json_result.save_as_file(output_file.as_deref())?;
     }
     print!("{}", rendered_result.serialize(top));
     println!("File successfully processed in {:?}", now.elapsed());

@@ -44,22 +44,25 @@ The reported sizes are **shallow**: the footprint of each object itself (its hea
 ./hprof-slurp --help
 JVM heap dump hprof file analyzer
 
-Usage: hprof-slurp [OPTIONS] --input-file <input-file>
+Usage: hprof-slurp [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>  binary hprof input file
 
 Options:
-  -i, --input-file <input-file>  binary hprof input file
-  -t, --top <top>                the top results to display [default: 20]
-  -d, --debug                    debug info
-  -l, --list-strings             list all Strings found
-      --json                     additional JSON output in file
-  -h, --help                     Print help
-  -V, --version                  Print version
+  -t, --top <top>        the top results to display [default: 20]
+  -d, --debug            debug info
+  -l, --list-strings     list all Strings found
+      --json             additional JSON output in file
+  -o, --output <output>  output file path for the JSON result (default: hprof-slurp-<timestamp>.json)
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ### Example table
 
 ```bash
-./hprof-slurp -i "test-heap-dumps/hprof-64.bin"
+./hprof-slurp "test-heap-dumps/hprof-64.bin"
 ```
 
 ```
@@ -96,7 +99,7 @@ Top 20 raw shallow heap classes:
 ### Example JSON
 
 ```bash
-./hprof-slurp -i "test-heap-dumps/hprof-64.bin" --top 3 --json
+./hprof-slurp "test-heap-dumps/hprof-64.bin" --top 3 --json
 ```
 
 The output file name is printed on completion (it includes a timestamp, e.g. `hprof-slurp-1780171439141.json`).
