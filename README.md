@@ -96,6 +96,28 @@ Top 20 raw shallow heap classes:
 +------------+-----------+-------------+---------------------------------------------+
 ```
 
+### Diff two dumps
+
+Compare two dumps of the same process to find the classes whose footprint grew between the captures.
+
+```bash
+./hprof-slurp diff "before.hprof" "after.hprof" --top 3
+```
+
+```
+Heap diff of raw shallow sizes:
+  from: before.hprof (137.98KiB)
+  to:   after.hprof (2.51MiB)
+  net:  +2.37MiB
+
+Top 3 of 282 class deltas (by shallow size growth):
+
+      Δ size  Δ instances        size (from → to) instances (from → to)  Class name
+    +1.99MiB          432       1.14KiB → 1.99MiB               4 → 436  int[]
+  +130.56KiB         1158    64.33KiB → 194.89KiB            833 → 1991  char[]
+   +60.84KiB          434     24.39KiB → 85.23KiB               9 → 443  byte[]
+```
+
 ### Example JSON
 
 ```bash

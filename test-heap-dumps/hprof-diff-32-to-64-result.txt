@@ -1,0 +1,29 @@
+
+Heap diff of raw shallow sizes:
+  from: test-heap-dumps/hprof-32.bin (137.98KiB)
+  to:   test-heap-dumps/hprof-64.bin (2.51MiB)
+  net:  +2.37MiB
+
+Top 20 of 282 class deltas (by shallow size growth):
+
+      Δ size  Δ instances        size (from → to) instances (from → to)  Class name
+    +1.99MiB          432       1.14KiB → 1.99MiB               4 → 436  int[]
+  +130.56KiB         1158    64.33KiB → 194.89KiB            833 → 1991  char[]
+   +60.84KiB          434     24.39KiB → 85.23KiB               9 → 443  byte[]
+   +45.42KiB          560    0.00bytes → 45.42KiB               0 → 560  java.lang.Object[]
+   +29.45KiB          751     17.93KiB → 47.38KiB            765 → 1516  java.lang.String
+   +14.77KiB          126    0.00bytes → 14.77KiB               0 → 126  java.lang.reflect.Field
+   +14.77KiB          378    0.00bytes → 14.77KiB               0 → 378  java.util.LinkedList$Node
+    +9.94KiB          212     0.00bytes → 9.94KiB               0 → 212  java.util.HashMap$Node
+    +8.91KiB          190     0.00bytes → 8.91KiB               0 → 190  java.util.LinkedList
+    +6.00KiB          255    48.00bytes → 6.05KiB               3 → 258  java.lang.Integer
+    +5.91KiB           18     0.00bytes → 5.91KiB                0 → 18  java.util.HashMap$Node[]
+    +5.33KiB           97    32.00bytes → 5.36KiB                1 → 98  java.lang.ref.SoftReference
+    +4.23KiB          121   464.00bytes → 4.69KiB              29 → 150  java.lang.StringBuilder
+    +4.08KiB           58       1.36KiB → 5.44KiB              58 → 116  java.util.Hashtable$Entry
+    +3.17KiB           12     0.00bytes → 3.17KiB                0 → 12  java.util.Hashtable$Entry[]
+    +3.16KiB           56   272.00bytes → 3.42KiB               17 → 73  java.io.File
+    +3.13KiB           56     0.00bytes → 3.13KiB                0 → 56  java.lang.String[]
+    +2.95KiB           63     0.00bytes → 2.95KiB                0 → 63  java.util.concurrent.ConcurrentHashMap$Node
+    +2.79KiB           19   728.00bytes → 3.50KiB               13 → 32  java.net.URL
+    +2.38KiB           38     0.00bytes → 2.38KiB                0 → 38  sun.util.locale.LocaleObjectCache$CacheEntry

@@ -4,11 +4,42 @@ use clap::{Arg, Command};
 use clap::{crate_authors, crate_description, crate_name, crate_version};
 use std::path::Path;
 
+fn top_arg() -> Arg {
+    Arg::new("top")
+        .help("the top results to display")
+        .long("top")
+        .short('t')
+        .num_args(1)
+        .default_value("20")
+        .value_parser(clap::value_parser!(u64).range(1..))
+        .required(false)
+}
+
 fn command() -> Command {
     Command::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .about(crate_description!())
+        .subcommand_negates_reqs(true)
+        .subcommand(
+            Command::new("diff")
+                .about("compare two dumps of the same process by per-class shallow heap deltas")
+                .arg(
+                    Arg::new("from")
+                        .help("baseline hprof file")
+                        .value_name("FROM")
+                        .num_args(1)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("to")
+                        .help("hprof file to compare against the baseline")
+                        .value_name("TO")
+                        .num_args(1)
+                        .required(true),
+                )
+                .arg(top_arg()),
+        )
         .arg(
             Arg::new("file")
                 .help("binary hprof input file")
@@ -16,16 +47,7 @@ fn command() -> Command {
                 .num_args(1)
                 .required(true),
         )
-        .arg(
-            Arg::new("top")
-                .help("the top results to display")
-                .long("top")
-                .short('t')
-                .num_args(1)
-                .default_value("20")
-                .value_parser(clap::value_parser!(u64).range(1..))
-                .required(false),
-        )
+        .arg(top_arg())
         .arg(
             Arg::new("debug")
                 .help("debug info")
@@ -58,35 +80,51 @@ fn command() -> Command {
         )
 }
 
-pub fn get_args() -> Result<Args, HprofSlurpError> {
-    let matches = command().get_matches();
-
-    let input_file = matches
-        .get_one::<String>("file")
-        .expect("impossible")
-        .trim();
-    if !Path::new(&input_file).is_file() {
+fn existing_file(raw_path: &str) -> Result<String, HprofSlurpError> {
+    let path = raw_path.trim();
+    if !Path::new(&path).is_file() {
         return Err(InputFileNotFound {
-            name: input_file.to_string(),
+            name: path.to_string(),
         });
     }
+    Ok(path.to_string())
+}
 
-    let top = usize::try_from(*matches.get_one::<u64>("top").expect("impossible"))
-        .expect("top should fit in usize");
+fn get_top(matches: &clap::ArgMatches) -> usize {
+    usize::try_from(*matches.get_one::<u64>("top").expect("impossible"))
+        .expect("top should fit in usize")
+}
 
+pub fn get_args() -> Result<ParsedArgs, HprofSlurpError> {
+    let matches = command().get_matches();
+
+    if let Some(("diff", sub_matches)) = matches.subcommand() {
+        let from = existing_file(sub_matches.get_one::<String>("from").expect("impossible"))?;
+        let to = existing_file(sub_matches.get_one::<String>("to").expect("impossible"))?;
+        let top = get_top(sub_matches);
+        return Ok(ParsedArgs::Diff(DiffArgs { from, to, top }));
+    }
+
+    let file_path = existing_file(matches.get_one::<String>("file").expect("impossible"))?;
+    let top = get_top(&matches);
     let debug = matches.get_flag("debug");
     let list_strings = matches.get_flag("list-strings");
     let json_output = matches.get_flag("json");
     let output_file = matches.get_one::<String>("output").cloned();
     let args = Args {
-        file_path: input_file.to_string(),
+        file_path,
         top,
         debug,
         list_strings,
         json_output,
         output_file,
     };
-    Ok(args)
+    Ok(ParsedArgs::Analyze(args))
+}
+
+pub enum ParsedArgs {
+    Analyze(Args),
+    Diff(DiffArgs),
 }
 
 pub struct Args {
@@ -96,6 +134,12 @@ pub struct Args {
     pub list_strings: bool,
     pub json_output: bool,
     pub output_file: Option<String>,
+}
+
+pub struct DiffArgs {
+    pub from: String,
+    pub to: String,
+    pub top: usize,
 }
 
 #[cfg(test)]
@@ -120,6 +164,25 @@ mod args_tests {
     fn rejects_non_positive_top() {
         let result = command().try_get_matches_from(["hprof-slurp", "f.hprof", "-t", "0"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn diff_subcommand_requires_two_files() {
+        let result = command().try_get_matches_from(["hprof-slurp", "diff", "a.hprof", "b.hprof"]);
+        assert!(result.is_ok());
+
+        let result = command().try_get_matches_from(["hprof-slurp", "diff", "a.hprof"]);
+        assert!(result.is_err(), "diff should require two files");
+
+        let result = command().try_get_matches_from([
+            "hprof-slurp",
+            "diff",
+            "a.hprof",
+            "b.hprof",
+            "-t",
+            "5",
+        ]);
+        assert!(result.is_ok(), "diff should accept --top");
     }
 
     #[test]

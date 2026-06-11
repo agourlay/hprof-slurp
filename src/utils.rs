@@ -33,6 +33,15 @@ fn civil_from_days(days: u64) -> (u64, u64, u64) {
     }
 }
 
+// Like [`pretty_bytes_size`] but for deltas, with an explicit sign.
+pub fn pretty_signed_bytes_size(delta: i64) -> String {
+    if delta < 0 {
+        format!("-{}", pretty_bytes_size(delta.unsigned_abs()))
+    } else {
+        format!("+{}", pretty_bytes_size(delta.unsigned_abs()))
+    }
+}
+
 pub fn pretty_bytes_size(len: u64) -> String {
     let float_len = len as f64;
     let (unit, value) = if float_len >= GIGABYTE {

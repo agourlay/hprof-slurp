@@ -1,4 +1,5 @@
 mod args;
+mod diff;
 mod errors;
 mod parser;
 mod prefetch_reader;
@@ -11,8 +12,7 @@ use std::time::Instant;
 
 use rendered_result::{DumpInfo, JsonResult};
 
-use crate::args::Args;
-use crate::args::get_args;
+use crate::args::{Args, DiffArgs, ParsedArgs, get_args};
 use crate::errors::HprofSlurpError;
 use crate::slurp::slurp_file;
 
@@ -28,6 +28,20 @@ fn main() {
 
 fn main_result() -> Result<(), HprofSlurpError> {
     let now = Instant::now();
+    match get_args()? {
+        ParsedArgs::Analyze(args) => {
+            analyze_file(args)?;
+            println!("File successfully processed in {:?}", now.elapsed());
+        }
+        ParsedArgs::Diff(diff_args) => {
+            diff_files(diff_args)?;
+            println!("Files successfully compared in {:?}", now.elapsed());
+        }
+    }
+    Ok(())
+}
+
+fn analyze_file(args: Args) -> Result<(), HprofSlurpError> {
     let Args {
         file_path,
         top,
@@ -35,7 +49,7 @@ fn main_result() -> Result<(), HprofSlurpError> {
         list_strings,
         json_output,
         output_file,
-    } = get_args()?;
+    } = args;
     let (file_header, mut rendered_result) = slurp_file(&file_path, debug, list_strings)?;
     if json_output {
         // only dump metadata and memory usage rendered for now
@@ -51,6 +65,24 @@ fn main_result() -> Result<(), HprofSlurpError> {
         json_result.save_as_file(output_file.as_deref())?;
     }
     print!("{}", rendered_result.serialize(top));
-    println!("File successfully processed in {:?}", now.elapsed());
+    Ok(())
+}
+
+fn diff_files(diff_args: DiffArgs) -> Result<(), HprofSlurpError> {
+    let DiffArgs { from, to, top } = diff_args;
+    let (_, result_from) = slurp_file(&from, false, false)?;
+    let (_, result_to) = slurp_file(&to, false, false)?;
+    let entries = diff::compute(&result_from.memory_usage, &result_to.memory_usage);
+    print!(
+        "{}",
+        diff::render(
+            &from,
+            &to,
+            &result_from.memory_usage,
+            &result_to.memory_usage,
+            &entries,
+            top
+        )
+    );
     Ok(())
 }

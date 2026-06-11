@@ -579,8 +579,16 @@ impl ResultRecorder {
         // Merge results
         classes_dump_vec.extend(array_primitives_dump_vec);
         classes_dump_vec.extend(array_objects_dump_vec);
-        // Sort by class name first for stability in test results :s
-        classes_dump_vec.sort_unstable_by(|a, b| b.class_name.cmp(&a.class_name));
+        // Deterministic order: later sorts are stable and only key on sizes,
+        // and the same class name can appear once per classloader, so ties
+        // must be broken on every field.
+        classes_dump_vec.sort_unstable_by(|a, b| {
+            b.class_name
+                .cmp(&a.class_name)
+                .then(b.allocation_size_bytes.cmp(&a.allocation_size_bytes))
+                .then(b.instance_count.cmp(&a.instance_count))
+                .then(b.largest_allocation_bytes.cmp(&a.largest_allocation_bytes))
+        });
         classes_dump_vec
     }
 
