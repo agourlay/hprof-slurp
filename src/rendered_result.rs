@@ -1,6 +1,6 @@
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fmt::Write, fs::File, io::BufWriter};
 
-use chrono::Utc;
 use serde::Serialize;
 
 use crate::{errors::HprofSlurpError, utils::pretty_bytes_size};
@@ -50,7 +50,11 @@ impl JsonResult {
     }
 
     pub fn save_as_file(&self) -> Result<(), HprofSlurpError> {
-        let file_path = format!("hprof-slurp-{}.json", Utc::now().timestamp_millis());
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be set after 1970")
+            .as_millis();
+        let file_path = format!("hprof-slurp-{millis}.json");
         let file = File::create(&file_path)?;
         let writer = BufWriter::new(file);
         // Serialize the struct directly to the file via the writer
