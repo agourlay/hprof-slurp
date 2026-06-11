@@ -12,6 +12,7 @@ use crate::parser::record::Record::{
 };
 use crate::parser::record::{LoadClassData, Record, StackFrameData, StackTraceData};
 use crate::rendered_result::{ClassAllocationStats, RenderedResult};
+use crate::utils::pretty_timestamp_utc;
 
 #[derive(Debug)]
 struct ClassInfo {
@@ -74,6 +75,8 @@ pub struct ResultRecorder {
     // Recorder's params
     id_size: u32,
     list_strings: bool,
+    // Capture time of the dump in epoch milliseconds (`0` when absent)
+    timestamp: u64,
     // Tag counters
     classes_unloaded: u32,
     stack_frames: u32,
@@ -115,10 +118,11 @@ pub struct ResultRecorder {
 }
 
 impl ResultRecorder {
-    pub fn new(id_size: u32, list_strings: bool) -> Self {
+    pub fn new(id_size: u32, list_strings: bool, timestamp: u64) -> Self {
         Self {
             id_size,
             list_strings,
+            timestamp,
             classes_unloaded: 0,
             stack_frames: 0,
             stack_traces: 0,
@@ -581,6 +585,14 @@ impl ResultRecorder {
     }
 
     pub fn render_summary(&self) -> String {
+        let capture_time = if self.timestamp == 0 {
+            String::new()
+        } else {
+            format!(
+                "\nDump captured at {}.\n",
+                pretty_timestamp_utc(self.timestamp)
+            )
+        };
         let top_summary = formatdoc!(
             "\nFile content summary:\n
             UTF-8 Strings: {}
@@ -639,7 +651,7 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_instance_dump,
         );
 
-        format!("{top_summary}\n{heap_summary}")
+        format!("{capture_time}{top_summary}\n{heap_summary}")
     }
 }
 
@@ -730,7 +742,7 @@ mod tests {
 
     #[test]
     fn instance_size_uses_mat_style_recursive_field_layout() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::new(4, false, 0);
         let mut records = vec![
             Record::Utf8String {
                 id: 10,
@@ -804,7 +816,7 @@ mod tests {
 
     #[test]
     fn primitive_array_size_uses_exact_padding_per_array() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::new(4, false, 0);
         let mut records = vec![
             Record::GcSegment(GcRecord::PrimitiveArrayDump {
                 object_id: 1,
@@ -833,7 +845,7 @@ mod tests {
 
     #[test]
     fn object_array_size_uses_exact_padding_per_array() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::new(4, false, 0);
         let mut records = vec![
             Record::Utf8String {
                 id: 10,
@@ -874,7 +886,7 @@ mod tests {
     // record; this used to panic the recorder thread.
     #[test]
     fn unknown_class_instance_falls_back_to_object_header_size() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::new(4, false, 0);
         let mut records = vec![Record::GcSegment(GcRecord::InstanceDump {
             object_id: 1,
             stack_trace_serial_number: 0,
@@ -897,7 +909,7 @@ mod tests {
 
     #[test]
     fn missing_super_class_falls_back_to_object_header_size() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::new(4, false, 0);
         let mut records = vec![
             Record::Utf8String {
                 id: 10,
@@ -945,7 +957,7 @@ mod tests {
 
     #[test]
     fn thread_info_renders_placeholders_for_missing_frames_and_classes() {
-        let mut recorder = ResultRecorder::new(4, false);
+        let mut recorder = ResultRecorder::new(4, false, 0);
         let mut records = vec![
             // frame 0x111 is never registered; frame 0x222 references the
             // never-loaded class serial number 7
@@ -978,7 +990,7 @@ mod tests {
     // unknown class must produce a result carrying the warning, not a panic.
     #[test]
     fn recorder_thread_reports_missing_classes_as_warning() {
-        let recorder = ResultRecorder::new(4, false);
+        let recorder = ResultRecorder::new(4, false, 0);
         let (send_records, receive_records) = crossbeam_channel::unbounded();
         let (send_result, receive_result) = crossbeam_channel::unbounded();
         let (send_pooled_vec, _receive_pooled_vec) = crossbeam_channel::unbounded();
@@ -1004,6 +1016,19 @@ mod tests {
         let warnings = result.warnings.expect("warnings should be present");
         assert!(warnings.contains("1 class definition(s)"));
         assert!(warnings.contains("0xabc"));
+    }
+
+    #[test]
+    fn summary_renders_capture_time_only_when_present() {
+        let with_timestamp = ResultRecorder::new(4, false, 1_608_192_273_831);
+        assert!(
+            with_timestamp
+                .render_summary()
+                .starts_with("\nDump captured at 2020-12-17 08:04:33 UTC.\n")
+        );
+
+        let without_timestamp = ResultRecorder::new(4, false, 0);
+        assert!(!without_timestamp.render_summary().contains("captured"));
     }
 
     #[test]

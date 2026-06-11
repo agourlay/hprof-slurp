@@ -101,7 +101,7 @@ pub fn slurp_file(
     )?;
 
     // Init result recorder
-    let result_recorder = ResultRecorder::new(id_size, list_strings);
+    let result_recorder = ResultRecorder::new(id_size, list_strings, header.timestamp);
     let recorder_thread = result_recorder.start(receive_records, send_result, send_pooled_vec)?;
 
     // Init progress bar

@@ -1,4 +1,6 @@
 
+Dump captured at 2018-01-14 12:47:39 UTC.
+
 File content summary:
 
 UTF-8 Strings: 10768

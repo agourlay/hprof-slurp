@@ -1,4 +1,6 @@
 
+Dump captured at 2015-04-29 19:08:43 UTC.
+
 File content summary:
 
 UTF-8 Strings: 23361
