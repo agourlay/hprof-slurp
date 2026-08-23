@@ -482,9 +482,14 @@ impl ResultRecorder {
     }
 
     fn calculate_instance_size(&self, class_id: u64, missing_class_ids: &mut AHashSet<u64>) -> u64 {
+        let mut visited_class_ids = AHashSet::new();
         u64::from(
-            self.calculate_instance_size_recursive(class_id, missing_class_ids)
-                .next_multiple_of(OBJECT_ALIGN),
+            self.calculate_instance_size_recursive(
+                class_id,
+                missing_class_ids,
+                &mut visited_class_ids,
+            )
+            .next_multiple_of(OBJECT_ALIGN),
         )
     }
 
@@ -492,7 +497,15 @@ impl ResultRecorder {
         &self,
         class_id: u64,
         missing_class_ids: &mut AHashSet<u64>,
+        visited_class_ids: &mut AHashSet<u64>,
     ) -> u32 {
+        // A malformed dump can declare a cyclic super class chain; stop at the
+        // repeated class and size it as a bare object header, like the missing
+        // class fallback below, instead of recursing until the stack overflows.
+        if !visited_class_ids.insert(class_id) {
+            return object_header_size(self.id_size);
+        }
+
         // A class id without a `ClassDump` record (see `get_class_name_string`)
         // is sized as a bare object header so the analysis can keep going.
         let Some(class_info) = self.classes_single_instance_size_by_id.get(&class_id) else {
@@ -513,6 +526,7 @@ impl ResultRecorder {
             + self.calculate_instance_size_recursive(
                 class_info.super_class_object_id,
                 missing_class_ids,
+                visited_class_ids,
             ))
         .next_multiple_of(self.id_size)
     }
@@ -961,6 +975,64 @@ mod tests {
         // int field (4) + super fallback header (8), aligned to 8 -> 16
         assert_eq!(orphan.allocation_size_bytes, 16);
         assert!(missing_class_ids.contains(&0xDEAD));
+    }
+
+    // Regression: a super class chain looping back on itself used to recurse
+    // until the recorder thread overflowed its stack.
+    #[test]
+    fn cyclic_super_class_chain_falls_back_to_object_header_size() {
+        let mut recorder = ResultRecorder::new(4, false, 0);
+        let mut records = vec![
+            Record::Utf8String {
+                id: 10,
+                str: "com/example/Loop".into(),
+            },
+            Record::LoadClass(LoadClassData {
+                serial_number: 1,
+                class_object_id: 1,
+                stack_trace_serial_number: 0,
+                class_name_id: 10,
+            }),
+            // class 1 declares class 2 as super, and class 2 declares class 1
+            Record::GcSegment(GcRecord::ClassDump(Box::new(ClassDumpFields::new(
+                1,
+                0,
+                2,
+                999,
+                vec![],
+                vec![],
+                vec![FieldInfo {
+                    name_id: 20,
+                    field_type: FieldType::Int,
+                }],
+            )))),
+            Record::GcSegment(GcRecord::ClassDump(Box::new(ClassDumpFields::new(
+                2,
+                0,
+                1,
+                999,
+                vec![],
+                vec![],
+                vec![],
+            )))),
+            Record::GcSegment(GcRecord::InstanceDump {
+                object_id: 30,
+                stack_trace_serial_number: 0,
+                class_object_id: 1,
+                data_size: 0,
+            }),
+        ];
+
+        recorder.record_records(&mut records);
+        let memory_usage = recorder.aggregate_memory_usage(&mut AHashSet::new());
+        let looping = memory_usage
+            .iter()
+            .find(|stats| stats.class_name == "com.example.Loop")
+            .expect("looping class stats should be present");
+
+        // int field (4) + super class 2 (no field, cycle back to 1 -> header 8),
+        // aligned to 8 -> 16
+        assert_eq!(looping.allocation_size_bytes, 16);
     }
 
     #[test]
