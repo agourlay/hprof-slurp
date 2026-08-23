@@ -4,13 +4,13 @@ Heap diff of raw shallow sizes:
   to:   test-heap-dumps/hprof-64.bin (2.51MiB)
   net:  +2.37MiB
 
-Top 20 of 282 class deltas (by shallow size growth):
+Top 20 of 268 class deltas (by shallow size growth):
 
       Δ size  Δ instances        size (from → to) instances (from → to)  Class name
     +1.99MiB         +432       1.14KiB → 1.99MiB               4 → 436  int[]
   +130.56KiB        +1158    64.33KiB → 194.89KiB            833 → 1991  char[]
    +60.84KiB         +434     24.39KiB → 85.23KiB               9 → 443  byte[]
-   +45.42KiB         +560    0.00bytes → 45.42KiB               0 → 560  java.lang.Object[]
+   +34.34KiB         +255     11.08KiB → 45.42KiB             305 → 560  java.lang.Object[]
    +29.45KiB         +751     17.93KiB → 47.38KiB            765 → 1516  java.lang.String
    +14.77KiB         +126    0.00bytes → 14.77KiB               0 → 126  java.lang.reflect.Field
    +14.77KiB         +378    0.00bytes → 14.77KiB               0 → 378  java.util.LinkedList$Node
@@ -21,9 +21,9 @@ Top 20 of 282 class deltas (by shallow size growth):
     +5.33KiB          +97    32.00bytes → 5.36KiB                1 → 98  java.lang.ref.SoftReference
     +4.23KiB         +121   464.00bytes → 4.69KiB              29 → 150  java.lang.StringBuilder
     +4.08KiB          +58       1.36KiB → 5.44KiB              58 → 116  java.util.Hashtable$Entry
-    +3.17KiB          +12     0.00bytes → 3.17KiB                0 → 12  java.util.Hashtable$Entry[]
     +3.16KiB          +56   272.00bytes → 3.42KiB               17 → 73  java.io.File
-    +3.13KiB          +56     0.00bytes → 3.13KiB                0 → 56  java.lang.String[]
     +2.95KiB          +63     0.00bytes → 2.95KiB                0 → 63  java.util.concurrent.ConcurrentHashMap$Node
     +2.79KiB          +19   728.00bytes → 3.50KiB               13 → 32  java.net.URL
+    +2.65KiB           +5   536.00bytes → 3.17KiB                7 → 12  java.util.Hashtable$Entry[]
     +2.38KiB          +38     0.00bytes → 2.38KiB                0 → 38  sun.util.locale.LocaleObjectCache$CacheEntry
+    +2.31KiB          +34   192.00bytes → 2.50KiB                6 → 40  java.lang.ref.Finalizer

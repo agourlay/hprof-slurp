@@ -608,21 +608,13 @@ impl ResultRecorder {
                     )
                 });
 
-        // For array of objects we are interested in the total size of the array headers and outgoing elements references
+        // For array of objects we are interested in the total size of the array
+        // headers and outgoing elements references. An array of arrays (say
+        // `int[][]`) shows up here too: its elements are references to the
+        // `int[]` objects, whose payloads are counted on their own above.
         let array_objects_dump_vec = self.object_array_counters.iter().map(|(class_id, ac)| {
             let raw_class_name = self.get_class_name_string(*class_id, missing_class_ids);
-            let cleaned_class_name: String = if raw_class_name.starts_with("[[L") {
-                // remove '[[L' prefix and ';' suffix
-                raw_class_name[3..raw_class_name.len() - 1].to_string()
-            } else if raw_class_name.starts_with("[L") {
-                // remove '[L' prefix and ';' suffix
-                raw_class_name[2..raw_class_name.len() - 1].to_string()
-            } else {
-                // TODO: what are those ([[C, [[D, [[B, [[S ...)? boxed primitives are already present
-                raw_class_name
-            };
-
-            let object_array_label = format!("{cleaned_class_name}[]");
+            let object_array_label = object_array_label(&raw_class_name);
 
             ClassAllocationStats::new(
                 object_array_label,
@@ -756,6 +748,53 @@ impl ResultRecorder {
             + self.heap_dump_segments_gc_unreachable
             + self.heap_dump_segments_gc_heap_dump_info
     }
+}
+
+// Renders the class name of an object array as a Java style name.
+//
+// The two dump flavours disagree on how they spell it: a JVM writes the JVM
+// descriptor (`[Ljava.lang.Object;`, `[[I`) while ART writes the source form
+// already (`android.content.Intent[]`). Appending `[]` to both is what used to
+// give every Android array one dimension too many.
+fn object_array_label(raw_class_name: &str) -> String {
+    // Leading `[` are ASCII, so slicing past them stays on a char boundary.
+    let dimensions = raw_class_name.bytes().take_while(|b| *b == b'[').count();
+    if dimensions == 0 {
+        return if raw_class_name.ends_with("[]") {
+            // Already a source form array name, as written by ART.
+            raw_class_name.to_string()
+        } else {
+            // Not an array name at all (a missing class placeholder, say), but
+            // it was recorded as an array so it is marked as one.
+            format!("{raw_class_name}[]")
+        };
+    }
+    let descriptor = &raw_class_name[dimensions..];
+    let element = descriptor
+        .strip_prefix('L')
+        .and_then(|rest| rest.strip_suffix(';'))
+        .map(ToString::to_string)
+        .or_else(|| primitive_descriptor_name(descriptor))
+        // An unknown descriptor is kept verbatim rather than guessed at.
+        .unwrap_or_else(|| descriptor.to_string());
+    format!("{element}{}", "[]".repeat(dimensions))
+}
+
+// Spelled through `FieldType` so that `[[I` and a primitive `int[]` array can
+// never be labelled differently.
+fn primitive_descriptor_name(descriptor: &str) -> Option<String> {
+    let field_type = match descriptor {
+        "Z" => FieldType::Bool,
+        "B" => FieldType::Byte,
+        "C" => FieldType::Char,
+        "S" => FieldType::Short,
+        "I" => FieldType::Int,
+        "J" => FieldType::Long,
+        "F" => FieldType::Float,
+        "D" => FieldType::Double,
+        _ => return None,
+    };
+    Some(format!("{field_type:?}").to_lowercase())
 }
 
 const OBJECT_ALIGN: u32 = 8;
@@ -1178,6 +1217,66 @@ mod tests {
         // int field (4) + super class 2 (no field, cycle back to 1 -> header 8),
         // aligned to 8 -> 16
         assert_eq!(looping.allocation_size_bytes, 16);
+    }
+
+    #[test]
+    fn object_array_labels_decode_jvm_descriptors() {
+        assert_eq!(
+            object_array_label("[Ljava.lang.Object;"),
+            "java.lang.Object[]"
+        );
+        assert_eq!(
+            object_array_label("[[Ljava.lang.String;"),
+            "java.lang.String[][]"
+        );
+        assert_eq!(
+            object_array_label("[[[Lcom.example.Deep;"),
+            "com.example.Deep[][][]"
+        );
+        // arrays of primitive arrays, the case the old code left as "[[I[]"
+        assert_eq!(object_array_label("[[I"), "int[][]");
+        assert_eq!(object_array_label("[[C"), "char[][]");
+        assert_eq!(object_array_label("[[[D"), "double[][][]");
+        // spelled like the primitive array counters, not like Java
+        assert_eq!(object_array_label("[[Z"), "bool[][]");
+    }
+
+    // ART writes the source form directly, so appending "[]" used to report
+    // every Android object array with one dimension too many.
+    #[test]
+    fn object_array_labels_keep_art_source_form_names() {
+        assert_eq!(
+            object_array_label("android.content.Intent[]"),
+            "android.content.Intent[]"
+        );
+        assert_eq!(
+            object_array_label("java.lang.Object[][]"),
+            "java.lang.Object[][]"
+        );
+    }
+
+    #[test]
+    fn object_array_labels_mark_names_that_are_not_arrays() {
+        assert_eq!(
+            object_array_label("<unknown class 0xabc>"),
+            "<unknown class 0xabc>[]"
+        );
+    }
+
+    // Degenerate names must not panic on slicing: the old code indexed
+    // `[3..len - 1]` and `[2..len - 1]` without checking either bound.
+    #[test]
+    fn object_array_labels_survive_degenerate_names() {
+        assert_eq!(object_array_label("[L"), "L[]");
+        assert_eq!(object_array_label("[["), "[][]");
+        assert_eq!(object_array_label("["), "[]");
+        assert_eq!(object_array_label("[L;"), "[]");
+        // a lossy replacement character is multi byte: slicing off the last
+        // byte would have split it
+        assert_eq!(
+            object_array_label("[Lcom.example.Odd\u{fffd}"),
+            "Lcom.example.Odd\u{fffd}[]"
+        );
     }
 
     #[test]
