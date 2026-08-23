@@ -28,6 +28,7 @@ The reported sizes are **shallow**: the footprint of each object itself (its hea
 - displays top `n` raw shallow heap classes found in the dump.
 - displays number of instances per class.
 - displays largest instance size per class.
+- filters the reported classes by name.
 - displays threads stack traces.
 - lists all `Strings` found.
 - outputs results as JSON.
@@ -55,13 +56,14 @@ Arguments:
   <FILE>  binary hprof input file
 
 Options:
-  -t, --top <top>        the top results to display [default: 20]
-  -d, --debug            debug info
-  -l, --list-strings     list all Strings found
-      --json             additional JSON output in file
-  -o, --output <output>  output file path for the JSON result (default: hprof-slurp-<timestamp>.json)
-  -h, --help             Print help
-  -V, --version          Print version
+  -t, --top <top>         the top results to display [default: 20]
+  -f, --filter <PATTERN>  only report classes whose name contains this text
+  -d, --debug             debug info
+  -l, --list-strings      list all Strings found
+      --json              additional JSON output in file
+  -o, --output <output>   output file path for the JSON result (default: hprof-slurp-<timestamp>.json)
+  -h, --help              Print help
+  -V, --version           Print version
 ```
 
 ### Example table
@@ -100,6 +102,31 @@ Top 20 raw shallow heap classes:
 |    2.50KiB |        40 |  64.00bytes | java.lang.ref.Finalizer                     |
 +------------+-----------+-------------+---------------------------------------------+
 ```
+
+### Filter by class name
+
+Both the analysis and the diff accept `--filter`, which keeps only the classes whose name contains the given text. The dump wide totals are still reported, so the share held by the matched classes stays visible.
+
+```bash
+./hprof-slurp "test-heap-dumps/hprof-64.bin" --top 3 --filter java.util
+```
+
+```
+Found a total of 2.51MiB of raw shallow heap objects in the dump.
+Filter 'java.util' matches 51 classes totalling 68.55KiB (2.67% of the dump).
+
+Top 3 raw shallow heap classes:
+
++------------+-----------+------------+---------------------------+
+| Total size | Instances |    Largest | Class name                |
++------------+-----------+------------+---------------------------+
+|   14.77KiB |       378 | 40.00bytes | java.util.LinkedList$Node |
+|    9.94KiB |       212 | 48.00bytes | java.util.HashMap$Node    |
+|    8.91KiB |       190 | 48.00bytes | java.util.LinkedList      |
++------------+-----------+------------+---------------------------+
+```
+
+When `--json` is used, the matched classes are the ones listed and an extra `heap.filter` object reports the pattern along with its class count and total.
 
 ### Diff two dumps
 

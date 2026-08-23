@@ -33,6 +33,13 @@ fn civil_from_days(days: u64) -> (u64, u64, u64) {
     }
 }
 
+// The `--filter` predicate: a plain case sensitive substring match, shared by
+// every report so that the text and JSON outputs can never disagree on what a
+// pattern selects. No filter matches everything.
+pub fn matches_class_filter(class_name: &str, filter: Option<&str>) -> bool {
+    filter.is_none_or(|pattern| class_name.contains(pattern))
+}
+
 // Like [`pretty_bytes_size`] but for deltas, with an explicit sign.
 pub fn pretty_signed_bytes_size(delta: i64) -> String {
     if delta < 0 {
@@ -58,8 +65,26 @@ pub fn pretty_bytes_size(len: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::matches_class_filter;
     use super::pretty_bytes_size;
     use super::pretty_timestamp_utc;
+
+    #[test]
+    fn class_filter_matches_everything_when_absent() {
+        assert!(matches_class_filter("java.lang.String", None));
+    }
+
+    #[test]
+    fn class_filter_is_a_case_sensitive_substring_match() {
+        assert!(matches_class_filter("java.util.HashMap", Some("java.util")));
+        assert!(matches_class_filter("java.util.HashMap", Some("HashMap")));
+        assert!(matches_class_filter("char[]", Some("[]")));
+        assert!(!matches_class_filter(
+            "java.util.HashMap",
+            Some("java.lang")
+        ));
+        assert!(!matches_class_filter("java.util.HashMap", Some("hashmap")));
+    }
 
     #[test]
     fn pretty_timestamp_epoch() {

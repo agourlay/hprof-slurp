@@ -172,7 +172,7 @@ mod tests {
     fn validate_gold_rendered_result(render_result: RenderedResult, gold_path: &str) {
         let gold = fs::read_to_string(gold_path).expect("gold file not found!");
         // top 20 hardcoded
-        let expected = render_result.serialize(20);
+        let expected = render_result.serialize(20, None);
         let mut expected_lines = expected.lines();
         for (i1, l1) in gold.lines().enumerate() {
             let l2 = expected_lines.next().unwrap();

@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{
     errors::HprofSlurpError,
-    utils::{pretty_bytes_size, pretty_timestamp_utc},
+    utils::{matches_class_filter, pretty_bytes_size, pretty_timestamp_utc},
 };
 
 #[derive(Serialize, Clone)]
@@ -74,10 +74,21 @@ impl DumpInfo {
     }
 }
 
+// Present only when `--filter` is used; the totals next to it always cover the
+// whole dump so that the matched share stays interpretable.
+#[derive(Serialize)]
+struct FilterInfo {
+    pattern: String,
+    class_count: usize,
+    total_shallow_bytes: u64,
+}
+
 #[derive(Serialize)]
 struct HeapInfo {
     total_shallow_bytes: u64,
     class_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<FilterInfo>,
     top_allocated_classes: Vec<ClassAllocationStats>,
     top_largest_instances: Vec<ClassAllocationStats>,
 }
@@ -91,19 +102,49 @@ pub struct JsonResult {
 }
 
 impl JsonResult {
-    pub fn new(dump: DumpInfo, memory_usage: &mut [ClassAllocationStats], top: usize) -> Self {
+    pub fn new(
+        dump: DumpInfo,
+        memory_usage: &mut [ClassAllocationStats],
+        top: usize,
+        filter: Option<&str>,
+    ) -> Self {
         // totals over all classes, not only the top entries
         let total_shallow_bytes = memory_usage
             .iter()
             .map(|stats| stats.allocation_size_bytes)
             .sum();
         let class_count = memory_usage.len();
+        let matched =
+            |stats: &&ClassAllocationStats| matches_class_filter(&stats.class_name, filter);
+        let filter_info = filter.map(|pattern| {
+            let (class_count, total_shallow_bytes) = memory_usage
+                .iter()
+                .filter(matched)
+                .fold((0, 0), |(count, bytes), stats| {
+                    (count + 1, bytes + stats.allocation_size_bytes)
+                });
+            FilterInfo {
+                pattern: pattern.to_string(),
+                class_count,
+                total_shallow_bytes,
+            }
+        });
         // top allocated
         memory_usage.sort_by_key(|b| std::cmp::Reverse(b.allocation_size_bytes));
-        let top_allocated_classes = memory_usage.iter().take(top).cloned().collect();
+        let top_allocated_classes = memory_usage
+            .iter()
+            .filter(matched)
+            .take(top)
+            .cloned()
+            .collect();
         // Top largest instances
         memory_usage.sort_by_key(|b| std::cmp::Reverse(b.largest_allocation_bytes));
-        let top_largest_instances = memory_usage.iter().take(top).cloned().collect();
+        let top_largest_instances = memory_usage
+            .iter()
+            .filter(matched)
+            .take(top)
+            .cloned()
+            .collect();
         Self {
             schema_version: JSON_SCHEMA_VERSION,
             tool: ToolInfo {
@@ -114,6 +155,7 @@ impl JsonResult {
             heap: HeapInfo {
                 total_shallow_bytes,
                 class_count,
+                filter: filter_info,
                 top_allocated_classes,
                 top_largest_instances,
             },
@@ -150,7 +192,7 @@ pub struct RenderedResult {
 }
 
 impl RenderedResult {
-    pub fn serialize(self, top: usize) -> String {
+    pub fn serialize(self, top: usize, filter: Option<&str>) -> String {
         let Self {
             summary,
             thread_info,
@@ -159,7 +201,7 @@ impl RenderedResult {
             captured_strings,
             warnings,
         } = self;
-        let memory = Self::render_memory_usage(&mut memory_usage, top);
+        let memory = Self::render_memory_usage(&mut memory_usage, top, filter);
         let mut result = format!("{summary}\n{thread_info}\n{memory}");
         if let Some(duplicated_strings) = duplicated_strings {
             writeln!(result, "{duplicated_strings}").expect("write should not fail");
@@ -174,12 +216,16 @@ impl RenderedResult {
         result
     }
 
-    fn render_memory_usage(memory_usage: &mut Vec<ClassAllocationStats>, top: usize) -> String {
+    fn render_memory_usage(
+        memory_usage: &mut Vec<ClassAllocationStats>,
+        top: usize,
+        filter: Option<&str>,
+    ) -> String {
         // Holds the final result
         let mut analysis = String::new();
 
         // Total heap size found banner
-        let total_size = memory_usage
+        let total_size: u64 = memory_usage
             .iter()
             .map(|class_allocation_stats| class_allocation_stats.allocation_size_bytes)
             .sum();
@@ -189,6 +235,28 @@ impl RenderedResult {
             "Found a total of {display_total_size} of raw shallow heap objects in the dump."
         )
         .expect("Could not write to analysis");
+
+        // The banner above always describes the whole dump, so the share of it
+        // retained by the filter is reported next to the matched total.
+        if let Some(pattern) = filter {
+            memory_usage.retain(|stats| matches_class_filter(&stats.class_name, filter));
+            let filtered_size: u64 = memory_usage
+                .iter()
+                .map(|class_allocation_stats| class_allocation_stats.allocation_size_bytes)
+                .sum();
+            let share = if total_size == 0 {
+                0.0
+            } else {
+                filtered_size as f64 * 100.0 / total_size as f64
+            };
+            writeln!(
+                analysis,
+                "Filter '{pattern}' matches {} classes totalling {} ({share:.2}% of the dump).",
+                memory_usage.len(),
+                pretty_bytes_size(filtered_size)
+            )
+            .expect("Could not write to analysis");
+        }
 
         // Top allocated classes analysis
         writeln!(analysis, "\nTop {top} raw shallow heap classes:\n")
@@ -358,7 +426,7 @@ mod tests {
     fn text_output_describes_raw_shallow_dump_objects() {
         let mut memory_usage = vec![ClassAllocationStats::new("Thing".to_string(), 1, 16, 16)];
 
-        let output = RenderedResult::render_memory_usage(&mut memory_usage, 1);
+        let output = RenderedResult::render_memory_usage(&mut memory_usage, 1, None);
 
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));
@@ -371,10 +439,78 @@ mod tests {
     fn text_output_renders_empty_table_without_rows() {
         let mut memory_usage = vec![];
 
-        let output = RenderedResult::render_memory_usage(&mut memory_usage, 20);
+        let output = RenderedResult::render_memory_usage(&mut memory_usage, 20, None);
 
         assert!(output.contains("Found a total of 0.00bytes"));
         assert!(output.contains("| Total size | Instances | Largest | Class name |"));
+    }
+
+    #[test]
+    fn text_output_reports_the_filtered_share_of_the_dump() {
+        let mut memory_usage = vec![
+            ClassAllocationStats::new("com.example.Kept".to_string(), 1, 25, 25),
+            ClassAllocationStats::new("java.lang.String".to_string(), 1, 75, 75),
+        ];
+
+        let output =
+            RenderedResult::render_memory_usage(&mut memory_usage, 20, Some("com.example"));
+
+        // the banner keeps describing the whole dump
+        assert!(output.contains("Found a total of 100.00bytes"));
+        assert!(output.contains(
+            "Filter 'com.example' matches 1 classes totalling 25.00bytes (25.00% of the dump)."
+        ));
+        assert!(output.contains("com.example.Kept"));
+        assert!(!output.contains("java.lang.String"));
+    }
+
+    // A filter matching nothing must render like any other empty result.
+    #[test]
+    fn text_output_survives_a_filter_matching_nothing() {
+        let mut memory_usage = vec![ClassAllocationStats::new("Thing".to_string(), 1, 16, 16)];
+
+        let output = RenderedResult::render_memory_usage(&mut memory_usage, 20, Some("nope"));
+
+        assert!(output.contains("Filter 'nope' matches 0 classes totalling 0.00bytes"));
+        assert!(output.contains("| Total size | Instances | Largest | Class name |"));
+    }
+
+    #[test]
+    fn json_result_carries_the_filter_and_keeps_whole_dump_totals() {
+        let mut memory_usage = vec![
+            ClassAllocationStats::new("com.example.Kept".to_string(), 1, 25, 25),
+            ClassAllocationStats::new("java.lang.String".to_string(), 1, 75, 75),
+        ];
+        let dump_info = DumpInfo::new("heap.hprof".to_string(), 1, "F".to_string(), 8, 0);
+
+        let json_result = JsonResult::new(dump_info, &mut memory_usage, 20, Some("com.example"));
+        let json = serde_json::to_value(&json_result).expect("should serialize");
+
+        // whole dump totals are unchanged, the filter gets its own totals
+        assert_eq!(json["heap"]["total_shallow_bytes"], 100);
+        assert_eq!(json["heap"]["class_count"], 2);
+        assert_eq!(json["heap"]["filter"]["pattern"], "com.example");
+        assert_eq!(json["heap"]["filter"]["class_count"], 1);
+        assert_eq!(json["heap"]["filter"]["total_shallow_bytes"], 25);
+
+        let top = json["heap"]["top_allocated_classes"]
+            .as_array()
+            .expect("should be an array");
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0]["class_name"], "com.example.Kept");
+    }
+
+    // An unfiltered run must stay byte for byte what it was before the filter
+    // was introduced, so the key is absent rather than null.
+    #[test]
+    fn json_result_omits_the_filter_key_when_unfiltered() {
+        let mut memory_usage = vec![ClassAllocationStats::new("A".to_string(), 1, 16, 16)];
+        let dump_info = DumpInfo::new("heap.hprof".to_string(), 1, "F".to_string(), 8, 0);
+
+        let json_result = JsonResult::new(dump_info, &mut memory_usage, 20, None);
+        let json = serde_json::to_value(&json_result).expect("should serialize");
+
+        assert!(json["heap"].get("filter").is_none());
     }
 
     #[test]
@@ -391,7 +527,7 @@ mod tests {
             1_608_192_273_831,
         );
 
-        let json_result = JsonResult::new(dump_info, &mut memory_usage, 1);
+        let json_result = JsonResult::new(dump_info, &mut memory_usage, 1, None);
         let json = serde_json::to_value(&json_result).expect("should serialize");
 
         assert_eq!(json["schema_version"], 1);
@@ -438,7 +574,7 @@ mod tests {
             warnings: Some("\nWarning: something was off\n".to_string()),
         };
 
-        let output = rendered_result.serialize(1);
+        let output = rendered_result.serialize(1, None);
 
         assert!(output.ends_with("\nWarning: something was off\n"));
     }

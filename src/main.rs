@@ -49,6 +49,7 @@ fn analyze_file(args: Args) -> Result<(), HprofSlurpError> {
         list_strings,
         json_output,
         output_file,
+        filter,
     } = args;
     let (file_header, mut rendered_result) = slurp_file(&file_path, debug, list_strings)?;
     if json_output {
@@ -61,18 +62,29 @@ fn analyze_file(args: Args) -> Result<(), HprofSlurpError> {
             file_header.size_pointers,
             file_header.timestamp,
         );
-        let json_result = JsonResult::new(dump_info, &mut rendered_result.memory_usage, top);
+        let json_result = JsonResult::new(
+            dump_info,
+            &mut rendered_result.memory_usage,
+            top,
+            filter.as_deref(),
+        );
         json_result.save_as_file(output_file.as_deref())?;
     }
-    print!("{}", rendered_result.serialize(top));
+    print!("{}", rendered_result.serialize(top, filter.as_deref()));
     Ok(())
 }
 
 fn diff_files(diff_args: DiffArgs) -> Result<(), HprofSlurpError> {
-    let DiffArgs { from, to, top } = diff_args;
+    let DiffArgs {
+        from,
+        to,
+        top,
+        filter,
+    } = diff_args;
     let (_, result_from) = slurp_file(&from, false, false)?;
     let (_, result_to) = slurp_file(&to, false, false)?;
-    let entries = diff::compute(&result_from.memory_usage, &result_to.memory_usage);
+    let mut entries = diff::compute(&result_from.memory_usage, &result_to.memory_usage);
+    diff::filter_entries(&mut entries, filter.as_deref());
     print!(
         "{}",
         diff::render(
@@ -81,7 +93,8 @@ fn diff_files(diff_args: DiffArgs) -> Result<(), HprofSlurpError> {
             &result_from.memory_usage,
             &result_to.memory_usage,
             &entries,
-            top
+            top,
+            filter.as_deref()
         )
     );
     Ok(())

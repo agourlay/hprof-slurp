@@ -9,7 +9,7 @@ use std::fmt::Write;
 use ahash::AHashMap;
 
 use crate::rendered_result::ClassAllocationStats;
-use crate::utils::{pretty_bytes_size, pretty_signed_bytes_size};
+use crate::utils::{matches_class_filter, pretty_bytes_size, pretty_signed_bytes_size};
 
 pub struct DiffEntry {
     pub class_name: String,
@@ -77,6 +77,13 @@ pub fn compute(from: &[ClassAllocationStats], to: &[ClassAllocationStats]) -> Ve
     entries
 }
 
+// Drops the deltas of the classes the filter does not select. The totals
+// rendered next to them keep covering the whole dumps. A `None` filter is a
+// no-op, so callers do not have to branch.
+pub fn filter_entries(entries: &mut Vec<DiffEntry>, filter: Option<&str>) {
+    entries.retain(|entry| matches_class_filter(&entry.class_name, filter));
+}
+
 pub fn render(
     from_label: &str,
     to_label: &str,
@@ -84,6 +91,7 @@ pub fn render(
     to: &[ClassAllocationStats],
     entries: &[DiffEntry],
     top: usize,
+    filter: Option<&str>,
 ) -> String {
     let total_from: u64 = from.iter().map(|s| s.allocation_size_bytes).sum();
     let total_to: u64 = to.iter().map(|s| s.allocation_size_bytes).sum();
@@ -100,8 +108,22 @@ pub fn render(
     let _ = writeln!(out, "  net:  {}", pretty_signed_bytes_size(net));
 
     if entries.is_empty() {
-        let _ = writeln!(out, "\nNo per-class differences between the two dumps.");
+        match filter {
+            Some(pattern) => {
+                let _ = writeln!(
+                    out,
+                    "\nNo per-class differences matching '{pattern}' between the two dumps."
+                );
+            }
+            None => {
+                let _ = writeln!(out, "\nNo per-class differences between the two dumps.");
+            }
+        }
         return out;
+    }
+
+    if let Some(pattern) = filter {
+        let _ = writeln!(out, "  filter: '{pattern}'");
     }
 
     let shown = entries.len().min(top);
@@ -182,7 +204,7 @@ mod tests {
         let to = vec![stats("Same", 1, 10)];
 
         let entries = compute(&from, &to);
-        let rendered = render("a.hprof", "b.hprof", &from, &to, &entries, 20);
+        let rendered = render("a.hprof", "b.hprof", &from, &to, &entries, 20, None);
 
         assert!(entries.is_empty());
         assert!(rendered.contains("No per-class differences"));
@@ -195,13 +217,13 @@ mod tests {
         let to = vec![stats("Shrinker", 8, 80)];
 
         let entries = compute(&from, &to);
-        let rendered = render("a.hprof", "b.hprof", &from, &to, &entries, 20);
+        let rendered = render("a.hprof", "b.hprof", &from, &to, &entries, 20, None);
 
         assert!(rendered.contains("-120.00bytes"));
         assert!(rendered.contains("-12"));
 
         let entries = compute(&to, &from);
-        let rendered = render("b.hprof", "a.hprof", &to, &from, &entries, 20);
+        let rendered = render("b.hprof", "a.hprof", &to, &from, &entries, 20, None);
 
         assert!(rendered.contains("+120.00bytes"));
         assert!(rendered.contains("+12"));
@@ -224,6 +246,54 @@ mod tests {
         assert_eq!(entries[0].bytes_from, 30);
         assert_eq!(entries[0].bytes_to, 40);
         assert_eq!(entries[0].delta_bytes(), 10);
+    }
+
+    #[test]
+    fn filter_entries_keeps_only_matching_class_names() {
+        let from = vec![stats("com.example.Grower", 1, 10), stats("char[]", 1, 10)];
+        let to = vec![stats("com.example.Grower", 2, 30), stats("char[]", 5, 50)];
+
+        let mut entries = compute(&from, &to);
+        assert_eq!(entries.len(), 2);
+        filter_entries(&mut entries, Some("com.example"));
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].class_name, "com.example.Grower");
+
+        let rendered = render(
+            "a.hprof",
+            "b.hprof",
+            &from,
+            &to,
+            &entries,
+            20,
+            Some("com.example"),
+        );
+        // the from/to/net totals keep covering the whole dumps
+        assert!(rendered.contains("from: a.hprof (20.00bytes)"));
+        assert!(rendered.contains("filter: 'com.example'"));
+        assert!(rendered.contains("Top 1 of 1 class deltas"));
+        assert!(!rendered.contains("char[]"));
+    }
+
+    #[test]
+    fn render_reports_a_filter_matching_no_delta() {
+        let from = vec![stats("char[]", 1, 10)];
+        let to = vec![stats("char[]", 5, 50)];
+
+        let mut entries = compute(&from, &to);
+        filter_entries(&mut entries, Some("com.example"));
+        let rendered = render(
+            "a.hprof",
+            "b.hprof",
+            &from,
+            &to,
+            &entries,
+            20,
+            Some("com.example"),
+        );
+
+        assert!(rendered.contains("No per-class differences matching 'com.example'"));
     }
 
     #[test]
@@ -251,6 +321,7 @@ mod tests {
             &to.memory_usage,
             &entries,
             20,
+            None,
         );
 
         let gold = std::fs::read_to_string("test-heap-dumps/hprof-diff-32-to-64-result.txt")

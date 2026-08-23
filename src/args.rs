@@ -15,6 +15,16 @@ fn top_arg() -> Arg {
         .required(false)
 }
 
+fn filter_arg() -> Arg {
+    Arg::new("filter")
+        .help("only report classes whose name contains this text")
+        .long("filter")
+        .short('f')
+        .num_args(1)
+        .value_name("PATTERN")
+        .required(false)
+}
+
 fn command() -> Command {
     Command::new(crate_name!())
         .version(crate_version!())
@@ -38,7 +48,8 @@ fn command() -> Command {
                         .num_args(1)
                         .required(true),
                 )
-                .arg(top_arg()),
+                .arg(top_arg())
+                .arg(filter_arg()),
         )
         .arg(
             Arg::new("file")
@@ -48,6 +59,7 @@ fn command() -> Command {
                 .required(true),
         )
         .arg(top_arg())
+        .arg(filter_arg())
         .arg(
             Arg::new("debug")
                 .help("debug info")
@@ -102,7 +114,13 @@ pub fn get_args() -> Result<ParsedArgs, HprofSlurpError> {
         let from = existing_file(sub_matches.get_one::<String>("from").expect("impossible"))?;
         let to = existing_file(sub_matches.get_one::<String>("to").expect("impossible"))?;
         let top = get_top(sub_matches);
-        return Ok(ParsedArgs::Diff(DiffArgs { from, to, top }));
+        let filter = sub_matches.get_one::<String>("filter").cloned();
+        return Ok(ParsedArgs::Diff(DiffArgs {
+            from,
+            to,
+            top,
+            filter,
+        }));
     }
 
     let file_path = existing_file(matches.get_one::<String>("file").expect("impossible"))?;
@@ -111,6 +129,7 @@ pub fn get_args() -> Result<ParsedArgs, HprofSlurpError> {
     let list_strings = matches.get_flag("list-strings");
     let json_output = matches.get_flag("json");
     let output_file = matches.get_one::<String>("output").cloned();
+    let filter = matches.get_one::<String>("filter").cloned();
     let args = Args {
         file_path,
         top,
@@ -118,6 +137,7 @@ pub fn get_args() -> Result<ParsedArgs, HprofSlurpError> {
         list_strings,
         json_output,
         output_file,
+        filter,
     };
     Ok(ParsedArgs::Analyze(args))
 }
@@ -134,12 +154,16 @@ pub struct Args {
     pub list_strings: bool,
     pub json_output: bool,
     pub output_file: Option<String>,
+    // only report classes whose name contains this text
+    pub filter: Option<String>,
 }
 
 pub struct DiffArgs {
     pub from: String,
     pub to: String,
     pub top: usize,
+    // only report classes whose name contains this text
+    pub filter: Option<String>,
 }
 
 #[cfg(test)]
@@ -183,6 +207,31 @@ mod args_tests {
             "5",
         ]);
         assert!(result.is_ok(), "diff should accept --top");
+    }
+
+    #[test]
+    fn accepts_filter_on_both_commands() {
+        let result =
+            command().try_get_matches_from(["hprof-slurp", "f.hprof", "--filter", "com.example"]);
+        assert_eq!(
+            result.unwrap().get_one::<String>("filter"),
+            Some(&"com.example".to_string())
+        );
+
+        let result = command().try_get_matches_from([
+            "hprof-slurp",
+            "diff",
+            "a.hprof",
+            "b.hprof",
+            "-f",
+            "com.example",
+        ]);
+        let matches = result.unwrap();
+        let (_, sub_matches) = matches.subcommand().expect("diff subcommand");
+        assert_eq!(
+            sub_matches.get_one::<String>("filter"),
+            Some(&"com.example".to_string())
+        );
     }
 
     #[test]
