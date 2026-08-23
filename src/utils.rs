@@ -68,10 +68,10 @@ mod tests {
 
     #[test]
     fn pretty_timestamp_modern_date() {
-        // timestamp of the 64-bit test dump header
+        // timestamp of the `hprof-64.bin` test dump header
         assert_eq!(
-            pretty_timestamp_utc(1_608_192_273_831),
-            "2020-12-17 08:04:33 UTC"
+            pretty_timestamp_utc(1_515_934_059_480),
+            "2018-01-14 12:47:39 UTC"
         );
     }
 
