@@ -14,7 +14,7 @@ End threads: 0
 Control settings: 0
 CPU samples: 0
 Heap summaries: 0
-683 heap dumps containing in total 57312 segments:
+683 heap dump segments containing in total 57312 sub-records:
 ..GC root unknown: 0
 ..GC root thread objects: 12
 ..GC root JNI global: 270
@@ -28,8 +28,16 @@ Heap summaries: 0
 ..GC object array dump: 2060
 ..GC class dump: 3631
 ..GC instance dump: 25977
+..GC root interned string: 7309
+..GC root finalizing: 1
+..GC root debugger: 3
+..GC root reference cleanup: 0
+..GC root VM internal: 0
+..GC root JNI monitor: 0
+..GC unreachable: 0
+..GC heap dump info: 595
 
-Found 0 threads with stacktraces:
+Found 0 stack traces with frames:
 
 Found a total of 2.61MiB of raw shallow heap objects in the dump.
 

@@ -14,7 +14,7 @@ End threads: 0
 Control settings: 0
 CPU samples: 0
 Heap summaries: 0
-1 heap dumps containing in total 8715 segments:
+1 heap dump segments containing in total 8715 sub-records:
 ..GC root unknown: 0
 ..GC root thread objects: 9
 ..GC root JNI global: 5
@@ -29,37 +29,37 @@ Heap summaries: 0
 ..GC class dump: 474
 ..GC instance dump: 4149
 
-Found 7 threads with stacktraces:
+Found 7 stack traces with frames:
 
-Thread 1
+Stack trace 1 (thread 2)
   at java.lang.Object.wait (Object.java:native method)
   at java.lang.Object.wait (Object.java:502)
   at simple.Data.get (Data.java:47)
   at simple.Consumer.run (Consumer.java:56)
 
-Thread 2
+Stack trace 2 (thread 3)
   at java.lang.Thread.sleep (Thread.java:native method)
   at simple.Producer.run (Producer.java:64)
 
-Thread 3
+Stack trace 3 (thread 4)
   at simple.Consumer.run (Consumer.java:60)
 
-Thread 4
+Stack trace 4 (thread 5)
   at simple.Producer.run (Producer.java:57)
 
-Thread 5
+Stack trace 5 (thread 7)
   at java.lang.Object.wait (Object.java:native method)
   at java.lang.ref.ReferenceQueue.remove (ReferenceQueue.java:143)
   at java.lang.ref.ReferenceQueue.remove (ReferenceQueue.java:164)
   at java.lang.ref.Finalizer$FinalizerThread.run (Finalizer.java:209)
 
-Thread 6
+Stack trace 6 (thread 8)
   at java.lang.Object.wait (Object.java:native method)
   at java.lang.Object.wait (Object.java:502)
   at java.lang.ref.Reference.tryHandlePending (Reference.java:191)
   at java.lang.ref.Reference$ReferenceHandler.run (Reference.java:153)
 
-Thread 7
+Stack trace 7 (thread 9)
   at java.lang.Object.wait (Object.java:native method)
   at java.lang.Thread.join (Thread.java:1252)
   at java.lang.Thread.join (Thread.java:1326)

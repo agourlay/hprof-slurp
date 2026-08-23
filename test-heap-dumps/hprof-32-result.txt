@@ -14,7 +14,7 @@ End threads: 1
 Control settings: 1
 CPU samples: 0
 Heap summaries: 0
-1 heap dumps containing in total 3788 segments:
+1 heap dump segments containing in total 3788 sub-records:
 ..GC root unknown: 54
 ..GC root thread objects: 8
 ..GC root JNI global: 395
@@ -29,1268 +29,1268 @@ Heap summaries: 0
 ..GC class dump: 361
 ..GC instance dump: 1293
 
-Found 215 threads with stacktraces:
+Found 215 stack traces with frames:
 
-Thread 1
+Stack trace 1
   at java.lang.Thread.<init> (Thread.java:432)
 
-Thread 2
+Stack trace 2
   at java.lang.Thread.<init> (Thread.java:208)
 
-Thread 3
+Stack trace 3
   at java.lang.String.toCharArray (String.java:2726)
   at java.lang.Thread.init (Thread.java:349)
   at java.lang.Thread.<init> (Thread.java:433)
 
-Thread 4
+Stack trace 4
   at java.lang.String.<init> (String.java:440)
   at java.lang.String.<init> (String.java:516)
 
-Thread 5
+Stack trace 5
   at java.lang.String.<init> (String.java:444)
   at java.lang.String.<init> (String.java:516)
 
-Thread 6
+Stack trace 6
   at java.lang.ThreadLocal.<init> (ThreadLocal.java:112)
   at java.lang.StringCoding.<clinit> (StringCoding.java:40)
   at java.lang.String.<init> (String.java:444)
   at java.lang.String.<init> (String.java:516)
 
-Thread 7
+Stack trace 7
   at java.lang.ThreadLocal.<init> (ThreadLocal.java:112)
   at java.lang.StringCoding.<clinit> (StringCoding.java:41)
   at java.lang.String.<init> (String.java:444)
   at java.lang.String.<init> (String.java:516)
 
-Thread 8
+Stack trace 8
   at java.lang.ThreadLocal.createMap (ThreadLocal.java:206)
   at java.lang.ThreadLocal.setInitialValue (ThreadLocal.java:147)
   at java.lang.ThreadLocal.get (ThreadLocal.java:131)
   at java.lang.StringCoding.deref (StringCoding.java:46)
 
-Thread 9
+Stack trace 9
   at java.lang.ThreadLocal$ThreadLocalMap.<init> (ThreadLocal.java:309)
   at java.lang.ThreadLocal.createMap (ThreadLocal.java:206)
   at java.lang.ThreadLocal.setInitialValue (ThreadLocal.java:147)
   at java.lang.ThreadLocal.get (ThreadLocal.java:131)
 
-Thread 10
+Stack trace 10
   at java.lang.ThreadLocal$ThreadLocalMap.<init> (ThreadLocal.java:310)
   at java.lang.ThreadLocal.createMap (ThreadLocal.java:206)
   at java.lang.ThreadLocal.setInitialValue (ThreadLocal.java:147)
   at java.lang.ThreadLocal.get (ThreadLocal.java:131)
 
-Thread 11
+Stack trace 11
   at java.lang.ThreadLocal$ThreadLocalMap.<init> (ThreadLocal.java:310)
   at java.lang.ThreadLocal.createMap (ThreadLocal.java:206)
   at java.lang.ThreadLocal.setInitialValue (ThreadLocal.java:147)
   at java.lang.ThreadLocal.get (ThreadLocal.java:131)
 
-Thread 12
+Stack trace 12
   at java.lang.ref.Reference.<init> (Reference.java:216)
   at java.lang.ref.Reference.<init> (Reference.java:213)
   at java.lang.ref.WeakReference.<init> (WeakReference.java:40)
   at java.lang.ThreadLocal$ThreadLocalMap$Entry.<init> (ThreadLocal.java:257)
 
-Thread 13
+Stack trace 13
   at java.lang.StringCoding.decode (StringCoding.java:167)
   at java.lang.String.<init> (String.java:444)
   at java.lang.String.<init> (String.java:516)
 
-Thread 14
+Stack trace 14
   at java.lang.StringCoding$StringDecoder.<init> (StringCoding.java:113)
   at java.lang.StringCoding$StringDecoder.<init> (StringCoding.java:108)
   at java.lang.StringCoding.decode (StringCoding.java:167)
   at java.lang.String.<init> (String.java:444)
 
-Thread 15
+Stack trace 15
   at java.nio.charset.CharsetDecoder.<init> (CharsetDecoder.java:169)
   at java.nio.charset.CharsetDecoder.<init> (CharsetDecoder.java:209)
   at sun.nio.cs.SingleByteDecoder.<init> (SingleByteDecoder.java:29)
   at sun.nio.cs.MS1252$Decoder.<init> (MS1252.java:72)
 
-Thread 16
+Stack trace 16
   at java.lang.ref.Reference.<init> (Reference.java:216)
   at java.lang.ref.Reference.<init> (Reference.java:213)
   at java.lang.ref.SoftReference.<init> (SoftReference.java:66)
   at java.lang.StringCoding.set (StringCoding.java:53)
 
-Thread 17
+Stack trace 17
   at java.lang.StringCoding$StringDecoder.decode (StringCoding.java:133)
   at java.lang.StringCoding.decode (StringCoding.java:173)
   at java.lang.String.<init> (String.java:444)
   at java.lang.String.<init> (String.java:516)
 
-Thread 18
+Stack trace 18
   at java.nio.Buffer.<init> (Buffer.java:172)
   at java.nio.ByteBuffer.<init> (ByteBuffer.java:259)
   at java.nio.HeapByteBuffer.<init> (HeapByteBuffer.java:52)
   at java.nio.ByteBuffer.wrap (ByteBuffer.java:350)
 
-Thread 19
+Stack trace 19
   at java.nio.Buffer.<init> (Buffer.java:172)
   at java.nio.CharBuffer.<init> (CharBuffer.java:259)
   at java.nio.HeapCharBuffer.<init> (HeapCharBuffer.java:52)
   at java.nio.CharBuffer.wrap (CharBuffer.java:350)
 
-Thread 20
+Stack trace 20
   at java.lang.Throwable.<init> (Throwable.java:217)
   at java.lang.Exception.<init> (Exception.java:59)
   at java.lang.ClassNotFoundException.<init> (ClassNotFoundException.java:65)
   at java.lang.ClassLoader.findBootstrapClass (ClassLoader.java:unknown line number)
 
-Thread 21
+Stack trace 21
   at java.net.URLClassLoader.findClass (URLClassLoader.java:188)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:306)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:299)
   at sun.misc.Launcher$AppClassLoader.loadClass (Launcher.java:276)
 
-Thread 22
+Stack trace 22
   at java.net.URLClassLoader$1.<init> (URLClassLoader.java:189)
   at java.net.URLClassLoader.findClass (URLClassLoader.java:188)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:306)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:299)
 
-Thread 23
+Stack trace 23
   at java.lang.String.concat (String.java:2001)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:191)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
   at java.net.URLClassLoader.findClass (URLClassLoader.java:188)
 
-Thread 24
+Stack trace 24
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.concat (String.java:2004)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:191)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 25
+Stack trace 25
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:320)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:297)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:167)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:192)
 
-Thread 26
+Stack trace 26
   at sun.misc.URLClassPath$3.<init> (URLClassPath.java:321)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:320)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:297)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:167)
 
-Thread 27
+Stack trace 27
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:320)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:297)
 
-Thread 28
+Stack trace 28
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
 
-Thread 29
+Stack trace 29
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
 
-Thread 30
+Stack trace 30
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuffer.<init> (StringBuffer.java:91)
   at java.net.URLStreamHandler.toExternalForm (URLStreamHandler.java:473)
   at java.net.URL.toExternalForm (URL.java:901)
 
-Thread 31
+Stack trace 31
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuffer.<init> (StringBuffer.java:91)
   at java.net.URLStreamHandler.toExternalForm (URLStreamHandler.java:473)
   at java.net.URL.toExternalForm (URL.java:901)
 
-Thread 32
+Stack trace 32
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuffer.toString (StringBuffer.java:585)
   at java.net.URLStreamHandler.toExternalForm (URLStreamHandler.java:491)
   at java.net.URL.toExternalForm (URL.java:901)
 
-Thread 33
+Stack trace 33
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuffer.toString (StringBuffer.java:585)
   at java.net.URLStreamHandler.toExternalForm (URLStreamHandler.java:491)
 
-Thread 34
+Stack trace 34
   at java.util.Arrays.copyOf (Arrays.java:2882)
   at java.lang.AbstractStringBuilder.expandCapacity (AbstractStringBuilder.java:100)
   at java.lang.AbstractStringBuilder.append (AbstractStringBuilder.java:390)
   at java.lang.StringBuilder.append (StringBuilder.java:119)
 
-Thread 35
+Stack trace 35
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
 
-Thread 36
+Stack trace 36
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
 
-Thread 37
+Stack trace 37
   at java.net.URL.<init> (URL.java:349)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 38
+Stack trace 38
   at java.net.Parts.<init> (URL.java:1260)
   at java.net.URL.<init> (URL.java:380)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
 
-Thread 39
+Stack trace 39
   at sun.misc.URLClassPath$Loader.<init> (URLClassPath.java:442)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:553)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 40
+Stack trace 40
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:563)
 
-Thread 41
+Stack trace 41
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:563)
 
-Thread 42
+Stack trace 42
   at java.util.Arrays.copyOf (Arrays.java:2882)
   at java.lang.AbstractStringBuilder.expandCapacity (AbstractStringBuilder.java:100)
   at java.lang.AbstractStringBuilder.append (AbstractStringBuilder.java:572)
   at java.lang.StringBuilder.append (StringBuilder.java:203)
 
-Thread 43
+Stack trace 43
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:196)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:563)
 
-Thread 44
+Stack trace 44
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:196)
 
-Thread 45
+Stack trace 45
   at java.io.File.<init> (File.java:220)
   at sun.misc.URLClassPath$JarLoader.<init> (URLClassPath.java:564)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:331)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 46
+Stack trace 46
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuffer.<init> (StringBuffer.java:91)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:104)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:171)
 
-Thread 47
+Stack trace 47
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuffer.<init> (StringBuffer.java:91)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:104)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:171)
 
-Thread 48
+Stack trace 48
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuffer.toString (StringBuffer.java:585)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:156)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:171)
 
-Thread 49
+Stack trace 49
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuffer.toString (StringBuffer.java:585)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:156)
 
-Thread 50
+Stack trace 50
   at java.lang.String.toLowerCase (String.java:2418)
   at java.io.Win32FileSystem.hashCode (Win32FileSystem.java:581)
   at java.io.File.hashCode (File.java:1893)
   at java.util.HashMap.get (HashMap.java:300)
 
-Thread 51
+Stack trace 51
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.toLowerCase (String.java:2474)
   at java.io.Win32FileSystem.hashCode (Win32FileSystem.java:581)
   at java.io.File.hashCode (File.java:1893)
 
-Thread 52
+Stack trace 52
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.HashMap.addEntry (HashMap.java:753)
   at java.util.HashMap.put (HashMap.java:385)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:310)
 
-Thread 53
+Stack trace 53
   at java.lang.Throwable.<init> (Throwable.java:217)
   at java.lang.Exception.<init> (Exception.java:59)
   at java.lang.ClassNotFoundException.<init> (ClassNotFoundException.java:65)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:200)
 
-Thread 54
+Stack trace 54
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
   at java.net.URLClassLoader.findClass (URLClassLoader.java:188)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:306)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:299)
 
-Thread 55
+Stack trace 55
   at java.lang.Throwable.<init> (Throwable.java:240)
   at java.lang.Exception.<init> (Exception.java:77)
   at java.security.PrivilegedActionException.<init> (PrivilegedActionException.java:48)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 56
+Stack trace 56
   at java.net.URLClassLoader$1.<init> (URLClassLoader.java:189)
   at java.net.URLClassLoader.findClass (URLClassLoader.java:188)
   at java.lang.ClassLoader.loadClass (ClassLoader.java:306)
   at sun.misc.Launcher$AppClassLoader.loadClass (Launcher.java:276)
 
-Thread 57
+Stack trace 57
   at sun.misc.URLClassPath$3.run (URLClassPath.java:326)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:320)
   at sun.misc.URLClassPath.getLoader (URLClassPath.java:297)
 
-Thread 58
+Stack trace 58
   at sun.misc.URLClassPath$Loader.<init> (URLClassPath.java:442)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:948)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:326)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 59
+Stack trace 59
   at java.lang.String.replace (String.java:2049)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:952)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:326)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 60
+Stack trace 60
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.replace (String.java:2058)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:952)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:326)
 
-Thread 61
+Stack trace 61
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:953)
 
-Thread 62
+Stack trace 62
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:953)
 
-Thread 63
+Stack trace 63
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:196)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:953)
 
-Thread 64
+Stack trace 64
   at java.io.File.<init> (File.java:220)
   at sun.misc.URLClassPath$FileLoader.<init> (URLClassPath.java:954)
   at sun.misc.URLClassPath$3.run (URLClassPath.java:326)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 65
+Stack trace 65
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuffer.<init> (StringBuffer.java:91)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:104)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:175)
 
-Thread 66
+Stack trace 66
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuffer.<init> (StringBuffer.java:91)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:104)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:175)
 
-Thread 67
+Stack trace 67
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuffer.toString (StringBuffer.java:585)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:156)
   at java.io.Win32FileSystem.normalize (Win32FileSystem.java:175)
 
-Thread 68
+Stack trace 68
   at java.net.URL.<init> (URL.java:489)
   at java.net.URL.<init> (URL.java:464)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:971)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
 
-Thread 69
+Stack trace 69
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.net.URLStreamHandler.parseURL (URLStreamHandler.java:232)
   at sun.net.www.protocol.file.Handler.parseURL (Handler.java:50)
 
-Thread 70
+Stack trace 70
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.net.URLStreamHandler.parseURL (URLStreamHandler.java:232)
   at sun.net.www.protocol.file.Handler.parseURL (Handler.java:50)
 
-Thread 71
+Stack trace 71
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.net.URLStreamHandler.parseURL (URLStreamHandler.java:232)
   at sun.net.www.protocol.file.Handler.parseURL (Handler.java:50)
 
-Thread 72
+Stack trace 72
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.net.URLStreamHandler.parseURL (URLStreamHandler.java:232)
 
-Thread 73
+Stack trace 73
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.substring (String.java:1940)
   at java.net.URLStreamHandler.parseURL (URLStreamHandler.java:285)
   at sun.net.www.protocol.file.Handler.parseURL (Handler.java:50)
 
-Thread 74
+Stack trace 74
   at sun.net.www.ParseUtil.encodePath (ParseUtil.java:84)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:972)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:192)
 
-Thread 75
+Stack trace 75
   at java.lang.String.toCharArray (String.java:2726)
   at sun.net.www.ParseUtil.encodePath (ParseUtil.java:86)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:972)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
 
-Thread 76
+Stack trace 76
   at java.lang.String.<init> (String.java:203)
   at sun.net.www.ParseUtil.encodePath (ParseUtil.java:125)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:972)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
 
-Thread 77
+Stack trace 77
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at sun.net.www.ParseUtil.encodePath (ParseUtil.java:125)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:972)
 
-Thread 78
+Stack trace 78
   at java.net.URL.<init> (URL.java:489)
   at java.net.URL.<init> (URL.java:464)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:972)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
 
-Thread 79
+Stack trace 79
   at java.io.File.<init> (File.java:303)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:981)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:192)
 
-Thread 80
+Stack trace 80
   at java.io.Win32FileSystem.resolve (Win32FileSystem.java:236)
   at java.io.File.<init> (File.java:312)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:981)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
 
-Thread 81
+Stack trace 81
   at java.lang.String.<init> (String.java:175)
   at java.io.Win32FileSystem.resolve (Win32FileSystem.java:241)
   at java.io.File.<init> (File.java:312)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:981)
 
-Thread 82
+Stack trace 82
   at java.util.Arrays.copyOf (Arrays.java:2882)
   at java.lang.String.<init> (String.java:179)
   at java.io.Win32FileSystem.resolve (Win32FileSystem.java:241)
   at java.io.File.<init> (File.java:312)
 
-Thread 83
+Stack trace 83
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:984)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:192)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 84
+Stack trace 84
   at sun.misc.Resource.<init> (Resource.java:28)
   at sun.misc.URLClassPath$FileLoader$1.<init> (URLClassPath.java:984)
   at sun.misc.URLClassPath$FileLoader.getResource (URLClassPath.java:984)
   at sun.misc.URLClassPath.getResource (URLClassPath.java:168)
 
-Thread 85
+Stack trace 85
   at java.io.InputStream.<init> (InputStream.java:28)
   at java.io.FileInputStream.<init> (FileInputStream.java:96)
   at sun.misc.URLClassPath$FileLoader$1.getInputStream (URLClassPath.java:989)
   at sun.misc.Resource.cachedInputStream (Resource.java:59)
 
-Thread 86
+Stack trace 86
   at java.lang.ref.Reference.<init> (Reference.java:216)
   at java.lang.ref.FinalReference.<init> (FinalReference.java:16)
   at java.lang.ref.Finalizer.<init> (Finalizer.java:66)
   at java.lang.ref.Finalizer.register (Finalizer.java:72)
 
-Thread 87
+Stack trace 87
   at java.io.FileDescriptor.<init> (FileDescriptor.java:36)
   at java.io.FileInputStream.<init> (FileInputStream.java:105)
   at sun.misc.URLClassPath$FileLoader$1.getInputStream (URLClassPath.java:989)
   at sun.misc.Resource.cachedInputStream (Resource.java:59)
 
-Thread 88
+Stack trace 88
   at sun.misc.Resource.getByteBuffer (Resource.java:155)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:249)
   at java.net.URLClassLoader.access$000 (URLClassLoader.java:56)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:195)
 
-Thread 89
+Stack trace 89
   at sun.misc.Resource.getBytes (Resource.java:93)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:256)
   at java.net.URLClassLoader.access$000 (URLClassLoader.java:56)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:195)
 
-Thread 90
+Stack trace 90
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:259)
   at java.net.URLClassLoader.access$000 (URLClassLoader.java:56)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:195)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 91
+Stack trace 91
   at java.security.CodeSource.<init> (CodeSource.java:86)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:259)
   at java.net.URLClassLoader.access$000 (URLClassLoader.java:56)
   at java.net.URLClassLoader$1.run (URLClassLoader.java:195)
 
-Thread 92
+Stack trace 92
   at java.security.SecureClassLoader.getPermissions (SecureClassLoader.java:178)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:443)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:192)
 
-Thread 93
+Stack trace 93
   at java.security.Permissions.<clinit> (Permissions.java:330)
   at java.security.SecureClassLoader.getPermissions (SecureClassLoader.java:178)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:443)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
 
-Thread 94
+Stack trace 94
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:67)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
   at java.security.Permissions.<clinit> (Permissions.java:330)
   at java.security.SecureClassLoader.getPermissions (SecureClassLoader.java:178)
 
-Thread 95
+Stack trace 95
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1429)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 96
+Stack trace 96
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1429)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 97
+Stack trace 97
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1457)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 98
+Stack trace 98
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1457)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 99
+Stack trace 99
   at java.lang.String.replace (String.java:2049)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1457)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
 
-Thread 100
+Stack trace 100
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.replace (String.java:2058)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1457)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 101
+Stack trace 101
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1457)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 102
+Stack trace 102
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1457)
 
-Thread 103
+Stack trace 103
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1459)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:74)
 
-Thread 104
+Stack trace 104
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.io.ObjectStreamClass.getClassSignature (ObjectStreamClass.java:1459)
 
-Thread 105
+Stack trace 105
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:67)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
   at java.security.Permissions.<clinit> (Permissions.java:330)
   at java.security.SecureClassLoader.getPermissions (SecureClassLoader.java:178)
 
-Thread 106
+Stack trace 106
   at java.security.PermissionCollection.<init> (PermissionCollection.java:78)
   at java.security.Permissions.<init> (Permissions.java:85)
   at java.security.SecureClassLoader.getPermissions (SecureClassLoader.java:178)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:443)
 
-Thread 107
+Stack trace 107
   at java.util.AbstractMap.<init> (AbstractMap.java:56)
   at java.util.HashMap.<init> (HashMap.java:170)
   at java.util.HashMap.<init> (HashMap.java:199)
   at java.security.Permissions.<init> (Permissions.java:86)
 
-Thread 108
+Stack trace 108
   at java.util.HashMap.<init> (HashMap.java:187)
   at java.util.HashMap.<init> (HashMap.java:199)
   at java.security.Permissions.<init> (Permissions.java:86)
   at java.security.SecureClassLoader.getPermissions (SecureClassLoader.java:178)
 
-Thread 109
+Stack trace 109
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:65)
 
-Thread 110
+Stack trace 110
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:65)
 
-Thread 111
+Stack trace 111
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:196)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:65)
 
-Thread 112
+Stack trace 112
   at java.lang.String.replace (String.java:2049)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:66)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:55)
   at java.net.URL.openConnection (URL.java:945)
 
-Thread 113
+Stack trace 113
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.replace (String.java:2058)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:66)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:55)
 
-Thread 114
+Stack trace 114
   at java.io.File.<init> (File.java:220)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:72)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:55)
   at java.net.URL.openConnection (URL.java:945)
 
-Thread 115
+Stack trace 115
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:72)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:55)
   at java.net.URL.openConnection (URL.java:945)
 
-Thread 116
+Stack trace 116
   at java.util.Dictionary.<init> (Dictionary.java:38)
   at java.util.Hashtable.<init> (Hashtable.java:152)
   at java.util.Hashtable.<init> (Hashtable.java:183)
   at java.net.URLConnection.<clinit> (URLConnection.java:1179)
 
-Thread 117
+Stack trace 117
   at java.util.Hashtable.<init> (Hashtable.java:162)
   at java.util.Hashtable.<init> (Hashtable.java:183)
   at java.net.URLConnection.<clinit> (URLConnection.java:1179)
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
 
-Thread 118
+Stack trace 118
   at java.net.URLConnection.<clinit> (URLConnection.java:1180)
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:72)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:55)
 
-Thread 119
+Stack trace 119
   at java.net.ContentHandler.<init> (ContentHandler.java:54)
   at java.net.UnknownContentHandler.<init> (URLConnection.java:1704)
   at java.net.URLConnection.<clinit> (URLConnection.java:1180)
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
 
-Thread 120
+Stack trace 120
   at java.net.URLConnection.<init> (URLConnection.java:450)
   at sun.net.www.URLConnection.<init> (URLConnection.java:39)
   at sun.net.www.protocol.file.FileURLConnection.<init> (FileURLConnection.java:51)
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
 
-Thread 121
+Stack trace 121
   at sun.net.www.URLConnection.<init> (URLConnection.java:40)
   at sun.net.www.protocol.file.FileURLConnection.<init> (FileURLConnection.java:51)
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
   at sun.net.www.protocol.file.Handler.openConnection (Handler.java:72)
 
-Thread 122
+Stack trace 122
   at sun.net.www.MessageHeader.<init> (MessageHeader.java:37)
   at sun.net.www.URLConnection.<init> (URLConnection.java:40)
   at sun.net.www.protocol.file.FileURLConnection.<init> (FileURLConnection.java:51)
   at sun.net.www.protocol.file.Handler.createFileURLConnection (Handler.java:113)
 
-Thread 123
+Stack trace 123
   at sun.net.www.MessageHeader.grow (MessageHeader.java:275)
   at sun.net.www.MessageHeader.<init> (MessageHeader.java:38)
   at sun.net.www.URLConnection.<init> (URLConnection.java:40)
   at sun.net.www.protocol.file.FileURLConnection.<init> (FileURLConnection.java:51)
 
-Thread 124
+Stack trace 124
   at sun.net.www.MessageHeader.grow (MessageHeader.java:276)
   at sun.net.www.MessageHeader.<init> (MessageHeader.java:38)
   at sun.net.www.URLConnection.<init> (URLConnection.java:40)
   at sun.net.www.protocol.file.FileURLConnection.<init> (FileURLConnection.java:51)
 
-Thread 125
+Stack trace 125
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:196)
 
-Thread 126
+Stack trace 126
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:152)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:196)
 
-Thread 127
+Stack trace 127
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.net.www.ParseUtil.decode (ParseUtil.java:196)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:196)
 
-Thread 128
+Stack trace 128
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:200)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:452)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:192)
 
-Thread 129
+Stack trace 129
   at java.lang.String.replace (String.java:2049)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:200)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:452)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
 
-Thread 130
+Stack trace 130
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.replace (String.java:2058)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:200)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:452)
 
-Thread 131
+Stack trace 131
   at java.security.Permission.<init> (Permission.java:61)
   at java.io.FilePermission.<init> (FilePermission.java:248)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:200)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:452)
 
-Thread 132
+Stack trace 132
   at java.io.FilePermission.init (FilePermission.java:183)
   at java.io.FilePermission.<init> (FilePermission.java:249)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:200)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:452)
 
-Thread 133
+Stack trace 133
   at java.io.FilePermission$1.<init> (FilePermission.java:183)
   at java.io.FilePermission.init (FilePermission.java:183)
   at java.io.FilePermission.<init> (FilePermission.java:249)
   at sun.net.www.protocol.file.FileURLConnection.getPermission (FileURLConnection.java:200)
 
-Thread 134
+Stack trace 134
   at java.io.FilePermission$1.run (FilePermission.java:186)
   at java.io.FilePermission$1.run (FilePermission.java:183)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
   at java.io.FilePermission.init (FilePermission.java:183)
 
-Thread 135
+Stack trace 135
   at java.security.Policy.<clinit> (Policy.java:91)
   at java.io.FilePermission$1.run (FilePermission.java:186)
   at java.io.FilePermission$1.run (FilePermission.java:183)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 136
+Stack trace 136
   at java.security.PermissionCollection.<init> (PermissionCollection.java:78)
   at java.security.Policy$UnsupportedEmptyCollection.<init> (Policy.java:775)
   at java.security.Policy.<clinit> (Policy.java:91)
   at java.io.FilePermission$1.run (FilePermission.java:186)
 
-Thread 137
+Stack trace 137
   at java.security.PermissionCollection.<init> (PermissionCollection.java:78)
   at java.security.Permissions.<init> (Permissions.java:85)
   at java.security.Policy$UnsupportedEmptyCollection.<init> (Policy.java:776)
   at java.security.Policy.<clinit> (Policy.java:91)
 
-Thread 138
+Stack trace 138
   at java.util.HashMap.<init> (HashMap.java:187)
   at java.util.HashMap.<init> (HashMap.java:199)
   at java.security.Permissions.<init> (Permissions.java:86)
   at java.security.Policy$UnsupportedEmptyCollection.<init> (Policy.java:776)
 
-Thread 139
+Stack trace 139
   at sun.security.provider.PolicyFile.<clinit> (PolicyFile.java:296)
   at java.io.FilePermission$1.run (FilePermission.java:186)
   at java.io.FilePermission$1.run (FilePermission.java:183)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 140
+Stack trace 140
   at sun.security.provider.PolicyFile.<clinit> (PolicyFile.java:297)
   at java.io.FilePermission$1.run (FilePermission.java:186)
   at java.io.FilePermission$1.run (FilePermission.java:183)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 141
+Stack trace 141
   at sun.security.provider.PolicyFile.<clinit> (PolicyFile.java:298)
   at java.io.FilePermission$1.run (FilePermission.java:186)
   at java.io.FilePermission$1.run (FilePermission.java:183)
   at java.security.AccessController.doPrivileged (AccessController.java:unknown line number)
 
-Thread 142
+Stack trace 142
   at java.io.File.<init> (File.java:220)
   at sun.security.provider.PolicyFile.canonPath (PolicyFile.java:1830)
   at java.io.FilePermission$1.run (FilePermission.java:186)
   at java.io.FilePermission$1.run (FilePermission.java:183)
 
-Thread 143
+Stack trace 143
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:464)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
 
-Thread 144
+Stack trace 144
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:464)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
 
-Thread 145
+Stack trace 145
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:464)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
 
-Thread 146
+Stack trace 146
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:464)
 
-Thread 147
+Stack trace 147
   at java.security.Permission.<init> (Permission.java:61)
   at java.io.FilePermission.<init> (FilePermission.java:248)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:465)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
 
-Thread 148
+Stack trace 148
   at java.io.FilePermission$1.<init> (FilePermission.java:183)
   at java.io.FilePermission.init (FilePermission.java:183)
   at java.io.FilePermission.<init> (FilePermission.java:249)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:465)
 
-Thread 149
+Stack trace 149
   at java.io.ExpiringCache$Entry.<init> (ExpiringCache.java:29)
   at java.io.ExpiringCache.put (ExpiringCache.java:74)
   at java.io.Win32FileSystem.canonicalize (Win32FileSystem.java:397)
   at java.io.File.getCanonicalPath (File.java:559)
 
-Thread 150
+Stack trace 150
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.LinkedHashMap$Entry.<init> (LinkedHashMap.java:304)
   at java.util.LinkedHashMap.createEntry (LinkedHashMap.java:424)
   at java.util.LinkedHashMap.addEntry (LinkedHashMap.java:406)
 
-Thread 151
+Stack trace 151
   at java.lang.String.<init> (String.java:637)
   at java.lang.String.substring (String.java:1940)
   at java.io.FilePermission.init (FilePermission.java:200)
   at java.io.FilePermission.<init> (FilePermission.java:249)
 
-Thread 152
+Stack trace 152
   at java.io.FilePermission.newPermissionCollection (FilePermission.java:601)
   at java.security.Permissions.getPermissionCollection (Permissions.java:238)
   at java.security.Permissions.add (Permissions.java:116)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:499)
 
-Thread 153
+Stack trace 153
   at java.io.FilePermissionCollection.<clinit> (FilePermission.java:763)
   at java.io.FilePermission.newPermissionCollection (FilePermission.java:601)
   at java.security.Permissions.getPermissionCollection (Permissions.java:238)
   at java.security.Permissions.add (Permissions.java:116)
 
-Thread 154
+Stack trace 154
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:67)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
   at java.io.FilePermissionCollection.<clinit> (FilePermission.java:763)
   at java.io.FilePermission.newPermissionCollection (FilePermission.java:601)
 
-Thread 155
+Stack trace 155
   at java.security.PermissionCollection.<init> (PermissionCollection.java:78)
   at java.io.FilePermissionCollection.<init> (FilePermission.java:672)
   at java.io.FilePermission.newPermissionCollection (FilePermission.java:601)
   at java.security.Permissions.getPermissionCollection (Permissions.java:238)
 
-Thread 156
+Stack trace 156
   at java.util.AbstractCollection.<init> (AbstractCollection.java:49)
   at java.util.AbstractList.<init> (AbstractList.java:59)
   at java.util.ArrayList.<init> (ArrayList.java:108)
   at java.util.ArrayList.<init> (ArrayList.java:119)
 
-Thread 157
+Stack trace 157
   at java.util.ArrayList.<init> (ArrayList.java:112)
   at java.util.ArrayList.<init> (ArrayList.java:119)
   at java.io.FilePermissionCollection.<init> (FilePermission.java:673)
   at java.io.FilePermission.newPermissionCollection (FilePermission.java:601)
 
-Thread 158
+Stack trace 158
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.HashMap.addEntry (HashMap.java:753)
   at java.util.HashMap.put (HashMap.java:385)
   at java.security.Permissions.getPermissionCollection (Permissions.java:247)
 
-Thread 159
+Stack trace 159
   at java.security.Permissions.add (Permissions.java:121)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:499)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:192)
 
-Thread 160
+Stack trace 160
   at java.security.Permissions.add (Permissions.java:124)
   at java.net.URLClassLoader.getPermissions (URLClassLoader.java:499)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:284)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:192)
 
-Thread 161
+Stack trace 161
   at java.security.Permission.<init> (Permission.java:61)
   at java.security.BasicPermission.<init> (BasicPermission.java:128)
   at java.lang.RuntimePermission.<init> (RuntimePermission.java:335)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:285)
 
-Thread 162
+Stack trace 162
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
   at java.security.Permissions.getPermissionCollection (Permissions.java:238)
   at java.security.Permissions.add (Permissions.java:116)
   at sun.misc.Launcher$AppClassLoader.getPermissions (Launcher.java:285)
 
-Thread 163
+Stack trace 163
   at java.security.BasicPermissionCollection.<clinit> (BasicPermission.java:494)
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
   at java.security.Permissions.getPermissionCollection (Permissions.java:238)
   at java.security.Permissions.add (Permissions.java:116)
 
-Thread 164
+Stack trace 164
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:67)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
   at java.security.BasicPermissionCollection.<clinit> (BasicPermission.java:494)
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
 
-Thread 165
+Stack trace 165
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:67)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
   at java.security.BasicPermissionCollection.<clinit> (BasicPermission.java:494)
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
 
-Thread 166
+Stack trace 166
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:67)
   at java.io.ObjectStreamField.<init> (ObjectStreamField.java:47)
   at java.security.BasicPermissionCollection.<clinit> (BasicPermission.java:494)
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
 
-Thread 167
+Stack trace 167
   at java.security.PermissionCollection.<init> (PermissionCollection.java:78)
   at java.security.BasicPermissionCollection.<init> (BasicPermission.java:341)
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
   at java.security.Permissions.getPermissionCollection (Permissions.java:238)
 
-Thread 168
+Stack trace 168
   at java.util.AbstractMap.<init> (AbstractMap.java:56)
   at java.util.HashMap.<init> (HashMap.java:170)
   at java.util.HashMap.<init> (HashMap.java:199)
   at java.security.BasicPermissionCollection.<init> (BasicPermission.java:342)
 
-Thread 169
+Stack trace 169
   at java.util.HashMap.<init> (HashMap.java:187)
   at java.util.HashMap.<init> (HashMap.java:199)
   at java.security.BasicPermissionCollection.<init> (BasicPermission.java:342)
   at java.security.BasicPermission.newPermissionCollection (BasicPermission.java:257)
 
-Thread 170
+Stack trace 170
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.HashMap.addEntry (HashMap.java:753)
   at java.util.HashMap.put (HashMap.java:385)
   at java.security.BasicPermissionCollection.add (BasicPermission.java:383)
 
-Thread 171
+Stack trace 171
   at java.security.ProtectionDomain.<init> (ProtectionDomain.java:118)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:193)
   at java.security.SecureClassLoader.defineClass (SecureClassLoader.java:124)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:260)
 
-Thread 172
+Stack trace 172
   at java.security.ProtectionDomain.<init> (ProtectionDomain.java:129)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:193)
   at java.security.SecureClassLoader.defineClass (SecureClassLoader.java:124)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:260)
 
-Thread 173
+Stack trace 173
   at java.security.ProtectionDomain.<init> (ProtectionDomain.java:129)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:193)
   at java.security.SecureClassLoader.defineClass (SecureClassLoader.java:124)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:260)
 
-Thread 174
+Stack trace 174
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.HashMap.addEntry (HashMap.java:753)
   at java.util.HashMap.put (HashMap.java:385)
   at java.security.SecureClassLoader.getProtectionDomain (SecureClassLoader.java:195)
 
-Thread 175
+Stack trace 175
   at java.lang.ClassLoader.checkCerts (ClassLoader.java:764)
   at java.lang.ClassLoader.preDefineClass (ClassLoader.java:487)
   at java.lang.ClassLoader.defineClass (ClassLoader.java:614)
   at java.security.SecureClassLoader.defineClass (SecureClassLoader.java:124)
 
-Thread 176
+Stack trace 176
   at java.lang.ClassLoader.checkCerts (ClassLoader.java:764)
   at java.lang.ClassLoader.preDefineClass (ClassLoader.java:487)
   at java.lang.ClassLoader.defineClass (ClassLoader.java:614)
   at java.security.SecureClassLoader.defineClass (SecureClassLoader.java:124)
 
-Thread 177
+Stack trace 177
   at java.util.Hashtable$Entry.<init> (Hashtable.java:907)
   at java.util.Hashtable.put (Hashtable.java:420)
   at java.lang.ClassLoader.checkCerts (ClassLoader.java:767)
   at java.lang.ClassLoader.preDefineClass (ClassLoader.java:487)
 
-Thread 178
+Stack trace 178
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.HashMap.addEntry (HashMap.java:753)
   at java.util.HashMap.put (HashMap.java:385)
   at java.util.HashSet.add (HashSet.java:200)
 
-Thread 179
+Stack trace 179
   at java.lang.ClassLoader.defineClass1 (ClassLoader.java:unknown line number)
   at java.lang.ClassLoader.defineClass (ClassLoader.java:620)
   at java.security.SecureClassLoader.defineClass (SecureClassLoader.java:124)
   at java.net.URLClassLoader.defineClass (URLClassLoader.java:260)
 
-Thread 180
+Stack trace 180
   at java.lang.Number.<init> (Number.java:32)
   at java.lang.Integer.<init> (Integer.java:602)
   at sun.misc.Signal.dispatch (Signal.java:186)
 
-Thread 181
+Stack trace 181
   at sun.misc.Signal.dispatch (Signal.java:189)
 
-Thread 182
+Stack trace 182
   at sun.misc.Signal$1.<init> (Signal.java:189)
   at sun.misc.Signal.dispatch (Signal.java:189)
 
-Thread 183
+Stack trace 183
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 184
+Stack trace 184
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 185
+Stack trace 185
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:44)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.misc.Signal.toString (Signal.java:112)
   at java.lang.String.valueOf (String.java:2827)
 
-Thread 186
+Stack trace 186
   at java.lang.AbstractStringBuilder.<init> (AbstractStringBuilder.java:45)
   at java.lang.StringBuilder.<init> (StringBuilder.java:68)
   at sun.misc.Signal.toString (Signal.java:112)
   at java.lang.String.valueOf (String.java:2827)
 
-Thread 187
+Stack trace 187
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.misc.Signal.toString (Signal.java:112)
   at java.lang.String.valueOf (String.java:2827)
 
-Thread 188
+Stack trace 188
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.misc.Signal.toString (Signal.java:112)
 
-Thread 189
+Stack trace 189
   at java.lang.String.<init> (String.java:203)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 190
+Stack trace 190
   at java.util.Arrays.copyOfRange (Arrays.java:3209)
   at java.lang.String.<init> (String.java:216)
   at java.lang.StringBuilder.toString (StringBuilder.java:430)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 191
+Stack trace 191
   at java.lang.Thread.<init> (Thread.java:444)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 192
+Stack trace 192
   at java.lang.Thread.<init> (Thread.java:208)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 193
+Stack trace 193
   at java.lang.String.toCharArray (String.java:2726)
   at java.lang.Thread.init (Thread.java:349)
   at java.lang.Thread.<init> (Thread.java:445)
   at sun.misc.Signal.dispatch (Signal.java:199)
 
-Thread 194
+Stack trace 194
   at java.util.AbstractList.iterator (AbstractList.java:273)
   at java.lang.Shutdown.runHooks (Shutdown.java:87)
   at java.lang.Shutdown.sequence (Shutdown.java:133)
   at java.lang.Shutdown.exit (Shutdown.java:178)
 
-Thread 195
+Stack trace 195
   at java.util.AbstractList$Itr.<init> (AbstractList.java:318)
   at java.util.AbstractList$Itr.<init> (AbstractList.java:318)
   at java.util.AbstractList.iterator (AbstractList.java:273)
   at java.lang.Shutdown.runHooks (Shutdown.java:87)
 
-Thread 196
+Stack trace 196
   at java.util.IdentityHashMap.keySet (IdentityHashMap.java:935)
   at java.lang.ApplicationShutdownHooks.run (ApplicationShutdownHooks.java:70)
   at java.lang.Shutdown.runHooks (Shutdown.java:89)
   at java.lang.Shutdown.sequence (Shutdown.java:133)
 
-Thread 197
+Stack trace 197
   at java.util.AbstractCollection.<init> (AbstractCollection.java:49)
   at java.util.AbstractSet.<init> (AbstractSet.java:46)
   at java.util.IdentityHashMap$KeySet.<init> (IdentityHashMap.java:938)
   at java.util.IdentityHashMap$KeySet.<init> (IdentityHashMap.java:938)
 
-Thread 198
+Stack trace 198
   at java.util.IdentityHashMap$KeySet.iterator (IdentityHashMap.java:940)
   at java.lang.ApplicationShutdownHooks.run (ApplicationShutdownHooks.java:74)
   at java.lang.Shutdown.runHooks (Shutdown.java:89)
   at java.lang.Shutdown.sequence (Shutdown.java:133)
 
-Thread 199
+Stack trace 199
   at java.util.IdentityHashMap$IdentityHashMapIterator.<init> (IdentityHashMap.java:693)
   at java.util.IdentityHashMap$IdentityHashMapIterator.<init> (IdentityHashMap.java:693)
   at java.util.IdentityHashMap$KeyIterator.<init> (IdentityHashMap.java:802)
   at java.util.IdentityHashMap$KeyIterator.<init> (IdentityHashMap.java:802)
 
-Thread 200
+Stack trace 200
   at java.io.File$1.run (File.java:1946)
   at java.lang.Shutdown.runHooks (Shutdown.java:89)
   at java.lang.Shutdown.sequence (Shutdown.java:133)
   at java.lang.Shutdown.exit (Shutdown.java:178)
 
-Thread 201
+Stack trace 201
   at java.io.DeleteOnExitHook.<clinit> (DeleteOnExitHook.java:21)
   at java.io.File$1.run (File.java:1946)
   at java.lang.Shutdown.runHooks (Shutdown.java:89)
   at java.lang.Shutdown.sequence (Shutdown.java:133)
 
-Thread 202
+Stack trace 202
   at java.util.AbstractCollection.<init> (AbstractCollection.java:49)
   at java.util.AbstractSet.<init> (AbstractSet.java:46)
   at java.util.HashSet.<init> (HashSet.java:141)
   at java.util.LinkedHashSet.<init> (LinkedHashSet.java:137)
 
-Thread 203
+Stack trace 203
   at java.util.AbstractMap.<init> (AbstractMap.java:56)
   at java.util.HashMap.<init> (HashMap.java:170)
   at java.util.LinkedHashMap.<init> (LinkedHashMap.java:160)
   at java.util.HashSet.<init> (HashSet.java:142)
 
-Thread 204
+Stack trace 204
   at java.util.HashMap.<init> (HashMap.java:187)
   at java.util.LinkedHashMap.<init> (LinkedHashMap.java:160)
   at java.util.HashSet.<init> (HashSet.java:142)
   at java.util.LinkedHashSet.<init> (LinkedHashSet.java:137)
 
-Thread 205
+Stack trace 205
   at java.util.HashMap$Entry.<init> (HashMap.java:683)
   at java.util.LinkedHashMap$Entry.<init> (LinkedHashMap.java:304)
   at java.util.LinkedHashMap.init (LinkedHashMap.java:223)
   at java.util.HashMap.<init> (HashMap.java:188)
 
-Thread 206
+Stack trace 206
   at java.io.DeleteOnExitHook.<init> (DeleteOnExitHook.java:30)
   at java.io.DeleteOnExitHook.hook (DeleteOnExitHook.java:25)
   at java.io.File$1.run (File.java:1946)
   at java.lang.Shutdown.runHooks (Shutdown.java:89)
 
-Thread 207
+Stack trace 207
   at java.util.AbstractCollection.<init> (AbstractCollection.java:49)
   at java.util.AbstractList.<init> (AbstractList.java:59)
   at java.util.ArrayList.<init> (ArrayList.java:130)
   at java.io.DeleteOnExitHook.run (DeleteOnExitHook.java:49)
 
-Thread 208
+Stack trace 208
   at java.util.AbstractCollection.toArray (AbstractCollection.java:119)
   at java.util.ArrayList.<init> (ArrayList.java:131)
   at java.io.DeleteOnExitHook.run (DeleteOnExitHook.java:49)
   at java.io.File$1.run (File.java:1946)
 
-Thread 209
+Stack trace 209
   at java.util.HashMap.keySet (HashMap.java:868)
   at java.util.HashSet.iterator (HashSet.java:153)
   at java.util.AbstractCollection.toArray (AbstractCollection.java:120)
   at java.util.ArrayList.<init> (ArrayList.java:131)
 
-Thread 210
+Stack trace 210
   at java.util.AbstractCollection.<init> (AbstractCollection.java:49)
   at java.util.AbstractSet.<init> (AbstractSet.java:46)
   at java.util.HashMap$KeySet.<init> (HashMap.java:871)
   at java.util.HashMap$KeySet.<init> (HashMap.java:871)
 
-Thread 211
+Stack trace 211
   at java.util.LinkedHashMap.newKeyIterator (LinkedHashMap.java:396)
   at java.util.HashMap$KeySet.iterator (HashMap.java:873)
   at java.util.HashSet.iterator (HashSet.java:153)
   at java.util.AbstractCollection.toArray (AbstractCollection.java:120)
 
-Thread 212
+Stack trace 212
   at java.util.LinkedHashMap$LinkedHashIterator.<init> (LinkedHashMap.java:345)
   at java.util.LinkedHashMap$LinkedHashIterator.<init> (LinkedHashMap.java:345)
   at java.util.LinkedHashMap$KeyIterator.<init> (LinkedHashMap.java:383)
   at java.util.LinkedHashMap$KeyIterator.<init> (LinkedHashMap.java:383)
 
-Thread 213
+Stack trace 213
   at java.util.AbstractList$Itr.<init> (AbstractList.java:318)
   at java.util.AbstractList$Itr.<init> (AbstractList.java:318)
   at java.util.AbstractList.iterator (AbstractList.java:273)
   at java.io.DeleteOnExitHook.run (DeleteOnExitHook.java:54)
 
-Thread 214
+Stack trace 214
   at java.lang.Shutdown.halt0 (Shutdown.java:unknown line number)
   at java.lang.Shutdown.halt (Shutdown.java:105)
   at java.lang.Shutdown.exit (Shutdown.java:179)
   at java.lang.Terminator$1.handle (Terminator.java:35)
 
-Thread 215
+Stack trace 215
   at Hello.main (Hello.java:3)
 
 Found a total of 137.98KiB of raw shallow heap objects in the dump.

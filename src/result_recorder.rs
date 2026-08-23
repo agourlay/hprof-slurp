@@ -84,7 +84,7 @@ pub struct ResultRecorder {
     start_threads: u32,
     end_threads: u32,
     heap_summaries: u32,
-    heap_dumps: u32,
+    heap_dump_segments: u32,
     allocation_sites: u32,
     control_settings: u32,
     cpu_samples: u32,
@@ -103,6 +103,15 @@ pub struct ResultRecorder {
     heap_dump_segments_gc_instance_dump: u32,
     heap_dump_segments_gc_primitive_array_dump: u32,
     heap_dump_segments_gc_class_dump: u32,
+    // GC tag counters for the Android HPROF 1.0.3 extension records
+    heap_dump_segments_gc_root_interned_string: u32,
+    heap_dump_segments_gc_root_finalizing: u32,
+    heap_dump_segments_gc_root_debugger: u32,
+    heap_dump_segments_gc_root_reference_cleanup: u32,
+    heap_dump_segments_gc_root_vm_internal: u32,
+    heap_dump_segments_gc_root_jni_monitor: u32,
+    heap_dump_segments_gc_unreachable: u32,
+    heap_dump_segments_gc_heap_dump_info: u32,
     // Captured state
     // "object_id" -> "class_id" -> "class_name_id" -> "utf8_string"
     utf8_strings_by_id: AHashMap<u64, Box<str>>,
@@ -129,7 +138,7 @@ impl ResultRecorder {
             start_threads: 0,
             end_threads: 0,
             heap_summaries: 0,
-            heap_dumps: 0,
+            heap_dump_segments: 0,
             allocation_sites: 0,
             control_settings: 0,
             cpu_samples: 0,
@@ -147,6 +156,14 @@ impl ResultRecorder {
             heap_dump_segments_gc_primitive_array_dump: 0,
             heap_dump_segments_gc_instance_dump: 0,
             heap_dump_segments_gc_class_dump: 0,
+            heap_dump_segments_gc_root_interned_string: 0,
+            heap_dump_segments_gc_root_finalizing: 0,
+            heap_dump_segments_gc_root_debugger: 0,
+            heap_dump_segments_gc_root_reference_cleanup: 0,
+            heap_dump_segments_gc_root_vm_internal: 0,
+            heap_dump_segments_gc_root_jni_monitor: 0,
+            heap_dump_segments_gc_unreachable: 0,
+            heap_dump_segments_gc_heap_dump_info: 0,
             utf8_strings_by_id: AHashMap::new(),
             class_data: vec![],
             class_data_by_id: AHashMap::new(),
@@ -259,7 +276,7 @@ impl ResultRecorder {
                 ControlSettings { .. } => self.control_settings += 1,
                 CpuSamples { .. } => self.cpu_samples += 1,
                 HeapDumpEnd { .. } => (),
-                HeapDumpStart { .. } => self.heap_dumps += 1,
+                HeapDumpStart { .. } => self.heap_dump_segments += 1,
                 GcSegment(gc_record) => {
                     self.heap_dump_segments_all_sub_records += 1;
                     match gc_record {
@@ -347,17 +364,33 @@ impl ResultRecorder {
 
                             self.heap_dump_segments_gc_class_dump += 1;
                         }
-                        // Android HPROF 1.0.3 extension records. They are
-                        // parsed for stream alignment and root tracking; the
-                        // summary does not surface per-extension counts.
-                        GcRecord::RootInternedString { .. }
-                        | GcRecord::RootFinalizing { .. }
-                        | GcRecord::RootDebugger { .. }
-                        | GcRecord::RootReferenceCleanup { .. }
-                        | GcRecord::RootVmInternal { .. }
-                        | GcRecord::RootJniMonitor { .. }
-                        | GcRecord::Unreachable { .. }
-                        | GcRecord::HeapDumpInfo { .. } => {}
+                        // Android HPROF 1.0.3 extension records. Counted
+                        // individually so that the per-tag breakdown of the
+                        // summary adds up to the total sub-record count.
+                        GcRecord::RootInternedString { .. } => {
+                            self.heap_dump_segments_gc_root_interned_string += 1;
+                        }
+                        GcRecord::RootFinalizing { .. } => {
+                            self.heap_dump_segments_gc_root_finalizing += 1;
+                        }
+                        GcRecord::RootDebugger { .. } => {
+                            self.heap_dump_segments_gc_root_debugger += 1;
+                        }
+                        GcRecord::RootReferenceCleanup { .. } => {
+                            self.heap_dump_segments_gc_root_reference_cleanup += 1;
+                        }
+                        GcRecord::RootVmInternal { .. } => {
+                            self.heap_dump_segments_gc_root_vm_internal += 1;
+                        }
+                        GcRecord::RootJniMonitor { .. } => {
+                            self.heap_dump_segments_gc_root_jni_monitor += 1;
+                        }
+                        GcRecord::Unreachable { .. } => {
+                            self.heap_dump_segments_gc_unreachable += 1;
+                        }
+                        GcRecord::HeapDumpInfo { .. } => {
+                            self.heap_dump_segments_gc_heap_dump_info += 1;
+                        }
                         // The body was suppressed by the dumper (e.g.
                         // zygote-shared arrays), so the bytes are not attributed
                         // to this dump; count it but with zero size.
@@ -395,9 +428,10 @@ impl ResultRecorder {
             None
         } else {
             Some(format!(
-                "\nFound {} duplicated strings out of {} unique strings\n",
+                "\nFound {} duplicated strings out of {} strings ({} unique)\n",
                 all_len - dedup_len,
-                all_len
+                all_len,
+                dedup_len
             ))
         }
     }
@@ -416,13 +450,21 @@ impl ResultRecorder {
 
         writeln!(
             thread_info,
-            "\nFound {} threads with stacktraces:",
+            "\nFound {} stack traces with frames:",
             stack_traces.len()
         )
         .expect("Could not write to thread info");
 
         for (index, (_id, stack_data)) in stack_traces.iter().enumerate() {
-            write!(thread_info, "\nThread {}\n", index + 1)
+            // A trace is not necessarily a thread stack: allocation site traces
+            // carry the sentinel thread serial number `0`. The owning thread is
+            // only named when there is one.
+            let owner = if stack_data.thread_serial_number == 0 {
+                String::new()
+            } else {
+                format!(" (thread {})", stack_data.thread_serial_number)
+            };
+            write!(thread_info, "\nStack trace {}{}\n", index + 1, owner)
                 .expect("Could not write to thread info");
 
             //  for each stack frames
@@ -641,7 +683,7 @@ impl ResultRecorder {
 
         let heap_summary = formatdoc!(
             "Heap summaries: {}
-            {} heap dumps containing in total {} segments:
+            {} heap dump segments containing in total {} sub-records:
             ..GC root unknown: {}
             ..GC root thread objects: {}
             ..GC root JNI global: {}
@@ -656,7 +698,7 @@ impl ResultRecorder {
             ..GC class dump: {}
             ..GC instance dump: {}",
             self.heap_summaries,
-            self.heap_dumps,
+            self.heap_dump_segments,
             self.heap_dump_segments_all_sub_records,
             self.heap_dump_segments_gc_root_unknown,
             self.heap_dump_segments_gc_root_thread_object,
@@ -673,7 +715,46 @@ impl ResultRecorder {
             self.heap_dump_segments_gc_instance_dump,
         );
 
-        format!("{capture_time}{top_summary}\n{heap_summary}")
+        // Only emitted for the Android HPROF 1.0.3 extension records, so that
+        // the breakdown of a plain JVM dump stays free of always-zero lines.
+        let android_summary = if self.android_extension_sub_records() == 0 {
+            String::new()
+        } else {
+            format!(
+                "\n{}",
+                formatdoc!(
+                    "..GC root interned string: {}
+                    ..GC root finalizing: {}
+                    ..GC root debugger: {}
+                    ..GC root reference cleanup: {}
+                    ..GC root VM internal: {}
+                    ..GC root JNI monitor: {}
+                    ..GC unreachable: {}
+                    ..GC heap dump info: {}",
+                    self.heap_dump_segments_gc_root_interned_string,
+                    self.heap_dump_segments_gc_root_finalizing,
+                    self.heap_dump_segments_gc_root_debugger,
+                    self.heap_dump_segments_gc_root_reference_cleanup,
+                    self.heap_dump_segments_gc_root_vm_internal,
+                    self.heap_dump_segments_gc_root_jni_monitor,
+                    self.heap_dump_segments_gc_unreachable,
+                    self.heap_dump_segments_gc_heap_dump_info,
+                )
+            )
+        };
+
+        format!("{capture_time}{top_summary}\n{heap_summary}{android_summary}")
+    }
+
+    const fn android_extension_sub_records(&self) -> u32 {
+        self.heap_dump_segments_gc_root_interned_string
+            + self.heap_dump_segments_gc_root_finalizing
+            + self.heap_dump_segments_gc_root_debugger
+            + self.heap_dump_segments_gc_root_reference_cleanup
+            + self.heap_dump_segments_gc_root_vm_internal
+            + self.heap_dump_segments_gc_root_jni_monitor
+            + self.heap_dump_segments_gc_unreachable
+            + self.heap_dump_segments_gc_heap_dump_info
     }
 }
 
@@ -904,6 +985,70 @@ mod tests {
         assert_eq!(object_arrays.allocation_size_bytes, 40);
     }
 
+    #[test]
+    fn duplicated_strings_report_totals_and_unique_counts() {
+        let mut recorder = ResultRecorder::new(4, false, 0);
+        let mut records = vec![
+            Record::Utf8String {
+                id: 1,
+                str: "same".into(),
+            },
+            Record::Utf8String {
+                id: 2,
+                str: "same".into(),
+            },
+            Record::Utf8String {
+                id: 3,
+                str: "other".into(),
+            },
+        ];
+
+        recorder.record_records(&mut records);
+
+        assert_eq!(
+            recorder.render_duplicated_strings(),
+            Some("\nFound 1 duplicated strings out of 3 strings (2 unique)\n".to_string())
+        );
+    }
+
+    #[test]
+    fn summary_breaks_down_android_extension_sub_records() {
+        let mut recorder = ResultRecorder::new(4, false, 0);
+        let mut records = vec![
+            Record::GcSegment(GcRecord::RootInternedString { object_id: 1 }),
+            Record::GcSegment(GcRecord::RootInternedString { object_id: 2 }),
+            Record::GcSegment(GcRecord::HeapDumpInfo {
+                heap_type: u32::from(b'A'),
+                heap_name_id: 3,
+            }),
+            Record::GcSegment(GcRecord::RootStickyClass { object_id: 4 }),
+        ];
+
+        recorder.record_records(&mut records);
+        let summary = recorder.render_summary();
+
+        assert!(summary.contains("..GC root interned string: 2"));
+        assert!(summary.contains("..GC heap dump info: 1"));
+        // the per-tag breakdown accounts for every sub-record
+        assert!(summary.contains("0 heap dump segments containing in total 4 sub-records:"));
+    }
+
+    #[test]
+    fn summary_omits_the_android_breakdown_without_extension_records() {
+        let mut recorder = ResultRecorder::new(4, false, 0);
+        let mut records = vec![Record::GcSegment(GcRecord::RootStickyClass {
+            object_id: 1,
+        })];
+
+        recorder.record_records(&mut records);
+
+        assert!(
+            !recorder
+                .render_summary()
+                .contains("..GC root interned string")
+        );
+    }
+
     // Modern Android dumps reference class ids with no LoadClass/ClassDump
     // record; this used to panic the recorder thread.
     #[test]
@@ -1060,6 +1205,8 @@ mod tests {
         recorder.record_records(&mut records);
         let thread_info = recorder.render_thread_info(&mut AHashSet::new());
 
+        // trace serial 1 belongs to thread 1, so the owning thread is named
+        assert!(thread_info.contains("Stack trace 1 (thread 1)"));
         assert!(thread_info.contains("  at <unknown stack frame 0x111>"));
         assert!(thread_info.contains(
             "  at <unknown class (serial 7)>.unknown method name (unknown source file:42)"
