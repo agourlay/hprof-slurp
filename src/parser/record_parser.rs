@@ -1016,6 +1016,310 @@ mod tests {
         }
     }
 
+    // ---- Top level records that no test dump exercises ----
+    // The fixtures carry no UNLOAD_CLASS, HEAP_SUMMARY or CPU_SAMPLES record,
+    // and never assert the fields of the ALLOC_SITES / thread records they do
+    // carry. Every case below pins the exact byte consumption, because a
+    // record read one byte short silently desyncs the whole stream after it.
+
+    // Builds a record body: timestamp, length, then the payload.
+    fn record_bytes(payload: &[u8]) -> Vec<u8> {
+        let mut input = Vec::new();
+        input.extend_from_slice(&0u32.to_be_bytes());
+        input.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_be_bytes());
+        input.extend_from_slice(payload);
+        input
+    }
+
+    #[test]
+    fn parse_unload_class_consumes_its_record() {
+        let input = record_bytes(&7u32.to_be_bytes());
+
+        let (rest, record) = parse_unload_class(&input).unwrap();
+
+        assert!(rest.is_empty());
+        assert!(matches!(record, UnloadClass { serial_number: 7 }));
+    }
+
+    #[test]
+    fn parse_heap_summary_consumes_its_record() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&10u32.to_be_bytes());
+        payload.extend_from_slice(&20u32.to_be_bytes());
+        payload.extend_from_slice(&30u64.to_be_bytes());
+        payload.extend_from_slice(&40u64.to_be_bytes());
+        let input = record_bytes(&payload);
+
+        let (rest, record) = parse_heap_summary(&input).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            HeapSummary {
+                total_live_bytes,
+                total_live_instances,
+                total_bytes_allocated,
+                total_instances_allocated,
+            } => {
+                assert_eq!(total_live_bytes, 10);
+                assert_eq!(total_live_instances, 20);
+                assert_eq!(total_bytes_allocated, 30);
+                assert_eq!(total_instances_allocated, 40);
+            }
+            other => panic!("expected heap summary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_control_settings_consumes_its_record() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&0xDEAD_BEEFu32.to_be_bytes());
+        payload.extend_from_slice(&16u16.to_be_bytes());
+        let input = record_bytes(&payload);
+
+        let (rest, record) = parse_control_settings(&input).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            ControlSettings {
+                flags,
+                stack_trace_depth,
+            } => {
+                assert_eq!(flags, 0xDEAD_BEEF);
+                assert_eq!(stack_trace_depth, 16);
+            }
+            other => panic!("expected control settings, got {other:?}"),
+        }
+    }
+
+    // Like CPU_SAMPLES, this record ends in a counted array: reading the wrong
+    // number of entries eats into the next record.
+    #[test]
+    fn parse_allocation_sites_reads_one_entry_per_site() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1u16.to_be_bytes()); // flags
+        payload.extend_from_slice(&2u32.to_be_bytes()); // cutoff ratio
+        payload.extend_from_slice(&3u32.to_be_bytes()); // total live bytes
+        payload.extend_from_slice(&4u32.to_be_bytes()); // total live instances
+        payload.extend_from_slice(&5u64.to_be_bytes()); // total bytes allocated
+        payload.extend_from_slice(&6u64.to_be_bytes()); // total instances allocated
+        payload.extend_from_slice(&2u32.to_be_bytes()); // number of sites
+        for site in 1..=2u32 {
+            payload.push(1); // is_array
+            payload.extend_from_slice(&site.to_be_bytes()); // class serial
+            payload.extend_from_slice(&site.to_be_bytes()); // stack trace serial
+            payload.extend_from_slice(&(site * 10).to_be_bytes()); // bytes alive
+            payload.extend_from_slice(&site.to_be_bytes()); // instances alive
+            payload.extend_from_slice(&(site * 20).to_be_bytes()); // bytes allocated
+            payload.extend_from_slice(&site.to_be_bytes()); // instances allocated
+        }
+        let input = record_bytes(&payload);
+
+        let (rest, record) = parse_allocation_sites(&input).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            AllocationSites {
+                number_of_sites,
+                allocation_sites,
+                total_instances_allocated,
+                ..
+            } => {
+                assert_eq!(number_of_sites, 2);
+                assert_eq!(total_instances_allocated, 6);
+                assert_eq!(allocation_sites.len(), 2);
+                assert_eq!(allocation_sites[1].bytes_alive, 20);
+                assert_eq!(allocation_sites[1].bytes_allocated, 40);
+            }
+            other => panic!("expected allocation sites, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_start_and_end_thread_consume_their_records() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1u32.to_be_bytes()); // thread serial
+        payload.extend_from_slice(&2u64.to_be_bytes()); // thread object id
+        payload.extend_from_slice(&3u32.to_be_bytes()); // stack trace serial
+        payload.extend_from_slice(&4u64.to_be_bytes()); // thread name id
+        payload.extend_from_slice(&5u64.to_be_bytes()); // thread group name id
+        payload.extend_from_slice(&6u64.to_be_bytes()); // thread group parent id
+        let input = record_bytes(&payload);
+
+        let (rest, record) = parse_start_thread(&input, 8).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            StartThread {
+                thread_serial_number,
+                thread_name_id,
+                thread_group_parent_name_id,
+                ..
+            } => {
+                assert_eq!(thread_serial_number, 1);
+                assert_eq!(thread_name_id, 4);
+                assert_eq!(thread_group_parent_name_id, 6);
+            }
+            other => panic!("expected start thread, got {other:?}"),
+        }
+
+        let input = record_bytes(&9u32.to_be_bytes());
+        let (rest, record) = parse_end_thread(&input).unwrap();
+        assert!(rest.is_empty());
+        assert!(matches!(
+            record,
+            EndThread {
+                thread_serial_number: 9
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_load_class_and_stack_frame_consume_their_records() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1u32.to_be_bytes()); // serial
+        payload.extend_from_slice(&2u32.to_be_bytes()); // class object id
+        payload.extend_from_slice(&3u32.to_be_bytes()); // stack trace serial
+        payload.extend_from_slice(&4u32.to_be_bytes()); // class name id
+        let input = record_bytes(&payload);
+
+        let (rest, record) = parse_load_class(&input, 4).unwrap();
+        assert!(rest.is_empty());
+        match record {
+            LoadClass(data) => {
+                assert_eq!(data.serial_number, 1);
+                assert_eq!(data.class_object_id, 2);
+                assert_eq!(data.class_name_id, 4);
+            }
+            other => panic!("expected load class, got {other:?}"),
+        }
+
+        let mut payload = Vec::new();
+        for id in 1..=4u32 {
+            payload.extend_from_slice(&id.to_be_bytes());
+        }
+        payload.extend_from_slice(&5u32.to_be_bytes()); // class serial
+        payload.extend_from_slice(&(-3i32).to_be_bytes()); // native method
+        let input = record_bytes(&payload);
+
+        let (rest, record) = parse_stack_frame(&input, 4).unwrap();
+        assert!(rest.is_empty());
+        match record {
+            StackFrame(data) => {
+                assert_eq!(data.stack_frame_id, 1);
+                assert_eq!(data.source_file_name_id, 4);
+                assert_eq!(data.class_serial_number, 5);
+                assert_eq!(data.line_number, -3);
+            }
+            other => panic!("expected stack frame, got {other:?}"),
+        }
+    }
+
+    // The class dump nests three counted arrays and is the record most likely
+    // to desync if a count is misread, but no unit test covered it.
+    #[test]
+    fn parse_gc_class_dump_consumes_its_nested_arrays() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1u32.to_be_bytes()); // class object id
+        payload.extend_from_slice(&0u32.to_be_bytes()); // stack trace serial
+        payload.extend_from_slice(&2u32.to_be_bytes()); // super class id
+        for _ in 0..5 {
+            payload.extend_from_slice(&0u32.to_be_bytes()); // loader/signers/domain/reserved
+        }
+        payload.extend_from_slice(&48u32.to_be_bytes()); // instance size
+        // one constant pool entry: an int
+        payload.extend_from_slice(&1u16.to_be_bytes()); // constant pool size
+        payload.extend_from_slice(&7u16.to_be_bytes()); // pool index
+        payload.push(10); // Int
+        payload.extend_from_slice(&99i32.to_be_bytes());
+        // one static field: an object reference
+        payload.extend_from_slice(&1u16.to_be_bytes()); // static field count
+        payload.extend_from_slice(&20u32.to_be_bytes()); // name id
+        payload.push(2); // Object
+        payload.extend_from_slice(&123u32.to_be_bytes()); // value
+        // two instance fields
+        payload.extend_from_slice(&2u16.to_be_bytes()); // instance field count
+        payload.extend_from_slice(&30u32.to_be_bytes());
+        payload.push(11); // Long
+        payload.extend_from_slice(&31u32.to_be_bytes());
+        payload.push(4); // Bool
+
+        match dispatch_gc_record(TAG_GC_CLASS_DUMP, &payload, 4) {
+            ClassDump(fields) => {
+                assert_eq!(fields.class_object_id, 1);
+                assert_eq!(fields.super_class_object_id, 2);
+                assert_eq!(fields.instance_size, 48);
+                assert_eq!(fields.const_fields.len(), 1);
+                assert_eq!(fields.static_fields.len(), 1);
+                assert_eq!(fields.instance_fields.len(), 2);
+                assert!(matches!(
+                    fields.instance_fields[0].field_type,
+                    FieldType::Long
+                ));
+                assert!(matches!(
+                    fields.instance_fields[1].field_type,
+                    FieldType::Bool
+                ));
+            }
+            other => panic!("expected class dump, got {other:?}"),
+        }
+    }
+
+    // The segment length drives whether the next byte is read as a GC sub
+    // record or as a new top level tag. Getting that accounting wrong is the
+    // single failure that corrupts everything downstream, and only the gold
+    // dumps covered it.
+    #[test]
+    fn parse_streaming_returns_to_top_level_after_a_heap_dump_segment() {
+        let mut stream = Vec::new();
+
+        // a UTF-8 string record
+        stream.push(TAG_STRING);
+        stream.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+        stream.extend_from_slice(&7u32.to_be_bytes()); // length: 4 byte id + "abc"
+        stream.extend_from_slice(&42u32.to_be_bytes());
+        stream.extend_from_slice(b"abc");
+
+        // a heap dump segment holding two GC sub records: 5 + 17 bytes
+        stream.push(TAG_HEAP_DUMP_SEGMENT);
+        stream.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+        stream.extend_from_slice(&22u32.to_be_bytes()); // segment length
+        stream.push(TAG_GC_ROOT_STICKY_CLASS);
+        stream.extend_from_slice(&1u32.to_be_bytes());
+        stream.push(TAG_GC_INSTANCE_DUMP);
+        stream.extend_from_slice(&2u32.to_be_bytes()); // object id
+        stream.extend_from_slice(&0u32.to_be_bytes()); // stack trace serial
+        stream.extend_from_slice(&3u32.to_be_bytes()); // class object id
+        stream.extend_from_slice(&0u32.to_be_bytes()); // data size
+
+        // a top level record again, only reachable if the segment ended exactly
+        stream.push(TAG_UNLOAD_CLASS);
+        stream.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+        stream.extend_from_slice(&4u32.to_be_bytes()); // length
+        stream.extend_from_slice(&5u32.to_be_bytes()); // serial number
+
+        let mut parser = HprofRecordParser::new(false, 4);
+        let mut records = Vec::new();
+        let (rest, ()) = parser.parse_streaming(&stream, &mut records).unwrap();
+
+        assert!(rest.is_empty(), "{} bytes left unread", rest.len());
+        assert_eq!(records.len(), 5);
+        assert!(matches!(records[0], Utf8String { id: 42, .. }));
+        assert!(matches!(records[1], HeapDumpStart { length: 22 }));
+        assert!(matches!(
+            records[2],
+            GcSegment(GcRecord::RootStickyClass { object_id: 1 })
+        ));
+        assert!(matches!(
+            records[3],
+            GcSegment(InstanceDump {
+                object_id: 2,
+                class_object_id: 3,
+                ..
+            })
+        ));
+        assert!(matches!(records[4], UnloadClass { serial_number: 5 }));
+    }
+
     // ---- Android HPROF 1.0.3 extension parsers ----
     // A 32-bit Android dump panicked with "unhandled gc record tag 141"
     // (0x8D = TAG_GC_ROOT_VM_INTERNAL). These cover the full extension set.
