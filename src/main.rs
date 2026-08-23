@@ -23,13 +23,13 @@ fn main_result() -> Result<i32, HprofSlurpError> {
     match get_args()? {
         ParsedArgs::Analyze(args) => {
             print!("{}", analyze_file(args)?);
-            println!("File successfully processed in {:?}", now.elapsed());
+            eprintln!("File successfully processed in {:?}", now.elapsed());
             Ok(0)
         }
         ParsedArgs::Diff(diff_args) => {
             let outcome = diff_files(diff_args)?;
             print!("{}", outcome.report);
-            println!("Files successfully compared in {:?}", now.elapsed());
+            eprintln!("Files successfully compared in {:?}", now.elapsed());
             if outcome.over_threshold {
                 eprintln!("net shallow heap growth is over the --fail-over threshold");
                 return Ok(EXIT_OVER_THRESHOLD);

@@ -67,6 +67,12 @@ Options:
   -V, --version           Print version
 ```
 
+Progress and diagnostics go to `stderr`, so a redirected `stdout` holds the report and nothing else:
+
+```bash
+./hprof-slurp "my-hprof-file.bin" > report.txt
+```
+
 ### Example table
 
 ```bash

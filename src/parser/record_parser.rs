@@ -87,7 +87,7 @@ impl HprofRecordParser {
             if self.heap_dump_remaining_len == 0 {
                 parse_u8(i).and_then(|(r1, tag)| {
                     if self.debug_mode {
-                        println!("Found record tag:{} remaining bytes:{}", tag, i.len());
+                        eprintln!("Found record tag:{} remaining bytes:{}", tag, i.len());
                     }
                     match tag {
                         TAG_STRING => parse_utf8_string(r1, id_size),

@@ -193,7 +193,7 @@ pub fn save_as_json_file<T: Serialize>(
     let writer = BufWriter::new(file);
     // Serialize the struct directly to the file via the writer
     serde_json::to_writer(writer, value)?;
-    println!("Output JSON result file {file_path}");
+    eprintln!("Output JSON result file {file_path}");
     Ok(())
 }
 

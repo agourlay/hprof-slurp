@@ -35,7 +35,9 @@ pub fn slurp_file(
     // Parse file header
     let header = slurp_header(&mut reader)?;
     let id_size = header.size_pointers;
-    println!(
+    // Diagnostics go to stderr so that a redirected stdout holds the report
+    // and nothing else.
+    eprintln!(
         "Processing {} binary hprof file in '{}' format.",
         pretty_bytes_size(file_len as u64),
         header.format

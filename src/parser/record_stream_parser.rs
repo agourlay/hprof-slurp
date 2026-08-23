@@ -99,7 +99,7 @@ impl HprofRecordStreamParser {
                                 }
                                 Err(Err::Incomplete(Size(n))) => {
                                     if self.debug_mode {
-                                        println!("Incomplete: {} bytes required to finish parsing object & current buffer len {}", n.get(), self.loop_buffer.len());
+                                        eprintln!("Incomplete: {} bytes required to finish parsing object & current buffer len {}", n.get(), self.loop_buffer.len());
                                     }
                                     // capture needed data (missing + existing)
                                     self.needed = n.get() + self.loop_buffer.len();
