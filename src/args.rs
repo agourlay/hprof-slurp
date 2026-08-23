@@ -25,6 +25,22 @@ fn filter_arg() -> Arg {
         .required(false)
 }
 
+fn json_arg() -> Arg {
+    Arg::new("json")
+        .help("additional JSON output in file")
+        .long("json")
+        .action(clap::ArgAction::SetTrue)
+}
+
+fn output_arg() -> Arg {
+    Arg::new("output")
+        .help("output file path for the JSON result (default: hprof-slurp-<timestamp>.json)")
+        .long("output")
+        .short('o')
+        .num_args(1)
+        .requires("json")
+}
+
 fn command() -> Command {
     Command::new(crate_name!())
         .version(crate_version!())
@@ -49,7 +65,20 @@ fn command() -> Command {
                         .required(true),
                 )
                 .arg(top_arg())
-                .arg(filter_arg()),
+                .arg(filter_arg())
+                .arg(json_arg())
+                .arg(output_arg())
+                .arg(
+                    Arg::new("fail-over")
+                        .help(
+                            "exit with code 2 when the net shallow heap growth exceeds this many bytes",
+                        )
+                        .long("fail-over")
+                        .value_name("BYTES")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(u64))
+                        .required(false),
+                ),
         )
         .arg(
             Arg::new("file")
@@ -74,22 +103,8 @@ fn command() -> Command {
                 .short('l')
                 .action(clap::ArgAction::SetTrue),
         )
-        .arg(
-            Arg::new("json")
-                .help("additional JSON output in file")
-                .long("json")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("output")
-                .help(
-                    "output file path for the JSON result (default: hprof-slurp-<timestamp>.json)",
-                )
-                .long("output")
-                .short('o')
-                .num_args(1)
-                .requires("json"),
-        )
+        .arg(json_arg())
+        .arg(output_arg())
 }
 
 fn existing_file(raw_path: &str) -> Result<String, HprofSlurpError> {
@@ -115,11 +130,17 @@ pub fn get_args() -> Result<ParsedArgs, HprofSlurpError> {
         let to = existing_file(sub_matches.get_one::<String>("to").expect("impossible"))?;
         let top = get_top(sub_matches);
         let filter = sub_matches.get_one::<String>("filter").cloned();
+        let json_output = sub_matches.get_flag("json");
+        let output_file = sub_matches.get_one::<String>("output").cloned();
+        let fail_over = sub_matches.get_one::<u64>("fail-over").copied();
         return Ok(ParsedArgs::Diff(DiffArgs {
             from,
             to,
             top,
             filter,
+            json_output,
+            output_file,
+            fail_over,
         }));
     }
 
@@ -164,6 +185,10 @@ pub struct DiffArgs {
     pub top: usize,
     // only report classes whose name contains this text
     pub filter: Option<String>,
+    pub json_output: bool,
+    pub output_file: Option<String>,
+    // net growth, in bytes, above which the run reports failure
+    pub fail_over: Option<u64>,
 }
 
 #[cfg(test)]
@@ -232,6 +257,43 @@ mod args_tests {
             sub_matches.get_one::<String>("filter"),
             Some(&"com.example".to_string())
         );
+    }
+
+    #[test]
+    fn diff_accepts_json_output_and_threshold() {
+        let matches = command()
+            .try_get_matches_from([
+                "hprof-slurp",
+                "diff",
+                "a.hprof",
+                "b.hprof",
+                "--json",
+                "-o",
+                "out.json",
+                "--fail-over",
+                "1048576",
+            ])
+            .expect("diff should accept json and threshold");
+        let (_, sub_matches) = matches.subcommand().expect("diff subcommand");
+        assert!(sub_matches.get_flag("json"));
+        assert_eq!(
+            sub_matches.get_one::<String>("output"),
+            Some(&"out.json".to_string())
+        );
+        assert_eq!(sub_matches.get_one::<u64>("fail-over"), Some(&1_048_576));
+    }
+
+    #[test]
+    fn diff_output_requires_json() {
+        let result = command().try_get_matches_from([
+            "hprof-slurp",
+            "diff",
+            "a.hprof",
+            "b.hprof",
+            "-o",
+            "out.json",
+        ]);
+        assert!(result.is_err());
     }
 
     #[test]

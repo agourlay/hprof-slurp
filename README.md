@@ -31,7 +31,8 @@ The reported sizes are **shallow**: the footprint of each object itself (its hea
 - filters the reported classes by name.
 - displays threads stack traces.
 - lists all `Strings` found.
-- outputs results as JSON.
+- outputs results as JSON, for the analysis and for the diff.
+- fails a build when the heap grew more than a given budget.
 
 ## Limitations
 
@@ -148,6 +149,77 @@ Top 3 of 282 class deltas (by shallow size growth):
     +1.99MiB         +432       1.14KiB → 1.99MiB               4 → 436  int[]
   +130.56KiB        +1158    64.33KiB → 194.89KiB            833 → 1991  char[]
    +60.84KiB         +434     24.39KiB → 85.23KiB               9 → 443  byte[]
+```
+
+### Gate a build on heap growth
+
+`diff` exits with code `2` when the net shallow growth goes over `--fail-over`, and `1` only when the run itself failed, so a CI job can tell the two apart. `--json` writes the full comparison for any policy the flag does not cover.
+
+```
+compare two dumps of the same process by per-class shallow heap deltas
+
+Usage: hprof-slurp diff [OPTIONS] <FROM> <TO>
+
+Arguments:
+  <FROM>  baseline hprof file
+  <TO>    hprof file to compare against the baseline
+
+Options:
+  -t, --top <top>          the top results to display [default: 20]
+  -f, --filter <PATTERN>   only report classes whose name contains this text
+      --json               additional JSON output in file
+  -o, --output <output>    output file path for the JSON result (default: hprof-slurp-<timestamp>.json)
+      --fail-over <BYTES>  exit with code 2 when the net shallow heap growth exceeds this many bytes
+  -h, --help               Print help
+```
+
+```bash
+./hprof-slurp diff "before.hprof" "after.hprof" --fail-over 10485760 --json -o diff.json
+```
+
+```JSON
+{
+  "schema_version": 1,
+  "tool": { "name": "hprof-slurp", "version": "0.9.0" },
+  "diff": {
+    "from": {
+      "file": "before.hprof",
+      "file_size_bytes": 282310,
+      "format": "JAVA PROFILE 1.0.1",
+      "id_size_bytes": 4,
+      "captured_at_epoch_millis": 1161941754984,
+      "captured_at_utc": "2006-10-27 09:35:54 UTC",
+      "total_shallow_bytes": 141288,
+      "class_count": 160
+    },
+    "to": { "file": "after.hprof", "total_shallow_bytes": 2628000, "class_count": 233, ".." : ".." },
+    "net_shallow_bytes_delta": 2486712,
+    "fail_over_bytes": 10485760,
+    "over_threshold": false,
+    "class_delta_count": 268,
+    "top_class_deltas": [
+      {
+        "class_name": "int[]",
+        "instances_from": 4,
+        "instances_to": 436,
+        "delta_instances": 432,
+        "bytes_from": 1168,
+        "bytes_to": 2089368,
+        "delta_bytes": 2088200
+      }
+    ]
+  }
+}
+```
+
+`class_delta_count` covers every reported class while `top_class_deltas` honours `--top`, so a consumer can tell a truncated listing from a complete one.
+
+`net_shallow_bytes_delta` covers the classes the report lists, which is the whole dump unless `--filter` is used. Combining the two therefore gates the selection rather than the heap: `--filter com.mycompany --fail-over 10485760` fails only when *your* classes grew past the budget. The whole dump totals stay available as `from.total_shallow_bytes` and `to.total_shallow_bytes`.
+
+To gate on a single class rather than on the total:
+
+```bash
+jq -e '[.diff.top_class_deltas[] | select(.delta_bytes > 1048576)] | length == 0' diff.json
 ```
 
 ### Example JSON

@@ -32,13 +32,22 @@ impl ClassAllocationStats {
     }
 }
 
-// Bump on any breaking change of the JSON output structure.
-const JSON_SCHEMA_VERSION: u32 = 1;
+// Bump on any breaking change of either JSON output structure.
+pub const JSON_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Serialize)]
-struct ToolInfo {
+pub struct ToolInfo {
     name: &'static str,
     version: &'static str,
+}
+
+impl ToolInfo {
+    pub const fn current() -> Self {
+        Self {
+            name: env!("CARGO_PKG_NAME"),
+            version: env!("CARGO_PKG_VERSION"),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -147,10 +156,7 @@ impl JsonResult {
             .collect();
         Self {
             schema_version: JSON_SCHEMA_VERSION,
-            tool: ToolInfo {
-                name: env!("CARGO_PKG_NAME"),
-                version: env!("CARGO_PKG_VERSION"),
-            },
+            tool: ToolInfo::current(),
             dump,
             heap: HeapInfo {
                 total_shallow_bytes,
@@ -163,23 +169,32 @@ impl JsonResult {
     }
 
     pub fn save_as_file(&self, output_path: Option<&str>) -> Result<(), HprofSlurpError> {
-        let file_path = output_path.map_or_else(
-            || {
-                let millis = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("system clock should be set after 1970")
-                    .as_millis();
-                format!("hprof-slurp-{millis}.json")
-            },
-            str::to_string,
-        );
-        let file = File::create(&file_path)?;
-        let writer = BufWriter::new(file);
-        // Serialize the struct directly to the file via the writer
-        serde_json::to_writer(writer, &self)?;
-        println!("Output JSON result file {file_path}");
-        Ok(())
+        save_as_json_file(self, output_path)
     }
+}
+
+// Writes any of the JSON documents to `output_path`, defaulting to a time
+// stamped file name in the working directory.
+pub fn save_as_json_file<T: Serialize>(
+    value: &T,
+    output_path: Option<&str>,
+) -> Result<(), HprofSlurpError> {
+    let file_path = output_path.map_or_else(
+        || {
+            let millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be set after 1970")
+                .as_millis();
+            format!("hprof-slurp-{millis}.json")
+        },
+        str::to_string,
+    );
+    let file = File::create(&file_path)?;
+    let writer = BufWriter::new(file);
+    // Serialize the struct directly to the file via the writer
+    serde_json::to_writer(writer, value)?;
+    println!("Output JSON result file {file_path}");
+    Ok(())
 }
 
 pub struct RenderedResult {
