@@ -336,11 +336,9 @@ impl RenderedResult {
     where
         F: Fn(&(String, u64, String, &String)) -> usize,
     {
-        let max_elem_size = rows
-            .iter()
-            .map(field_len)
-            .max()
-            .expect("Results can't be empty");
+        // a dump without any instance or array yields no rows: the table is
+        // then rendered with bare headers instead of failing
+        let max_elem_size = rows.iter().map(field_len).max().unwrap_or(0);
 
         Self::column_padding(header_label, max_elem_size)
     }
@@ -365,6 +363,18 @@ mod tests {
         assert!(output.contains("raw shallow heap objects in the dump"));
         assert!(output.contains("Top 1 raw shallow heap classes:"));
         assert!(!output.contains("instances allocated on the heap"));
+    }
+
+    // Regression: a dump holding no instance or array at all used to panic
+    // with "Results can't be empty" while padding the table headers.
+    #[test]
+    fn text_output_renders_empty_table_without_rows() {
+        let mut memory_usage = vec![];
+
+        let output = RenderedResult::render_memory_usage(&mut memory_usage, 20);
+
+        assert!(output.contains("Found a total of 0.00bytes"));
+        assert!(output.contains("| Total size | Instances | Largest | Class name |"));
     }
 
     #[test]
