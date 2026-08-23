@@ -113,9 +113,9 @@ Heap diff of raw shallow sizes:
 Top 3 of 282 class deltas (by shallow size growth):
 
       Δ size  Δ instances        size (from → to) instances (from → to)  Class name
-    +1.99MiB          432       1.14KiB → 1.99MiB               4 → 436  int[]
-  +130.56KiB         1158    64.33KiB → 194.89KiB            833 → 1991  char[]
-   +60.84KiB          434     24.39KiB → 85.23KiB               9 → 443  byte[]
+    +1.99MiB         +432       1.14KiB → 1.99MiB               4 → 436  int[]
+  +130.56KiB        +1158    64.33KiB → 194.89KiB            833 → 1991  char[]
+   +60.84KiB         +434     24.39KiB → 85.23KiB               9 → 443  byte[]
 ```
 
 ### Example JSON

@@ -122,11 +122,13 @@ pub fn render(
             pretty_bytes_size(entry.bytes_to)
         );
         let instances_from_to = format!("{} → {}", entry.instances_from, entry.instances_to);
+        // explicit sign, like the size delta next to it
+        let delta_instances = format!("{:+}", entry.delta_instances());
         let _ = writeln!(
             out,
             "{:>12} {:>12} {:>23} {:>21}  {}",
             pretty_signed_bytes_size(entry.delta_bytes()),
-            entry.delta_instances(),
+            delta_instances,
             size_from_to,
             instances_from_to,
             entry.class_name
@@ -185,6 +187,24 @@ mod tests {
         assert!(entries.is_empty());
         assert!(rendered.contains("No per-class differences"));
         assert!(rendered.contains("net:  +0.00bytes"));
+    }
+
+    #[test]
+    fn render_signs_both_delta_columns() {
+        let from = vec![stats("Shrinker", 20, 200)];
+        let to = vec![stats("Shrinker", 8, 80)];
+
+        let entries = compute(&from, &to);
+        let rendered = render("a.hprof", "b.hprof", &from, &to, &entries, 20);
+
+        assert!(rendered.contains("-120.00bytes"));
+        assert!(rendered.contains("-12"));
+
+        let entries = compute(&to, &from);
+        let rendered = render("b.hprof", "a.hprof", &to, &from, &entries, 20);
+
+        assert!(rendered.contains("+120.00bytes"));
+        assert!(rendered.contains("+12"));
     }
 
     // Regression: the same class name appears once per classloader in real
