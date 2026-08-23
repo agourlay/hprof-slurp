@@ -898,7 +898,8 @@ fn parse_cpu_samples(i: &[u8]) -> IResult<&[u8], Record> {
         preceded(parse_header_record, (parse_u32, parse_u32)),
         |(total_number_of_samples, number_of_traces)| {
             map(
-                count(parse_cpu_sample, total_number_of_samples as usize),
+                // the record holds one entry per trace, not one per sample
+                count(parse_cpu_sample, number_of_traces as usize),
                 move |cpu_samples| CpuSamples {
                     total_number_of_samples,
                     number_of_traces,
@@ -952,6 +953,40 @@ mod tests {
                 assert_eq!(&*str, "abc");
             }
             other => panic!("expected UTF-8 string record, got {other:?}"),
+        }
+    }
+
+    // Regression: the entry array is sized by the trace count, but used to be
+    // read as `total number of samples`, which stalled the streaming parser on
+    // any dump carrying a CPU_SAMPLES record.
+    #[test]
+    fn parse_cpu_samples_reads_one_entry_per_trace() {
+        let mut input = Vec::new();
+        input.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+        input.extend_from_slice(&24u32.to_be_bytes()); // length: 2 u4 + 2 entries
+        input.extend_from_slice(&100u32.to_be_bytes()); // total number of samples
+        input.extend_from_slice(&2u32.to_be_bytes()); // number of traces
+        for trace in 1..=2u32 {
+            input.extend_from_slice(&50u32.to_be_bytes()); // samples for this trace
+            input.extend_from_slice(&trace.to_be_bytes()); // stack trace serial number
+        }
+
+        let (rest, record) = parse_cpu_samples(&input).unwrap();
+
+        assert!(rest.is_empty());
+        match record {
+            CpuSamples {
+                total_number_of_samples,
+                number_of_traces,
+                cpu_samples,
+            } => {
+                assert_eq!(total_number_of_samples, 100);
+                assert_eq!(number_of_traces, 2);
+                assert_eq!(cpu_samples.len(), 2);
+                assert_eq!(cpu_samples[0].number_of_samples, 50);
+                assert_eq!(cpu_samples[1].stack_trace_serial_number, 2);
+            }
+            other => panic!("expected CPU samples record, got {other:?}"),
         }
     }
 
