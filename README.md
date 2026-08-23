@@ -45,6 +45,11 @@ The reported sizes are **shallow**: the footprint of each object itself (its hea
 JVM heap dump hprof file analyzer
 
 Usage: hprof-slurp [OPTIONS] <FILE>
+       hprof-slurp [OPTIONS] [FILE] <COMMAND>
+
+Commands:
+  diff  compare two dumps of the same process by per-class shallow heap deltas
+  help  Print this message or the help of the given subcommand(s)
 
 Arguments:
   <FILE>  binary hprof input file
