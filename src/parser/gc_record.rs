@@ -28,6 +28,23 @@ impl FieldType {
             x => panic!("FieldType {x} not found"),
         }
     }
+
+    // The Java name of the type, which is not the variant name for every case,
+    // and is what the reports label array classes with. Spelled out rather than
+    // derived from `Debug`, which is not meant to be user facing.
+    pub const fn java_name(self) -> &'static str {
+        match self {
+            Self::Object => "object",
+            Self::Bool => "boolean",
+            Self::Char => "char",
+            Self::Float => "float",
+            Self::Double => "double",
+            Self::Byte => "byte",
+            Self::Short => "short",
+            Self::Int => "int",
+            Self::Long => "long",
+        }
+    }
 }
 
 #[derive(Debug)]

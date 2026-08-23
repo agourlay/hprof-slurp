@@ -597,8 +597,7 @@ impl ResultRecorder {
             self.primitive_array_counters
                 .iter()
                 .map(|(field_type, ac)| {
-                    let primitive_type = format!("{field_type:?}").to_lowercase();
-                    let primitive_array_label = format!("{primitive_type}[]");
+                    let primitive_array_label = format!("{}[]", field_type.java_name());
 
                     ClassAllocationStats::new(
                         primitive_array_label,
@@ -780,8 +779,8 @@ fn object_array_label(raw_class_name: &str) -> String {
     format!("{element}{}", "[]".repeat(dimensions))
 }
 
-// Spelled through `FieldType` so that `[[I` and a primitive `int[]` array can
-// never be labelled differently.
+// Spelled through `FieldType::java_name` so that `[[I` and a primitive `int[]`
+// array can never be labelled differently.
 fn primitive_descriptor_name(descriptor: &str) -> Option<String> {
     let field_type = match descriptor {
         "Z" => FieldType::Bool,
@@ -794,7 +793,7 @@ fn primitive_descriptor_name(descriptor: &str) -> Option<String> {
         "D" => FieldType::Double,
         _ => return None,
     };
-    Some(format!("{field_type:?}").to_lowercase())
+    Some(field_type.java_name().to_string())
 }
 
 const OBJECT_ALIGN: u32 = 8;
@@ -978,8 +977,8 @@ mod tests {
         let memory_usage = recorder.aggregate_memory_usage(&mut AHashSet::new());
         let bool_arrays = memory_usage
             .iter()
-            .find(|stats| stats.class_name == "bool[]")
-            .expect("bool[] stats should be present");
+            .find(|stats| stats.class_name == "boolean[]")
+            .expect("boolean[] stats should be present");
 
         assert_eq!(bool_arrays.largest_allocation_bytes, 16);
         assert_eq!(bool_arrays.allocation_size_bytes, 32);
@@ -1237,8 +1236,8 @@ mod tests {
         assert_eq!(object_array_label("[[I"), "int[][]");
         assert_eq!(object_array_label("[[C"), "char[][]");
         assert_eq!(object_array_label("[[[D"), "double[][][]");
-        // spelled like the primitive array counters, not like Java
-        assert_eq!(object_array_label("[[Z"), "bool[][]");
+        // spelled like Java, and like the primitive array counters
+        assert_eq!(object_array_label("[[Z"), "boolean[][]");
     }
 
     // ART writes the source form directly, so appending "[]" used to report
