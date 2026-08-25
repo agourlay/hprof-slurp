@@ -1,5 +1,6 @@
 use crate::errors::HprofSlurpError;
 use crate::errors::HprofSlurpError::InputFileNotFound;
+use crate::utils::parse_bytes_size;
 use clap::{Arg, Command};
 use clap::{crate_authors, crate_description, crate_name, crate_version};
 use std::path::Path;
@@ -71,12 +72,12 @@ fn command() -> Command {
                 .arg(
                     Arg::new("fail-over")
                         .help(
-                            "exit with code 2 when the net shallow heap growth exceeds this many bytes",
+                            "exit with code 2 when the net shallow heap growth exceeds this size (plain bytes, or a unit such as 10MiB)",
                         )
                         .long("fail-over")
-                        .value_name("BYTES")
+                        .value_name("SIZE")
                         .num_args(1)
-                        .value_parser(clap::value_parser!(u64))
+                        .value_parser(parse_bytes_size)
                         .required(false),
                 ),
         )
@@ -281,6 +282,35 @@ mod args_tests {
             Some(&"out.json".to_string())
         );
         assert_eq!(sub_matches.get_one::<u64>("fail-over"), Some(&1_048_576));
+    }
+
+    #[test]
+    fn diff_fail_over_accepts_a_unit_suffix() {
+        let matches = command()
+            .try_get_matches_from([
+                "hprof-slurp",
+                "diff",
+                "a.hprof",
+                "b.hprof",
+                "--fail-over",
+                "10MiB",
+            ])
+            .expect("diff should accept a threshold with a unit");
+        let (_, sub_matches) = matches.subcommand().expect("diff subcommand");
+        assert_eq!(sub_matches.get_one::<u64>("fail-over"), Some(&10_485_760));
+    }
+
+    #[test]
+    fn diff_fail_over_rejects_an_unknown_unit() {
+        let result = command().try_get_matches_from([
+            "hprof-slurp",
+            "diff",
+            "a.hprof",
+            "b.hprof",
+            "--fail-over",
+            "10potatoes",
+        ]);
+        assert!(result.is_err());
     }
 
     #[test]

@@ -171,22 +171,22 @@ Arguments:
   <TO>    hprof file to compare against the baseline
 
 Options:
-  -t, --top <top>          the top results to display [default: 20]
-  -f, --filter <PATTERN>   only report classes whose name contains this text
-      --json               additional JSON output in file
-  -o, --output <output>    output file path for the JSON result (default: hprof-slurp-<timestamp>.json)
-      --fail-over <BYTES>  exit with code 2 when the net shallow heap growth exceeds this many bytes
-  -h, --help               Print help
+  -t, --top <top>         the top results to display [default: 20]
+  -f, --filter <PATTERN>  only report classes whose name contains this text
+      --json              additional JSON output in file
+  -o, --output <output>   output file path for the JSON result (default: hprof-slurp-<timestamp>.json)
+      --fail-over <SIZE>  exit with code 2 when the net shallow heap growth exceeds this size (plain bytes, or a unit such as 10MiB)
+  -h, --help              Print help
 ```
 
 ```bash
-./hprof-slurp diff "before.hprof" "after.hprof" --fail-over 10485760 --json -o diff.json
+./hprof-slurp diff "before.hprof" "after.hprof" --fail-over 10MiB --json -o diff.json
 ```
 
 ```JSON
 {
   "schema_version": 1,
-  "tool": { "name": "hprof-slurp", "version": "0.9.0" },
+  "tool": { "name": "hprof-slurp", "version": "0.10.0" },
   "diff": {
     "from": {
       "file": "before.hprof",
@@ -220,7 +220,7 @@ Options:
 
 `class_delta_count` covers every reported class while `top_class_deltas` honours `--top`, so a consumer can tell a truncated listing from a complete one.
 
-`net_shallow_bytes_delta` covers the classes the report lists, which is the whole dump unless `--filter` is used. Combining the two therefore gates the selection rather than the heap: `--filter com.mycompany --fail-over 10485760` fails only when *your* classes grew past the budget. The whole dump totals stay available as `from.total_shallow_bytes` and `to.total_shallow_bytes`.
+`net_shallow_bytes_delta` covers the classes the report lists, which is the whole dump unless `--filter` is used. Combining the two therefore gates the selection rather than the heap: `--filter com.mycompany --fail-over 10MiB` fails only when *your* classes grew past the budget. The whole dump totals stay available as `from.total_shallow_bytes` and `to.total_shallow_bytes`.
 
 To gate on a single class rather than on the total:
 
@@ -245,7 +245,7 @@ jq . hprof-slurp-<timestamp>.json
   "schema_version": 1,
   "tool": {
     "name": "hprof-slurp",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "dump": {
     "file": "test-heap-dumps/hprof-64.bin",

@@ -1,3 +1,4 @@
+const KIBIBYTE: u64 = 1024;
 const KILOBYTE: f64 = 1024.0;
 const MEGABYTE: f64 = KILOBYTE * KILOBYTE;
 const GIGABYTE: f64 = KILOBYTE * MEGABYTE;
@@ -63,9 +64,43 @@ pub fn pretty_bytes_size(len: u64) -> String {
     format!("{value:.2}{unit}")
 }
 
+// The inverse of [`pretty_bytes_size`]: reads a byte size written either as a
+// plain number of bytes or as a number followed by a unit. Every unit is a
+// power of 1024, so `KB` and `K` are accepted as aliases for `KiB` rather than
+// meaning 1000 bytes.
+pub fn parse_bytes_size(raw: &str) -> Result<u64, String> {
+    let input = raw.trim();
+    let unit_start = input
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(input.len());
+    let (digits, unit) = input.split_at(unit_start);
+    if digits.is_empty() {
+        return Err(format!("'{raw}' does not start with a number"));
+    }
+    let value: u64 = digits
+        .parse()
+        .map_err(|_| format!("'{digits}' is too large to be a number of bytes"))?;
+    let multiplier = match unit.trim().to_ascii_lowercase().as_str() {
+        "" | "b" | "byte" | "bytes" => 1,
+        "k" | "kb" | "kib" => KIBIBYTE,
+        "m" | "mb" | "mib" => KIBIBYTE.pow(2),
+        "g" | "gb" | "gib" => KIBIBYTE.pow(3),
+        "t" | "tb" | "tib" => KIBIBYTE.pow(4),
+        other => {
+            return Err(format!(
+                "'{other}' is not a known unit (expected one of bytes, KiB, MiB, GiB, TiB)"
+            ));
+        }
+    };
+    value
+        .checked_mul(multiplier)
+        .ok_or_else(|| format!("'{raw}' is larger than {} bytes", u64::MAX))
+}
+
 #[cfg(test)]
 mod tests {
     use super::matches_class_filter;
+    use super::parse_bytes_size;
     use super::pretty_bytes_size;
     use super::pretty_timestamp_utc;
 
@@ -144,5 +179,43 @@ mod tests {
     fn pretty_size_bytes() {
         let size: u64 = 512;
         assert_eq!(pretty_bytes_size(size), "512.00bytes");
+    }
+
+    #[test]
+    fn parse_size_without_unit_is_bytes() {
+        assert_eq!(parse_bytes_size("0"), Ok(0));
+        assert_eq!(parse_bytes_size("10485760"), Ok(10_485_760));
+        assert_eq!(parse_bytes_size("512B"), Ok(512));
+    }
+
+    #[test]
+    fn parse_size_units_are_powers_of_1024() {
+        assert_eq!(parse_bytes_size("10MiB"), Ok(10 * 1024 * 1024));
+        assert_eq!(parse_bytes_size("10MB"), Ok(10 * 1024 * 1024));
+        assert_eq!(parse_bytes_size("10M"), Ok(10 * 1024 * 1024));
+        assert_eq!(parse_bytes_size("1KiB"), Ok(1024));
+        assert_eq!(parse_bytes_size("2GiB"), Ok(2 * 1024 * 1024 * 1024));
+        assert_eq!(parse_bytes_size("1TiB"), Ok(1024 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_is_case_and_space_insensitive() {
+        assert_eq!(parse_bytes_size("10mib"), Ok(10 * 1024 * 1024));
+        assert_eq!(parse_bytes_size(" 10 MiB "), Ok(10 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_rejects_garbage() {
+        assert!(parse_bytes_size("").is_err());
+        assert!(parse_bytes_size("MiB").is_err());
+        assert!(parse_bytes_size("-1").is_err());
+        assert!(parse_bytes_size("10 potatoes").is_err());
+        assert!(parse_bytes_size("1.5MiB").is_err());
+    }
+
+    #[test]
+    fn parse_size_rejects_overflow() {
+        assert!(parse_bytes_size("99999999999999999999").is_err());
+        assert!(parse_bytes_size("18446744073709551615TiB").is_err());
     }
 }
