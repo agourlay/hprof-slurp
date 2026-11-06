@@ -130,7 +130,8 @@ pub fn slurp_file(
     prefetch_thread.join().map_err(|e| StdThreadError { e })?;
 
     // Blocks until parser is done
-    parser_thread.join().map_err(|e| StdThreadError { e })?;
+    // and fails the run if the dump turned out to be truncated
+    parser_thread.join().map_err(|e| StdThreadError { e })??;
 
     // Blocks until recorder is done
     recorder_thread.join().map_err(|e| StdThreadError { e })?;
@@ -244,6 +245,33 @@ mod tests {
         let file_header = slurp_header(&mut reader).unwrap();
         assert_eq!(file_header.size_pointers, 4);
         assert_eq!(file_header.format, "JAVA PROFILE 1.0.3".to_string());
+    }
+
+    // Regression: a dump cut short used to be reported as a successful run
+    // over the records read so far.
+    #[test]
+    fn truncated_dumps_are_rejected() {
+        let out_dir =
+            std::env::temp_dir().join(format!("hprof-slurp-truncated-test-{}", std::process::id()));
+        fs::create_dir_all(&out_dir).unwrap();
+        for dump in [FILE_PATH_32, FILE_PATH_64, FILE_PATH_ANDROID] {
+            let bytes = fs::read(dump).unwrap();
+            // cut points spread over the whole file, header excluded
+            for tenth in 1..10 {
+                let cut = FILE_HEADER_LENGTH + (bytes.len() - FILE_HEADER_LENGTH) * tenth / 10;
+                let path = out_dir.join(format!("cut-{tenth}.bin"));
+                fs::write(&path, &bytes[..cut]).unwrap();
+                let error = match slurp_file(path.to_str().unwrap(), false, false) {
+                    Ok(_) => panic!("{dump} cut at {cut} bytes should be rejected"),
+                    Err(e) => e.to_string(),
+                };
+                assert!(
+                    error.contains("the file is truncated"),
+                    "{dump} cut at {cut} bytes: {error}"
+                );
+            }
+        }
+        fs::remove_dir_all(&out_dir).unwrap();
     }
 
     fn header_error(bytes: &[u8]) -> String {

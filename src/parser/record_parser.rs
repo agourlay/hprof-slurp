@@ -126,6 +126,12 @@ impl HprofRecordParser {
         }
     }
 
+    // Bytes of the current heap dump segment still expected; non-zero once the
+    // input is exhausted means the dump was cut inside a segment.
+    pub const fn heap_dump_remaining_len(&self) -> u32 {
+        self.heap_dump_remaining_len
+    }
+
     pub fn parse_streaming<'a>(
         &mut self,
         i: &'a [u8],

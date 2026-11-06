@@ -5,6 +5,8 @@ use nom::Err;
 use nom::Needed::Size;
 use nom::Needed::Unknown;
 
+use crate::errors::HprofSlurpError;
+use crate::errors::HprofSlurpError::InvalidHprofFile;
 use crate::slurp::READ_BUFFER_SIZE;
 use crossbeam_channel::{Receiver, Sender};
 use std::thread;
@@ -47,7 +49,7 @@ impl HprofRecordStreamParser {
         send_progress: Sender<usize>,
         receive_pooled_vec: Receiver<Vec<Record>>,
         send_records: Sender<Vec<Record>>,
-    ) -> std::io::Result<JoinHandle<()>> {
+    ) -> std::io::Result<JoinHandle<Result<(), HprofSlurpError>>> {
         thread::Builder::new()
             .name("hprof-parser".to_string())
             .spawn(move || {
@@ -117,6 +119,71 @@ impl HprofRecordStreamParser {
                         }
                     }
                 }
+                check_input_fully_parsed(
+                    self.processed_len,
+                    self.file_len,
+                    self.parser.heap_dump_remaining_len(),
+                )
             })
+    }
+}
+
+// The input is over: anything short of a clean end means the dump was cut
+// (e.g. copied while still being written), and reporting the records read so
+// far as the whole heap would be silently wrong. A dump cut exactly between
+// two top-level records outside of a heap dump segment cannot be told apart
+// from a complete one, as the format records no total length.
+fn check_input_fully_parsed(
+    processed_len: usize,
+    file_len: usize,
+    heap_dump_remaining_len: u32,
+) -> Result<(), HprofSlurpError> {
+    if processed_len != file_len {
+        return Err(InvalidHprofFile {
+            message: format!(
+                "the file is truncated: it ends in the middle of a record ({} trailing bytes after {processed_len} parsed bytes)",
+                file_len - processed_len
+            ),
+        });
+    }
+    if heap_dump_remaining_len != 0 {
+        return Err(InvalidHprofFile {
+            message: format!(
+                "the file is truncated: it ends {heap_dump_remaining_len} bytes before the end of its last heap dump segment"
+            ),
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_input_fully_parsed;
+
+    #[test]
+    fn a_fully_parsed_input_is_accepted() {
+        assert!(check_input_fully_parsed(100, 100, 0).is_ok());
+    }
+
+    #[test]
+    fn trailing_bytes_are_reported_as_truncation() {
+        let error = check_input_fully_parsed(90, 100, 0)
+            .expect_err("should be truncated")
+            .to_string();
+        assert_eq!(
+            error,
+            "invalid Hprof file - the file is truncated: it ends in the middle of a record (10 trailing bytes after 90 parsed bytes)"
+        );
+    }
+
+    #[test]
+    fn an_unfinished_heap_dump_segment_is_reported_as_truncation() {
+        let error = check_input_fully_parsed(100, 100, 42)
+            .expect_err("should be truncated")
+            .to_string();
+        assert_eq!(
+            error,
+            "invalid Hprof file - the file is truncated: it ends 42 bytes before the end of its last heap dump segment"
+        );
     }
 }
