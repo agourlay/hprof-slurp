@@ -1,34 +1,61 @@
-//! Covers the wiring between parsed arguments and the rendered report. The unit
-//! tests exercise argument parsing and rendering separately, so nothing else
-//! catches an option that is parsed but never threaded through.
+//! Covers the wiring between the command line and the rendered report by
+//! running the real binary. The unit tests exercise argument parsing and
+//! rendering separately, so nothing else catches an option that is parsed but
+//! never threaded through, or an exit code that does not reach the shell.
 
-use hprof_slurp::args::{Args, DiffArgs};
-use hprof_slurp::{analyze_file, diff_files};
+use std::path::PathBuf;
+use std::process::Command;
 
 const DUMP_32: &str = "test-heap-dumps/hprof-32.bin";
 const DUMP_64: &str = "test-heap-dumps/hprof-64.bin";
 
-fn analyze_args(file_path: &str, top: usize, filter: Option<&str>) -> Args {
-    Args {
-        file_path: file_path.to_string(),
-        top,
-        debug: false,
-        list_strings: false,
-        json_output: false,
-        output_file: None,
-        filter: filter.map(str::to_string),
+// Exit code of a run whose diff went over `--fail-over`.
+const EXIT_OVER_THRESHOLD: i32 = 2;
+
+struct Run {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+// Runs the binary Cargo built for this test, from the package root so the
+// test dumps resolve by their relative paths.
+fn hprof_slurp(args: &[&str]) -> Run {
+    let output = Command::new(env!("CARGO_BIN_EXE_hprof-slurp"))
+        .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("the binary should start");
+    Run {
+        exit_code: output.status.code().expect("should exit, not be killed"),
+        stdout: String::from_utf8(output.stdout).expect("stdout should be UTF-8"),
+        stderr: String::from_utf8(output.stderr).expect("stderr should be UTF-8"),
     }
+}
+
+// Like [`hprof_slurp`] for a run that is expected to succeed: returns stdout.
+fn report(args: &[&str]) -> String {
+    let run = hprof_slurp(args);
+    assert_eq!(run.exit_code, 0, "{args:?} failed: {}", run.stderr);
+    run.stdout
+}
+
+// A per-test path in the system temp dir, so parallel tests never share one.
+fn temp_json(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "hprof-slurp-cli-{name}-{}.json",
+        std::process::id()
+    ))
 }
 
 #[test]
 fn analyze_threads_the_filter_into_the_report() {
-    let unfiltered = analyze_file(analyze_args(DUMP_64, 20, None)).expect("should analyze");
+    let unfiltered = report(&[DUMP_64]);
     assert!(unfiltered.contains("java.lang.String"));
     assert!(unfiltered.contains("char[]"));
     assert!(!unfiltered.contains("Filter '"));
 
-    let filtered =
-        analyze_file(analyze_args(DUMP_64, 20, Some("java.util"))).expect("should analyze");
+    let filtered = report(&[DUMP_64, "--filter", "java.util"]);
     assert!(filtered.contains("Filter 'java.util' matches"));
     assert!(filtered.contains("java.util.HashMap$Node"));
     assert!(!filtered.contains("| char[] "));
@@ -38,7 +65,7 @@ fn analyze_threads_the_filter_into_the_report() {
 
 #[test]
 fn analyze_threads_top_into_the_report() {
-    let report = analyze_file(analyze_args(DUMP_64, 3, None)).expect("should analyze");
+    let report = report(&[DUMP_64, "--top", "3"]);
     assert!(report.contains("Top 3 raw shallow heap classes:"));
     // 3 rows between the header and the closing rule of the first table
     let rows = report
@@ -49,24 +76,53 @@ fn analyze_threads_top_into_the_report() {
 }
 
 #[test]
-fn diff_threads_the_filter_into_the_report() {
-    let diff_args = |filter: Option<&str>| DiffArgs {
-        from: DUMP_32.to_string(),
-        to: DUMP_64.to_string(),
-        top: 20,
-        filter: filter.map(str::to_string),
-        json_output: false,
-        output_file: None,
-        fail_over: None,
-    };
+fn analyze_keeps_diagnostics_off_stdout() {
+    let run = hprof_slurp(&[DUMP_64]);
+    assert_eq!(run.exit_code, 0);
+    assert!(run.stderr.contains("Processing 3.07MiB binary hprof file"));
+    assert!(!run.stdout.contains("Processing"));
+}
 
-    let unfiltered = diff_files(diff_args(None)).expect("should diff").report;
+#[test]
+fn analyze_writes_the_json_document_it_was_asked_for() {
+    let out_path = temp_json("analyze");
+    report(&[
+        DUMP_64,
+        "--top",
+        "2",
+        "--json",
+        "-o",
+        out_path.to_str().unwrap(),
+    ]);
+
+    let written = std::fs::read_to_string(&out_path).expect("json file should exist");
+    std::fs::remove_file(&out_path).ok();
+    let json: serde_json::Value = serde_json::from_str(&written).expect("should be valid json");
+    assert_eq!(json["dump"]["file"], DUMP_64);
+    assert_eq!(
+        json["heap"]["top_allocated_classes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn a_missing_input_file_fails_the_run() {
+    let run = hprof_slurp(&["test-heap-dumps/does-not-exist.bin"]);
+    assert_eq!(run.exit_code, 1);
+    assert!(run.stderr.contains("not found"));
+    assert!(run.stdout.is_empty());
+}
+
+#[test]
+fn diff_threads_the_filter_into_the_report() {
+    let unfiltered = report(&["diff", DUMP_32, DUMP_64]);
     assert!(unfiltered.contains("char[]"));
     assert!(!unfiltered.contains("filter:"));
 
-    let filtered = diff_files(diff_args(Some("java.util")))
-        .expect("should diff")
-        .report;
+    let filtered = report(&["diff", DUMP_32, DUMP_64, "--filter", "java.util"]);
     assert!(filtered.contains("filter: 'java.util' ("));
     assert!(filtered.contains("java.util.HashMap$Node"));
     assert!(!filtered.contains("char[]"));
@@ -76,78 +132,57 @@ fn diff_threads_the_filter_into_the_report() {
 
 #[test]
 fn diff_warns_when_the_dumps_use_different_id_sizes() {
-    let diff_args = |from: &str, to: &str| DiffArgs {
-        from: from.to_string(),
-        to: to.to_string(),
-        top: 3,
-        filter: None,
-        json_output: false,
-        output_file: None,
-        fail_over: None,
-    };
-
-    let mixed = diff_files(diff_args(DUMP_32, DUMP_64))
-        .expect("should diff")
-        .report;
+    let mixed = report(&["diff", DUMP_32, DUMP_64, "--top", "3"]);
     assert!(mixed.ends_with(
         "\nWarning: the dumps use different identifier sizes (4 bytes in FROM, 8 bytes in TO).\nObject headers and references are sized differently on each side, so part of every delta comes from the pointer width and not from the heap contents.\n"
     ));
 
-    let same = diff_files(diff_args(DUMP_64, DUMP_64))
-        .expect("should diff")
-        .report;
+    let same = report(&["diff", DUMP_64, DUMP_64]);
     assert!(!same.contains("Warning:"));
 }
 
 #[test]
-fn diff_threads_the_threshold_into_the_outcome() {
-    let with_threshold = |from: &str, to: &str, fail_over: Option<u64>| DiffArgs {
-        from: from.to_string(),
-        to: to.to_string(),
-        top: 20,
-        filter: None,
-        json_output: false,
-        output_file: None,
-        fail_over,
-    };
-
+fn diff_turns_the_threshold_into_the_exit_code() {
     // the 64 bit dump is ~2.37MiB bigger than the 32 bit one
-    let outcome =
-        diff_files(with_threshold(DUMP_32, DUMP_64, Some(1_000_000))).expect("should diff");
-    assert!(outcome.over_threshold);
+    let run = hprof_slurp(&["diff", DUMP_32, DUMP_64, "--fail-over", "1000000"]);
+    assert_eq!(run.exit_code, EXIT_OVER_THRESHOLD);
+    assert!(run.stderr.contains("over the --fail-over threshold"));
+    // the report is still printed in full
+    assert!(run.stdout.contains("Heap diff of raw shallow sizes:"));
 
-    let outcome =
-        diff_files(with_threshold(DUMP_32, DUMP_64, Some(100_000_000))).expect("should diff");
-    assert!(!outcome.over_threshold);
+    let run = hprof_slurp(&["diff", DUMP_32, DUMP_64, "--fail-over", "100MiB"]);
+    assert_eq!(run.exit_code, 0);
 
     // no threshold asked for is never a failure
-    let outcome = diff_files(with_threshold(DUMP_32, DUMP_64, None)).expect("should diff");
-    assert!(!outcome.over_threshold);
+    let run = hprof_slurp(&["diff", DUMP_32, DUMP_64]);
+    assert_eq!(run.exit_code, 0);
 
     // a shrinking heap does not trip it either
-    let outcome = diff_files(with_threshold(DUMP_64, DUMP_32, Some(0))).expect("should diff");
-    assert!(!outcome.over_threshold);
+    let run = hprof_slurp(&["diff", DUMP_64, DUMP_32, "--fail-over", "0"]);
+    assert_eq!(run.exit_code, 0);
 }
 
 #[test]
 fn diff_writes_the_json_document_it_was_asked_for() {
-    let out_dir = std::env::temp_dir().join("hprof-slurp-diff-json-test");
-    std::fs::create_dir_all(&out_dir).expect("should create the output directory");
-    let out_path = out_dir.join("diff.json");
-
-    let outcome = diff_files(DiffArgs {
-        from: DUMP_32.to_string(),
-        to: DUMP_64.to_string(),
-        top: 3,
-        filter: Some("java.util".to_string()),
-        json_output: true,
-        output_file: Some(out_path.to_string_lossy().into_owned()),
-        fail_over: Some(0),
-    })
-    .expect("should diff");
-    assert!(outcome.over_threshold);
+    let out_path = temp_json("diff");
+    let run = hprof_slurp(&[
+        "diff",
+        DUMP_32,
+        DUMP_64,
+        "--top",
+        "3",
+        "--filter",
+        "java.util",
+        "--json",
+        "-o",
+        out_path.to_str().unwrap(),
+        "--fail-over",
+        "0",
+    ]);
+    assert_eq!(run.exit_code, EXIT_OVER_THRESHOLD);
 
     let written = std::fs::read_to_string(&out_path).expect("json file should exist");
+    std::fs::remove_file(&out_path).ok();
     let json: serde_json::Value = serde_json::from_str(&written).expect("should be valid json");
 
     assert_eq!(json["tool"]["name"], "hprof-slurp");
@@ -180,23 +215,10 @@ fn diff_writes_the_json_document_it_was_asked_for() {
         let name = entry["class_name"].as_str().unwrap();
         assert!(name.contains("java.util"), "unfiltered entry {name}");
     }
-
-    std::fs::remove_file(&out_path).ok();
 }
 
 #[test]
 fn diff_of_a_dump_against_itself_reports_no_difference() {
-    let report = diff_files(DiffArgs {
-        from: DUMP_64.to_string(),
-        to: DUMP_64.to_string(),
-        top: 20,
-        filter: None,
-        json_output: false,
-        output_file: None,
-        fail_over: None,
-    })
-    .expect("should diff")
-    .report;
-
+    let report = report(&["diff", DUMP_64, DUMP_64]);
     assert!(report.contains("No per-class differences between the two dumps."));
 }
