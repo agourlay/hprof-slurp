@@ -47,7 +47,7 @@ The reported sizes are **shallow**: the footprint of each object itself (its hea
 JVM heap dump hprof file analyzer
 
 Usage: hprof-slurp [OPTIONS] <FILE>
-       hprof-slurp [OPTIONS] [FILE] <COMMAND>
+       hprof-slurp <COMMAND>
 
 Commands:
   diff  compare two dumps of the same process by per-class shallow heap deltas
@@ -66,6 +66,8 @@ Options:
   -h, --help              Print help
   -V, --version           Print version
 ```
+
+The analysis options and `<FILE>` cannot be combined with a subcommand. To analyze a dump whose file name is `diff`, pass it after `--` (`./hprof-slurp -- diff`) or with a path (`./hprof-slurp ./diff`).
 
 Progress and diagnostics go to `stderr`, so a redirected `stdout` holds the report and nothing else:
 

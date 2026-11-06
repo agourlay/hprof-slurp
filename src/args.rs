@@ -47,7 +47,7 @@ fn command() -> Command {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .about(crate_description!())
-        .subcommand_negates_reqs(true)
+        .args_conflicts_with_subcommands(true)
         .subcommand(
             Command::new("diff")
                 .about("compare two dumps of the same process by per-class shallow heap deltas")
@@ -233,6 +233,33 @@ mod args_tests {
             "5",
         ]);
         assert!(result.is_ok(), "diff should accept --top");
+    }
+
+    // Top-level input and flags used to be silently dropped when `diff` was
+    // given as well (`hprof-slurp f.hprof -l diff a b` ran the diff only).
+    #[test]
+    fn diff_rejects_top_level_input_and_flags() {
+        let rejected = [
+            vec!["hprof-slurp", "f.hprof", "diff", "a.hprof", "b.hprof"],
+            vec!["hprof-slurp", "-l", "diff", "a.hprof", "b.hprof"],
+            vec!["hprof-slurp", "-d", "diff", "a.hprof", "b.hprof"],
+            vec!["hprof-slurp", "--json", "diff", "a.hprof", "b.hprof"],
+        ];
+        for argv in rejected {
+            assert!(
+                command().try_get_matches_from(&argv).is_err(),
+                "{argv:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_named_diff_is_analyzed_after_a_double_dash() {
+        let matches = command()
+            .try_get_matches_from(["hprof-slurp", "--", "diff"])
+            .expect("`-- diff` should name the input file");
+        assert!(matches.subcommand().is_none());
+        assert_eq!(matches.get_one::<String>("file"), Some(&"diff".to_string()));
     }
 
     #[test]
