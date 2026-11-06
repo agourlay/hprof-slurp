@@ -1,5 +1,7 @@
+use std::any::Any;
 use std::fs::File;
 use std::io::{BufReader, ErrorKind, Read};
+use std::thread::JoinHandle;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -121,22 +123,45 @@ pub fn slurp_file(
     // Finish and remove progress bar
     pb.finish_and_clear();
 
-    // Wait for final result
-    let rendered_result = receive_result
-        .recv()
-        .expect("result channel should be alive");
+    // Wait for final result, absent only if the recorder died
+    let rendered_result = receive_result.recv();
 
-    // Blocks until pre-fetcher is done
-    prefetch_thread.join().map_err(|e| StdThreadError { e })?;
+    // Every thread is joined before reporting, and a thread whose peer died
+    // stops quietly, so the first failure below is the one that caused the
+    // others. A read error comes first since the parser then only sees a
+    // truncated input.
+    let prefetch_result = join_thread(prefetch_thread);
+    let parser_result = join_thread(parser_thread);
+    let recorder_result = join_thread(recorder_thread);
+    prefetch_result??;
+    parser_result??;
+    recorder_result?;
 
-    // Blocks until parser is done
-    // and fails the run if the dump turned out to be truncated
-    parser_thread.join().map_err(|e| StdThreadError { e })??;
-
-    // Blocks until recorder is done
-    recorder_thread.join().map_err(|e| StdThreadError { e })?;
-
+    let rendered_result = rendered_result.map_err(|_| StdThreadError {
+        thread: "hprof-recorder".to_string(),
+        message: "exited without sending a result".to_string(),
+    })?;
     Ok((header, rendered_result))
+}
+
+// Joins a pipeline thread, turning a panic into an error that carries the
+// thread name and the panic message instead of an opaque payload.
+fn join_thread<T>(handle: JoinHandle<T>) -> Result<T, HprofSlurpError> {
+    let thread = handle.thread().name().unwrap_or("unnamed").to_string();
+    handle.join().map_err(|payload| StdThreadError {
+        thread,
+        message: panic_message(payload.as_ref()),
+    })
+}
+
+// `panic!` payloads are a `&str` for a literal message and a `String` for a
+// formatted one; anything else is very unlikely.
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|message| (*message).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic payload".to_string())
 }
 
 // Every known flavour (`JAVA PROFILE 1.0.1`, `1.0.2`, `1.0.3`) shares this
@@ -272,6 +297,40 @@ mod tests {
             }
         }
         fs::remove_dir_all(&out_dir).unwrap();
+    }
+
+    // Regression: a parser panic used to surface as the opaque
+    // `standard thread error (Any { .. })`, attributed to the pre-fetcher.
+    #[test]
+    fn a_parser_panic_is_reported_with_its_thread_and_message() {
+        let mut bytes = fs::read(FILE_PATH_64).unwrap();
+        // first record tag, right after the header
+        bytes[FILE_HEADER_LENGTH] = 0x77;
+        let path = std::env::temp_dir().join(format!(
+            "hprof-slurp-bad-tag-test-{}.bin",
+            std::process::id()
+        ));
+        fs::write(&path, &bytes).unwrap();
+        let result = slurp_file(path.to_str().unwrap(), false, false);
+        fs::remove_file(&path).unwrap();
+        let error = match result {
+            Ok(_) => panic!("an unknown record tag should fail the run"),
+            Err(e) => e.to_string(),
+        };
+        assert_eq!(
+            error,
+            "the `hprof-parser` thread failed: unhandled record tag 119"
+        );
+    }
+
+    #[test]
+    fn panic_messages_are_extracted_from_both_payload_kinds() {
+        let literal: Box<dyn Any + Send> = Box::new("literal message");
+        assert_eq!(panic_message(literal.as_ref()), "literal message");
+        let formatted: Box<dyn Any + Send> = Box::new(format!("tag {}", 119));
+        assert_eq!(panic_message(formatted.as_ref()), "tag 119");
+        let other: Box<dyn Any + Send> = Box::new(42_u8);
+        assert_eq!(panic_message(other.as_ref()), "unknown panic payload");
     }
 
     fn header_error(bytes: &[u8]) -> String {

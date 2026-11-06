@@ -1,4 +1,3 @@
-use std::any::Any;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -15,8 +14,8 @@ pub enum HprofSlurpError {
     ClapError(#[from] clap::Error),
     #[error("standard I/O error ({0})")]
     StdIoError(#[from] std::io::Error),
-    #[error("standard thread error ({e:?})")]
-    StdThreadError { e: Box<dyn Any + Send + 'static> },
+    #[error("the `{thread}` thread failed: {message}")]
+    StdThreadError { thread: String, message: String },
     #[error("serialization error ({0})")]
     SerdeError(#[from] serde_json::Error),
 }

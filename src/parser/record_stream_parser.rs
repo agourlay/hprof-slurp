@@ -83,14 +83,17 @@ impl HprofRecordStreamParser {
                                     send_progress
                                         .send(self.processed_len)
                                         .expect("channel should not be closed");
-                                    let mut next_pooled_vec = receive_pooled_vec
-                                        .recv()
-                                        .expect("channel should not be closed");
+                                    // A closed channel means the recorder died: stop
+                                    // quietly, its own failure is the one reported.
+                                    let Ok(mut next_pooled_vec) = receive_pooled_vec.recv()
+                                    else {
+                                        return Ok(());
+                                    };
                                     // next_pooled_vec contains the records result after the swap
                                     std::mem::swap(&mut next_pooled_vec, &mut self.pooled_vec);
-                                    send_records
-                                        .send(next_pooled_vec)
-                                        .expect("channel should not be closed");
+                                    if send_records.send(next_pooled_vec).is_err() {
+                                        return Ok(());
+                                    }
                                     if self.needed > 0 {
                                         // Multi-buffer object successfully parsed
                                         // Do not hold on too much working memory
@@ -107,13 +110,24 @@ impl HprofRecordStreamParser {
                                     self.needed = n.get() + self.loop_buffer.len();
                                 }
                                 Err(Err::Incomplete(Unknown)) => {
-                                    panic!("Unexpected Incomplete with unknown size")
+                                    return Err(InvalidHprofFile {
+                                        message: format!(
+                                            "unexpected incomplete record of unknown size at byte {}",
+                                            self.processed_len
+                                        ),
+                                    });
                                 }
-                                Err(Err::Failure(e)) => {
-                                    panic!("parsing failed with {e:?}")
-                                }
-                                Err(Err::Error(e)) => {
-                                    panic!("parsing failed with {e:?}")
+                                // The error's `Debug` would dump the whole remaining
+                                // buffer, so only its kind and file offset are kept.
+                                Err(Err::Failure(e) | Err::Error(e)) => {
+                                    let offset = self.processed_len
+                                        + (self.loop_buffer.len() - e.input.len());
+                                    return Err(InvalidHprofFile {
+                                        message: format!(
+                                            "parsing failed ({:?}) at byte {offset}",
+                                            e.code
+                                        ),
+                                    });
                                 }
                             }
                         }
