@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hprof-slurp: analyze JVM heap dumps larger than your RAM</title>
+<meta name="description" content="A fast command-line JVM and Android heap dump analyzer in Rust. It reads hprof files in one streaming pass with bounded memory, reports the classes taking the most shallow heap along with a thread dump, and diffs two dumps to find a leak.">
+<meta property="og:title" content="hprof-slurp: analyze JVM heap dumps larger than your RAM">
+<meta property="og:description" content="A fast command-line JVM and Android heap dump analyzer in Rust: one streaming pass, bounded memory, top classes by shallow size, a thread dump, and a diff of two dumps to find a leak.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://agourlay.github.io/hprof-slurp/">
+<meta property="og:image" content="https://agourlay.github.io/hprof-slurp/social.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="hprof-slurp analyzing a 10 GiB heap dump in a terminal, listing the classes taking the most heap">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='8' y='10' width='48' height='10' rx='3' fill='%23f0883e'/><rect x='8' y='27' width='34' height='10' rx='3' fill='%23f0883e' opacity='.75'/><rect x='8' y='44' width='20' height='10' rx='3' fill='%23f0883e' opacity='.5'/></svg>">
+<link rel="stylesheet" href="style.css?v=2379936374">
+</head>
+<body>
+
+<header class="hero">
+  <nav class="top">
+  <a class="pill sponsor" href="https://github.com/sponsors/agourlay">
+    <span class="heart" aria-hidden="true">♥</span>
+    <span>Sponsor</span>
+  </a>
+  <a class="pill gh" href="https://github.com/agourlay/hprof-slurp" aria-label="hprof-slurp on GitHub">
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+    <span class="stars" hidden>★ <span class="stars-n"></span></span>
+  </a>
+  </nav>
+  <div class="hero-inner">
+  <!-- The mark: the report's first table drawn as bars, largest class on
+       top. Drawn once here and, as the favicon, in the accent alone. -->
+  <div class="logo" aria-hidden="true">
+    <svg viewBox="0 0 64 64" width="62" height="62">
+      <rect class="bar b1" x="8" y="10" width="48" height="10" rx="3"/>
+      <rect class="bar b2" x="8" y="27" width="34" height="10" rx="3"/>
+      <rect class="bar b3" x="8" y="44" width="20" height="10" rx="3"/>
+    </svg>
+  </div>
+  <h1><code>hprof-slurp</code>
+    <span class="genre">analyze JVM heap dumps larger than your RAM</span></h1>
+  <p class="lede">Point it at an hprof file and get the classes taking the most
+    heap, their instance counts and largest objects, plus a thread dump of what
+    every thread was running, in seconds. One streaming pass with bounded
+    memory, so a dump bigger than the machine reading it is fine. Compare two
+    dumps to find what leaks.</p>
+  <ul class="formats" aria-label="Supported dump formats">
+    <li>JAVA PROFILE 1.0.1</li><li>1.0.2</li><li>1.0.3 · Android</li><li>32 &amp; 64-bit</li>
+  </ul>
+  <!-- Without script both commands show, each under its own label; with it,
+       the labels become tabs and the visitor's own system is picked. -->
+  <div class="install" id="install">
+    <div class="install-tabs" role="tablist" hidden>
+      <button type="button" role="tab" data-os="unix">macOS · Linux</button>
+      <button type="button" role="tab" data-os="windows">Windows</button>
+    </div>
+    <div class="install-cmd" data-os="unix" role="tabpanel">
+      <p class="install-label">macOS · Linux</p>
+      <div class="install-line">
+        <code>curl -fsSL https://agourlay.github.io/hprof-slurp/install.sh | sh</code>
+        <button type="button" class="copy" hidden>Copy</button>
+      </div>
+      <p class="install-note">Installs <span class="ver"></span>to <code>~/.local/bin</code> ·
+        <a href="install.sh">Read the script</a></p>
+    </div>
+    <div class="install-cmd" data-os="windows" role="tabpanel">
+      <p class="install-label">Windows (PowerShell)</p>
+      <div class="install-line">
+        <code>irm https://raw.githubusercontent.com/agourlay/hprof-slurp/master/site/install.ps1 | iex</code>
+        <button type="button" class="copy" hidden>Copy</button>
+      </div>
+      <p class="install-note">Installs <span class="ver"></span>to <code>%LOCALAPPDATA%\Programs</code> and adds it to your PATH ·
+        <a href="install.ps1">Read the script</a></p>
+    </div>
+  </div>
+  <p class="alt">
+    Or with Rust: <code>cargo install hprof-slurp</code> ·
+    <a href="https://github.com/agourlay/hprof-slurp/releases">download a release</a>
+  </p>
+  <!-- A real run on the 10 GiB dump the numbers below were measured on,
+       pasted as text. The two `…` lines stand for what is trimmed (the
+       record summary and stack traces, then the largest instances table);
+       nothing else is edited. -->
+  <div class="term">
+    <div class="term-bar" aria-hidden="true">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="title">hprof-slurp</span>
+    </div>
+<pre class="term-body"><code><span class="prompt">$</span> hprof-slurp heap.hprof <span class="tok">--top 8</span>
+<span class="dim">Processing 10.17GiB binary hprof file in 'JAVA PROFILE 1.0.2' format.</span>
+<span class="dim">…</span>
+Found a total of <b>9.27GiB</b> of raw shallow heap objects in the dump.
+
+Top 8 raw shallow heap classes:
+
++------------+-----------+------------+--------------------------+
+| Total size | Instances |    Largest | Class name               |
++------------+-----------+------------+--------------------------+
+|    <b>2.52GiB</b> |  77411664 |   37.41KiB | byte[]                   |
+|    <b>2.31GiB</b> |  77353946 | 32.00bytes | java.lang.String         |
+|    <b>1.32GiB</b> |  29466082 | 48.00bytes | java.util.HashMap$Node   |
+|    <b>1.10GiB</b> |  14735098 |  391.62KiB | int[]                    |
+|  <b>674.30MiB</b> |  14730360 | 48.00bytes | HeapFiller$Order         |
+|  <b>505.86MiB</b> |   3683023 |   64.02KiB | java.util.HashMap$Node[] |
+|  <b>383.05MiB</b> |   3689688 |   31.30MiB | java.lang.Object[]       |
+|  <b>224.79MiB</b> |   3683036 | 64.00bytes | java.util.HashMap        |
++------------+-----------+------------+--------------------------+
+<span class="dim">…</span>
+<span class="ok">File successfully processed in 7.050728043s</span></code></pre>
+  </div>
+  </div>
+</header>
+
+<main>
+
+<section class="stats">
+  <p>Native Rust. One pass over the file. One self-contained binary.</p>
+  <ul>
+    <li><b>10.2 GiB</b> heap dump read</li>
+    <li><b>7.3 s</b> median of 10 runs</li>
+    <li><b>1.4 GiB/s</b> throughput</li>
+    <li><b>338 MiB</b> peak memory</li>
+  </ul>
+  <p class="stats-fine">OpenJDK 24 dump of 232 million objects, on an AMD Ryzen AI 9 HX PRO 370
+  with the file in the page cache. Memory is set by fixed 64 MiB read buffers,
+  the per-class tables and the largest single object, not by the size of the
+  dump.</p>
+</section>
+
+<section class="beats">
+  <div>
+    <h2>Bigger than RAM</h2>
+    <p>The dump is streamed once, front to back, through a few fixed buffers.
+    Nothing is indexed or spilled to disk, so a dump several times larger than
+    the machine's RAM reads fine.</p>
+  </div>
+  <div>
+    <h2>JVM and Android</h2>
+    <p>HotSpot dumps from <code>jcmd</code> or <code>jmap</code>, 32 or 64-bit,
+    and Android dumps from ART and Dalvik with their extension records, read as
+    they are: no <code>hprof-conv</code> step.</p>
+  </div>
+  <div>
+    <h2>Made for CI</h2>
+    <p>The report goes to stdout and progress to stderr. Add <code>--json</code>
+    for scripts, and gate a build on heap growth with <code>diff</code>, which
+    exits with code 2 over budget.</p>
+  </div>
+</section>
+
+<section class="report">
+  <h2>What the report covers</h2>
+  <p class="section-lede">One run prints a summary of the dump's records, a
+  thread dump, then two tables: the classes holding the most shallow heap, and
+  the classes with the largest single instances.</p>
+  <div class="modes">
+    <div class="mode">
+      <div>
+        <h3>Top classes</h3>
+        <p>Total shallow size, instance count and largest instance per class,
+        arrays included.</p>
+      </div>
+      <pre><code><span class="prompt">$</span> hprof-slurp heap.hprof <span class="tok">--top 50</span></code></pre>
+    </div>
+    <!-- Excerpt of the report on the SessionCache "before" dump used for the
+         diff below: one of its four thread stacks, unedited. -->
+    <div class="mode">
+      <div>
+        <h3>Thread dump</h3>
+        <p>The stack of every thread at the moment of the dump, frame by frame
+        with source file and line: what the process was doing when it was
+        captured. Printed on every run.</p>
+      </div>
+      <pre><code>Stack trace 3 (thread 3)
+  at java.lang.Object.wait0 (Object.java:native method)
+  at java.lang.Object.wait (Object.java:389)
+  at java.lang.Object.wait (Object.java:351)
+  at java.lang.ref.ReferenceQueue.remove0 (ReferenceQueue.java:138)
+  at java.lang.ref.ReferenceQueue.remove (ReferenceQueue.java:229)
+  at java.lang.ref.Finalizer$FinalizerThread.run (Finalizer.java:165)</code></pre>
+    </div>
+    <div class="mode">
+      <div>
+        <h3>Focus on your code</h3>
+        <p>Keep the classes whose name contains a text; the dump-wide total and
+        the selection's share stay in view.</p>
+      </div>
+      <pre><code><span class="prompt">$</span> hprof-slurp heap.hprof <span class="tok">--filter com.example</span></code></pre>
+    </div>
+    <div class="mode">
+      <div>
+        <h3>JSON for scripts</h3>
+        <p>Dump metadata, totals and both top lists as a versioned JSON
+        document, next to the text report.</p>
+      </div>
+      <pre><code><span class="prompt">$</span> hprof-slurp heap.hprof <span class="tok">--json -o report.json</span></code></pre>
+    </div>
+    <div class="mode">
+      <div>
+        <h3>String table</h3>
+        <p>The names the dump is written with: classes, methods, fields and
+        signatures. Duplicates are counted on every run; print them all with
+        <code>--list-strings</code>.</p>
+      </div>
+      <pre><code><span class="prompt">$</span> hprof-slurp heap.hprof <span class="tok">--list-strings</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="leak">
+  <h2>Find what grows with <code>diff</code></h2>
+  <p class="section-lede">A single dump shows what is big; two dumps of the
+  same process show what keeps growing. <code>diff</code> lists the per-class
+  change in shallow size and instance count, largest growth first. Here, a
+  cache that never evicts, dumped at 20,000 and 200,000 sessions:</p>
+  <div class="term">
+    <div class="term-bar" aria-hidden="true">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="title">hprof-slurp diff</span>
+    </div>
+<pre class="term-body"><code><span class="prompt">$</span> hprof-slurp diff before.hprof after.hprof <span class="tok">--top 6 --fail-over 10MiB</span>
+
+Heap diff of raw shallow sizes:
+  from: before.hprof (24.26MiB)
+  to:   after.hprof (199.87MiB)
+  net:  <b>+175.61MiB</b>
+
+Top 6 of 276 class deltas (by shallow size growth):
+
+      Δ size  Δ instances        size (from → to) instances (from → to)  Class name
+   <b>+32.96MiB</b>     +1080012      4.26MiB → 37.22MiB      139502 → 1219514  java.lang.String
+   <b>+28.47MiB</b>      +180000      3.13MiB → 31.60MiB        20434 → 200434  java.util.HashMap$Node[]
+   <b>+27.47MiB</b>     +1080012      4.11MiB → 31.58MiB      139679 → 1219691  byte[]
+   <b>+24.72MiB</b>      +540000      2.99MiB → 27.71MiB        65362 → 605362  java.util.HashMap$Node
+   <b>+20.60MiB</b>      +540000      2.29MiB → 22.89MiB        60000 → 600000  SessionCache$Order
+   <b>+16.48MiB</b>      +180000      2.32MiB → 18.80MiB        23449 → 203449  java.lang.Object[]
+<span class="warn">net shallow heap growth is over the --fail-over threshold</span>
+<span class="prompt">$</span> echo $?
+<span class="warn">2</span></code></pre>
+  </div>
+
+  <div class="ci">
+    <div>
+      <h3>Gate a build on heap growth</h3>
+      <p><code>--fail-over</code> takes a budget in bytes or with a unit. Over
+      it, the run exits with <b>2</b>; a run that could not complete exits with
+      <b>1</b>, so a CI job can tell the two apart. With <code>--filter</code>,
+      only the selected classes count against the budget.</p>
+    </div>
+<pre><code><span class="dim"># .github/workflows/soak.yml</span>
+- name: Heap growth under budget
+  run: |
+    hprof-slurp diff baseline.hprof soak.hprof \
+      <span class="tok">--filter com.example --fail-over 50MiB</span> \
+      --json -o heap-diff.json</code></pre>
+  </div>
+</section>
+
+<section class="shallow">
+  <h2>Shallow sizes, on purpose</h2>
+  <p class="section-lede">Reading a dump in one pass is what makes huge dumps
+  cheap, and it decides what can be measured.</p>
+  <div class="note">
+    <h3>Shallow, not retained</h3>
+    <p>Each object counts its own header and fields, not what it references.
+    Retained sizes, dominator trees and paths to GC roots need the whole object
+    graph in memory, which is what this tool is built to avoid. When you need
+    them, use the top classes here to know where to look, then open the dump in
+    <a href="https://eclipse.dev/mat/">Eclipse MAT</a> or
+    <a href="https://visualvm.github.io/">VisualVM</a>.</p>
+  </div>
+</section>
+
+<section class="faq">
+  <h2>Tips &amp; common questions</h2>
+  <div class="faq-list">
+    <details>
+      <summary>How do I take a heap dump?</summary>
+      <p>On a running JVM, <code>jcmd &lt;pid&gt; GC.heap_dump /tmp/heap.hprof</code>
+      (or <code>jmap -dump:live,format=b,file=/tmp/heap.hprof &lt;pid&gt;</code>).
+      To catch the moment it runs out, start it with
+      <code>-XX:+HeapDumpOnOutOfMemoryError</code>. On Android,
+      <code>adb shell am dumpheap &lt;process&gt; /data/local/tmp/app.hprof</code>
+      then <code>adb pull</code> it; the file can be read directly.</p>
+    </details>
+    <details>
+      <summary>How much memory does it need?</summary>
+      <p>A few hundred MiB on a large dump: 338 MiB at peak on the 10 GiB dump
+      above. The read buffers are fixed in size, and what grows is one small
+      entry per class, name and stack frame, not one per object, so a dump of
+      several times your RAM is fine. The one exception is a single object
+      larger than a buffer, such as a huge array: it is held whole while it is
+      read.</p>
+    </details>
+    <details>
+      <summary>How are the sizes computed?</summary>
+      <p>They are estimated from the class layouts recorded in the dump, the way
+      Eclipse MAT does it: an object header plus the fields of the class and of
+      each superclass, padded to 8 bytes, and for arrays a header plus the
+      elements. A 64-bit HotSpot dump always records 8-byte references, so for
+      a JVM running with compressed references the sizes are an upper bound.
+      They are best read relative to each other, or across two dumps.</p>
+    </details>
+    <details>
+      <summary>Can I diff a 32-bit dump against a 64-bit one?</summary>
+      <p>It runs, but the report ends with a warning: object headers and
+      references have different sizes on each side, so part of every delta comes
+      from the pointer width and not from the heap. Compare dumps of the same
+      process, taken the same way.</p>
+    </details>
+    <details>
+      <summary>The dump was still being copied. Will it notice?</summary>
+      <p>Yes. A file that ends in the middle of a record or of a heap dump
+      segment fails with <code>the file is truncated</code> and exit code 1,
+      instead of reporting the part that was read as if it were the whole
+      heap.</p>
+    </details>
+    <details>
+      <summary>Where do I learn how it works?</summary>
+      <p>The design, from the streaming parser to the pipeline of threads, is
+      described in a <a href="https://agourlay.github.io/tags/hprof-slurp/">series
+      of blog articles</a>.</p>
+    </details>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>
+    <a href="https://github.com/agourlay/hprof-slurp">GitHub</a> ·
+    <a href="https://crates.io/crates/hprof-slurp">crates.io</a> ·
+    <a href="https://agourlay.github.io/tags/hprof-slurp/">How it works</a> ·
+    <a href="https://github.com/agourlay/hprof-slurp/blob/master/LICENSE">Apache-2.0</a>
+  </p>
+  <p class="fineprint">
+    The report is written to stdout and progress to stderr, so
+    <code>hprof-slurp heap.hprof &gt; report.txt</code> holds the report and
+    nothing else.
+  </p>
+</footer>
+
+<script>
+// Turn the two install commands into tabs, opened on the visitor's system,
+// and give each a copy button. Without this the page still shows both.
+(function () {
+  var box = document.querySelector(".install");
+  var tabs = box.querySelectorAll("[role=tab]");
+  var panels = box.querySelectorAll(".install-cmd");
+  function show(os) {
+    tabs.forEach(function (t) { t.setAttribute("aria-selected", t.dataset.os === os); });
+    panels.forEach(function (p) { p.hidden = p.dataset.os !== os; });
+  }
+  tabs.forEach(function (t) { t.onclick = function () { show(t.dataset.os); }; });
+  box.querySelector(".install-tabs").hidden = false;
+  box.classList.add("tabbed");
+  var ua = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.userAgent;
+  show(/^win|windows/i.test(ua) ? "windows" : "unix");
+
+  if (!navigator.clipboard) return;
+  box.querySelectorAll(".copy").forEach(function (b) {
+    b.hidden = false;
+    b.onclick = function () {
+      navigator.clipboard.writeText(b.previousElementSibling.textContent).then(function () {
+        b.textContent = "Copied";
+        setTimeout(function () { b.textContent = "Copy"; }, 1600);
+      });
+    };
+  });
+})();
+
+// The version the install commands fetch, named in each install note with its
+// release date on hover. Silent when GitHub does not answer, like the star
+// count below.
+fetch("https://api.github.com/repos/agourlay/hprof-slurp/releases/latest")
+  .then(function (r) { return r.ok ? r.json() : null; })
+  .then(function (rel) {
+    if (!rel || !rel.tag_name || !rel.published_at) return;
+    var when = new Date(rel.published_at).toLocaleDateString("en-GB",
+      { day: "numeric", month: "long", year: "numeric" });
+    document.querySelectorAll(".install-note .ver").forEach(function (v) {
+      v.textContent = rel.tag_name + " ";
+      v.title = "Released " + when;
+    });
+  })
+  .catch(function () {});
+
+// The star count, filled in when GitHub answers; the link stands on its own
+// when it does not.
+fetch("https://api.github.com/repos/agourlay/hprof-slurp")
+  .then(function (r) { return r.ok ? r.json() : null; })
+  .then(function (repo) {
+    if (!repo || typeof repo.stargazers_count !== "number") return;
+    document.querySelector(".gh .stars-n").textContent = repo.stargazers_count;
+    document.querySelector(".gh .stars").hidden = false;
+  })
+  .catch(function () {});
+</script>
+
+</body>
+</html>
