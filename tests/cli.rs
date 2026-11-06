@@ -75,6 +75,31 @@ fn diff_threads_the_filter_into_the_report() {
 }
 
 #[test]
+fn diff_warns_when_the_dumps_use_different_id_sizes() {
+    let diff_args = |from: &str, to: &str| DiffArgs {
+        from: from.to_string(),
+        to: to.to_string(),
+        top: 3,
+        filter: None,
+        json_output: false,
+        output_file: None,
+        fail_over: None,
+    };
+
+    let mixed = diff_files(diff_args(DUMP_32, DUMP_64))
+        .expect("should diff")
+        .report;
+    assert!(mixed.ends_with(
+        "\nWarning: the dumps use different identifier sizes (4 bytes in FROM, 8 bytes in TO).\nObject headers and references are sized differently on each side, so part of every delta comes from the pointer width and not from the heap contents.\n"
+    ));
+
+    let same = diff_files(diff_args(DUMP_64, DUMP_64))
+        .expect("should diff")
+        .report;
+    assert!(!same.contains("Warning:"));
+}
+
+#[test]
 fn diff_threads_the_threshold_into_the_outcome() {
     let with_threshold = |from: &str, to: &str, fail_over: Option<u64>| DiffArgs {
         from: from.to_string(),

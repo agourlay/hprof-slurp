@@ -294,9 +294,32 @@ pub fn exceeds_threshold(net_delta: i64, fail_over: Option<u64>) -> bool {
     fail_over.is_some_and(|limit| net_delta > 0 && net_delta.unsigned_abs() > limit)
 }
 
+// Shallow sizes are derived from the identifier size (object headers, array
+// headers and every reference), so two dumps that disagree on it are not
+// comparable class by class: a part of every delta is an artifact of the
+// pointer width rather than a change in the heap. The diff still runs, as it
+// is the user's call, but the report says so.
+pub fn id_size_mismatch_warning(from_id_size: u32, to_id_size: u32) -> Option<String> {
+    (from_id_size != to_id_size).then(|| {
+        format!(
+            "\nWarning: the dumps use different identifier sizes ({from_id_size} bytes in FROM, {to_id_size} bytes in TO).\nObject headers and references are sized differently on each side, so part of every delta comes from the pointer width and not from the heap contents.\n"
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn id_size_mismatch_warning_only_when_sizes_differ() {
+        assert_eq!(id_size_mismatch_warning(8, 8), None);
+        assert_eq!(id_size_mismatch_warning(4, 4), None);
+        let warning = id_size_mismatch_warning(4, 8).expect("sizes differ");
+        assert!(warning.contains("(4 bytes in FROM, 8 bytes in TO)"));
+        let warning = id_size_mismatch_warning(8, 4).expect("sizes differ");
+        assert!(warning.contains("(8 bytes in FROM, 4 bytes in TO)"));
+    }
     use crate::slurp::slurp_file;
 
     fn stats(class_name: &str, instances: u64, bytes: u64) -> ClassAllocationStats {

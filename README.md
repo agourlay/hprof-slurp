@@ -149,13 +149,18 @@ Heap diff of raw shallow sizes:
   to:   after.hprof (2.51MiB)
   net:  +2.37MiB
 
-Top 3 of 282 class deltas (by shallow size growth):
+Top 3 of 268 class deltas (by shallow size growth):
 
       Δ size  Δ instances        size (from → to) instances (from → to)  Class name
     +1.99MiB         +432       1.14KiB → 1.99MiB               4 → 436  int[]
   +130.56KiB        +1158    64.33KiB → 194.89KiB            833 → 1991  char[]
    +60.84KiB         +434     24.39KiB → 85.23KiB               9 → 443  byte[]
+
+Warning: the dumps use different identifier sizes (4 bytes in FROM, 8 bytes in TO).
+Object headers and references are sized differently on each side, so part of every delta comes from the pointer width and not from the heap contents.
 ```
+
+Shallow sizes depend on the identifier size of the dump (32 or 64 bit), so comparing dumps that disagree on it, as in the example above built from the two test dumps, ends with a warning: the deltas then mix real growth with a change of pointer width.
 
 ### Gate a build on heap growth
 

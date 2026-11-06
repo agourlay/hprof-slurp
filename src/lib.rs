@@ -66,6 +66,8 @@ pub fn diff_files(diff_args: DiffArgs) -> Result<DiffOutcome, HprofSlurpError> {
     } = diff_args;
     let (from_header, result_from) = slurp_file(&from, false, false)?;
     let (to_header, result_to) = slurp_file(&to, false, false)?;
+    let id_size_warning =
+        diff::id_size_mismatch_warning(from_header.size_pointers, to_header.size_pointers);
     let mut entries = diff::compute(&result_from.memory_usage, &result_to.memory_usage);
     diff::filter_entries(&mut entries, filter.as_deref());
 
@@ -90,7 +92,7 @@ pub fn diff_files(diff_args: DiffArgs) -> Result<DiffOutcome, HprofSlurpError> {
         save_as_json_file(&json_result, output_file.as_deref())?;
     }
 
-    let report = diff::render(
+    let mut report = diff::render(
         &from,
         &to,
         &result_from.memory_usage,
@@ -99,6 +101,10 @@ pub fn diff_files(diff_args: DiffArgs) -> Result<DiffOutcome, HprofSlurpError> {
         top,
         filter.as_deref(),
     );
+    // last, like the analysis warnings, so it stays visible under the table
+    if let Some(warning) = id_size_warning {
+        report.push_str(&warning);
+    }
     Ok(DiffOutcome {
         report,
         over_threshold,
