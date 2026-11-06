@@ -1,6 +1,6 @@
 [package]
 name = "hprof-slurp"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 description = "JVM heap dump hprof file analyzer"
 repository = "https://github.com/agourlay/hprof-slurp"
@@ -9,6 +9,7 @@ readme = "README.md"
 categories = ["command-line-utilities"]
 keywords = ["java", "jvm", "heap-dump", "analyzer", "hprof"]
 edition = "2024"
+exclude = ["site/"]
 
 [dependencies]
 nom = "8.0.0"
