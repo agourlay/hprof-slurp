@@ -264,10 +264,11 @@ impl RenderedResult {
             } else {
                 filtered_size as f64 * 100.0 / total_size as f64
             };
+            let class_count = memory_usage.len();
+            let classes = if class_count == 1 { "class" } else { "classes" };
             writeln!(
                 analysis,
-                "Filter '{pattern}' matches {} classes totalling {} ({share:.2}% of the dump).",
-                memory_usage.len(),
+                "Filter '{pattern}' matches {class_count} {classes} totalling {} ({share:.2}% of the dump).",
                 pretty_bytes_size(filtered_size)
             )
             .expect("Could not write to analysis");
@@ -473,7 +474,7 @@ mod tests {
         // the banner keeps describing the whole dump
         assert!(output.contains("Found a total of 100.00bytes"));
         assert!(output.contains(
-            "Filter 'com.example' matches 1 classes totalling 25.00bytes (25.00% of the dump)."
+            "Filter 'com.example' matches 1 class totalling 25.00bytes (25.00% of the dump)."
         ));
         assert!(output.contains("com.example.Kept"));
         assert!(!output.contains("java.lang.String"));

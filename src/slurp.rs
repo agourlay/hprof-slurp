@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, ErrorKind, Read};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -138,13 +138,33 @@ pub fn slurp_file(
     Ok((header, rendered_result))
 }
 
-pub fn slurp_header(reader: &mut BufReader<File>) -> Result<FileHeader, HprofSlurpError> {
+// Every known flavour (`JAVA PROFILE 1.0.1`, `1.0.2`, `1.0.3`) shares this
+// prefix; only the prefix is enforced so that a future minor version is not
+// rejected up front.
+const HPROF_FORMAT_PREFIX: &str = "JAVA PROFILE ";
+
+pub fn slurp_header(reader: &mut impl Read) -> Result<FileHeader, HprofSlurpError> {
     let mut header_buffer = vec![0; FILE_HEADER_LENGTH];
-    reader.read_exact(&mut header_buffer)?;
-    let (rest, header) = parse_file_header(&header_buffer).map_err(|e| InvalidHprofFile {
-        message: format!("{e:?}"),
+    reader
+        .read_exact(&mut header_buffer)
+        .map_err(|e| match e.kind() {
+            ErrorKind::UnexpectedEof => InvalidHprofFile {
+                message: format!(
+                    "the file is shorter than the {FILE_HEADER_LENGTH} bytes hprof header"
+                ),
+            },
+            _ => e.into(),
+        })?;
+    let (rest, header) = parse_file_header(&header_buffer).map_err(|_| InvalidHprofFile {
+        message: format!("the file does not start with a `{HPROF_FORMAT_PREFIX}...` header"),
     })?;
-    // Invariants
+    // Invariants, the format first so that an arbitrary file is not reported
+    // as having a bad pointer size
+    if !header.format.starts_with(HPROF_FORMAT_PREFIX) {
+        return Err(InvalidHprofFile {
+            message: format!("unsupported format {:?}", header.format),
+        });
+    }
     let id_size = header.size_pointers;
     if id_size != 4 && id_size != 8 {
         return Err(InvalidIdSize);
@@ -224,6 +244,48 @@ mod tests {
         let file_header = slurp_header(&mut reader).unwrap();
         assert_eq!(file_header.size_pointers, 4);
         assert_eq!(file_header.format, "JAVA PROFILE 1.0.3".to_string());
+    }
+
+    fn header_error(bytes: &[u8]) -> String {
+        let mut reader = bytes;
+        slurp_header(&mut reader)
+            .expect_err("header should be rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn file_header_rejects_an_empty_file() {
+        assert_eq!(
+            header_error(&[]),
+            "invalid Hprof file - the file is shorter than the 31 bytes hprof header"
+        );
+    }
+
+    #[test]
+    fn file_header_rejects_a_file_shorter_than_the_header() {
+        assert!(header_error(b"JAVA PROFILE 1.0.2\0").contains("shorter than the 31 bytes"));
+    }
+
+    #[test]
+    fn file_header_rejects_a_missing_format_string() {
+        // no NUL terminator within the header bytes
+        assert_eq!(
+            header_error(&[b'x'; 31]),
+            "invalid Hprof file - the file does not start with a `JAVA PROFILE ...` header"
+        );
+    }
+
+    #[test]
+    fn file_header_rejects_an_unknown_format() {
+        let mut bytes = b"NOT A PROFILE 1.0\0".to_vec();
+        bytes.extend_from_slice(&8u32.to_be_bytes());
+        bytes.extend_from_slice(&0u64.to_be_bytes());
+        bytes.push(0); // pad to 31 bytes
+        assert_eq!(bytes.len(), 31);
+        assert_eq!(
+            header_error(&bytes),
+            "invalid Hprof file - unsupported format \"NOT A PROFILE 1.0\""
+        );
     }
 
     #[test]
