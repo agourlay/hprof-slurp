@@ -78,40 +78,40 @@ pub struct ResultRecorder {
     // Capture time of the dump in epoch milliseconds (`0` when absent)
     timestamp: u64,
     // Tag counters
-    classes_unloaded: u32,
-    stack_frames: u32,
-    stack_traces: u32,
-    start_threads: u32,
-    end_threads: u32,
-    heap_summaries: u32,
-    heap_dump_segments: u32,
-    allocation_sites: u32,
-    control_settings: u32,
-    cpu_samples: u32,
+    classes_unloaded: u64,
+    stack_frames: u64,
+    stack_traces: u64,
+    start_threads: u64,
+    end_threads: u64,
+    heap_summaries: u64,
+    heap_dump_segments: u64,
+    allocation_sites: u64,
+    control_settings: u64,
+    cpu_samples: u64,
     // GC tag counters
-    heap_dump_segments_all_sub_records: u32,
-    heap_dump_segments_gc_root_unknown: u32,
-    heap_dump_segments_gc_root_thread_object: u32,
-    heap_dump_segments_gc_root_jni_global: u32,
-    heap_dump_segments_gc_root_jni_local: u32,
-    heap_dump_segments_gc_root_java_frame: u32,
-    heap_dump_segments_gc_root_native_stack: u32,
-    heap_dump_segments_gc_root_sticky_class: u32,
-    heap_dump_segments_gc_root_thread_block: u32,
-    heap_dump_segments_gc_root_monitor_used: u32,
-    heap_dump_segments_gc_object_array_dump: u32,
-    heap_dump_segments_gc_instance_dump: u32,
-    heap_dump_segments_gc_primitive_array_dump: u32,
-    heap_dump_segments_gc_class_dump: u32,
+    heap_dump_segments_all_sub_records: u64,
+    heap_dump_segments_gc_root_unknown: u64,
+    heap_dump_segments_gc_root_thread_object: u64,
+    heap_dump_segments_gc_root_jni_global: u64,
+    heap_dump_segments_gc_root_jni_local: u64,
+    heap_dump_segments_gc_root_java_frame: u64,
+    heap_dump_segments_gc_root_native_stack: u64,
+    heap_dump_segments_gc_root_sticky_class: u64,
+    heap_dump_segments_gc_root_thread_block: u64,
+    heap_dump_segments_gc_root_monitor_used: u64,
+    heap_dump_segments_gc_object_array_dump: u64,
+    heap_dump_segments_gc_instance_dump: u64,
+    heap_dump_segments_gc_primitive_array_dump: u64,
+    heap_dump_segments_gc_class_dump: u64,
     // GC tag counters for the Android HPROF 1.0.3 extension records
-    heap_dump_segments_gc_root_interned_string: u32,
-    heap_dump_segments_gc_root_finalizing: u32,
-    heap_dump_segments_gc_root_debugger: u32,
-    heap_dump_segments_gc_root_reference_cleanup: u32,
-    heap_dump_segments_gc_root_vm_internal: u32,
-    heap_dump_segments_gc_root_jni_monitor: u32,
-    heap_dump_segments_gc_unreachable: u32,
-    heap_dump_segments_gc_heap_dump_info: u32,
+    heap_dump_segments_gc_root_interned_string: u64,
+    heap_dump_segments_gc_root_finalizing: u64,
+    heap_dump_segments_gc_root_debugger: u64,
+    heap_dump_segments_gc_root_reference_cleanup: u64,
+    heap_dump_segments_gc_root_vm_internal: u64,
+    heap_dump_segments_gc_root_jni_monitor: u64,
+    heap_dump_segments_gc_unreachable: u64,
+    heap_dump_segments_gc_heap_dump_info: u64,
     // Captured state
     // "object_id" -> "class_id" -> "class_name_id" -> "utf8_string"
     utf8_strings_by_id: AHashMap<u64, Box<str>>,
@@ -737,7 +737,7 @@ impl ResultRecorder {
         format!("{capture_time}{top_summary}\n{heap_summary}{android_summary}")
     }
 
-    const fn android_extension_sub_records(&self) -> u32 {
+    const fn android_extension_sub_records(&self) -> u64 {
         self.heap_dump_segments_gc_root_interned_string
             + self.heap_dump_segments_gc_root_finalizing
             + self.heap_dump_segments_gc_root_debugger
@@ -1069,6 +1069,32 @@ mod tests {
         assert!(summary.contains("..GC heap dump info: 1"));
         // the per-tag breakdown accounts for every sub-record
         assert!(summary.contains("0 heap dump segments containing in total 4 sub-records:"));
+    }
+
+    // A heap of a few hundred GB holds more than `u32::MAX` objects; the
+    // summary counters used to be `u32` and wrapped silently in release builds.
+    #[test]
+    fn summary_counters_go_past_u32_max() {
+        let mut recorder = ResultRecorder::new(8, false, 0);
+        recorder.heap_dump_segments_all_sub_records = u64::from(u32::MAX);
+        recorder.heap_dump_segments_gc_instance_dump = u64::from(u32::MAX);
+        recorder.heap_dump_segments_gc_root_interned_string = u64::from(u32::MAX);
+        let mut records = vec![
+            Record::GcSegment(GcRecord::InstanceDump {
+                object_id: 1,
+                stack_trace_serial_number: 0,
+                class_object_id: 2,
+                data_size: 0,
+            }),
+            Record::GcSegment(GcRecord::RootInternedString { object_id: 3 }),
+        ];
+
+        recorder.record_records(&mut records);
+        let summary = recorder.render_summary();
+
+        assert!(summary.contains("in total 4294967297 sub-records:"));
+        assert!(summary.contains("..GC instance dump: 4294967296"));
+        assert!(summary.contains("..GC root interned string: 4294967296"));
     }
 
     #[test]
