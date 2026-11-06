@@ -5,6 +5,8 @@
 
 `hprof-slurp` is a specialized JVM and Android heap dump analyzer.
 
+**[Landing page](https://agourlay.github.io/hprof-slurp/)** · install with `curl -fsSL https://agourlay.github.io/hprof-slurp/install.sh | sh`
+
 It is named after the `hprof` format which is used by the [JDK](https://github.com/openjdk/jdk/blob/master/src/hotspot/share/services/heapDumper.cpp) to encode heap dumps.
 
 The design of this tool is described in details in the [following blog articles series](https://agourlay.github.io/tags/hprof-slurp/).
